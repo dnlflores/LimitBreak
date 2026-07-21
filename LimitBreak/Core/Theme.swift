@@ -94,6 +94,13 @@ extension View {
         glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
     }
 
+    /// A circular interactive Liquid Glass surface for icon buttons in headers.
+    func glassCircle(diameter: CGFloat = 44) -> some View {
+        self
+            .frame(width: diameter, height: diameter)
+            .glassEffect(.regular.interactive(), in: Circle())
+    }
+
     func statNumberStyle() -> some View {
         self
             .font(.system(.title2, design: .rounded, weight: .bold))

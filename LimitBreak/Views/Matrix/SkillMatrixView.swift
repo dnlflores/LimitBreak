@@ -18,6 +18,7 @@ struct SkillMatrixView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    titleHeader
                     statHeader
                     StatDialsView(sessions: sessions)
                     BodyDiagramView(sessions: sessions)
@@ -28,17 +29,7 @@ struct SkillMatrixView: View {
                 .padding()
             }
             .obsidianBackground()
-            .navigationTitle("Skill Matrix")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showHealthSheet = true
-                    } label: {
-                        Image(systemName: HealthKitManager.shared.isConnected ? "heart.fill" : "heart")
-                            .foregroundStyle(Theme.crimson)
-                    }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $selectedDay) { day in
                 DayDetailSheet(day: day)
             }
@@ -84,6 +75,24 @@ struct SkillMatrixView: View {
     private var weeklyVolume: Double {
         let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date())!
         return sessions.filter { $0.startDate >= weekAgo }.reduce(0) { $0 + $1.totalVolume }
+    }
+
+    private var titleHeader: some View {
+        HStack(alignment: .center) {
+            Text("Skill Matrix")
+                .font(.largeTitle.bold())
+            Spacer()
+            Button {
+                showHealthSheet = true
+            } label: {
+                Image(systemName: HealthKitManager.shared.isConnected ? "heart.fill" : "heart")
+                    .font(.title2)
+                    .foregroundStyle(Theme.crimson)
+                    .glassCircle()
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.bottom, 8)
     }
 
     private var statHeader: some View {

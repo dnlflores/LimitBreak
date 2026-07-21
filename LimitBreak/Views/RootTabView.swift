@@ -15,6 +15,9 @@ struct RootTabView: View {
             Tab("Train", systemImage: "bolt.fill") {
                 TrainView()
             }
+            Tab("History", systemImage: "clock.arrow.circlepath") {
+                WorkoutHistoryView()
+            }
             Tab("Library", systemImage: "books.vertical.fill") {
                 ExerciseLibraryView()
             }

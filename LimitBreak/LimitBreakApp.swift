@@ -18,6 +18,8 @@ struct LimitBreakApp: App {
             ExerciseSet.self,
             PRRecord.self,
             Walk.self,
+            Routine.self,
+            RoutineItem.self,
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
@@ -28,11 +30,25 @@ struct LimitBreakApp: App {
         _workout = State(initialValue: WorkoutManager(context: container.mainContext))
     }
 
+    @State private var showSplash = true
+
     var body: some Scene {
         WindowGroup {
-            RootTabView()
-                .environment(workout)
-                .preferredColorScheme(.dark)
+            ZStack {
+                RootTabView()
+
+                if showSplash {
+                    LaunchSplashView {
+                        withAnimation(.easeInOut(duration: 0.6)) {
+                            showSplash = false
+                        }
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 1.08)))
+                    .zIndex(1)
+                }
+            }
+            .environment(workout)
+            .preferredColorScheme(.dark)
         }
         .modelContainer(container)
     }

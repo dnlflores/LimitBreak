@@ -53,11 +53,11 @@ final class WorkoutManager {
 
     // MARK: - Session lifecycle
 
-    func startSession(named name: String) {
+    func startSession(named name: String, exercises: [Exercise] = []) {
         let session = WorkoutSession(name: name.isEmpty ? "Training Session" : name)
         context.insert(session)
         activeSession = session
-        sessionExercises = []
+        sessionExercises = exercises
         try? context.save()
         Haptics.shared.success()
     }
@@ -71,6 +71,23 @@ final class WorkoutManager {
         activeSession = nil
         sessionExercises = []
         stopRest()
+    }
+
+    /// Discards the active session entirely — deletes it and any logged sets
+    /// (which cascade away) without saving to history or syncing to HealthKit.
+    /// For sessions started by mistake.
+    func cancelSession() {
+        if let session = activeSession {
+            let affected = Set(session.sets.compactMap(\.exercise))
+            context.delete(session)
+            try? context.save()
+            recomputePRs(for: affected)
+            try? context.save()
+        }
+        activeSession = nil
+        sessionExercises = []
+        stopRest()
+        Haptics.shared.logSet()
     }
 
     func addExercise(_ exercise: Exercise) {
@@ -87,7 +104,8 @@ final class WorkoutManager {
         reps: Int,
         durationSeconds: Double? = nil,
         distanceMeters: Double? = nil,
-        isWarmup: Bool = false
+        isWarmup: Bool = false,
+        repWeights: [Double] = []
     ) -> LimitBreakEvent? {
         guard let session = activeSession else { return nil }
 
@@ -96,7 +114,8 @@ final class WorkoutManager {
             reps: reps,
             durationSeconds: durationSeconds,
             distanceMeters: distanceMeters,
-            isWarmup: isWarmup
+            isWarmup: isWarmup,
+            repWeights: repWeights
         )
         set.exercise = exercise
         set.session = session
@@ -343,5 +362,82 @@ final class WorkoutManager {
         restTimer = nil
         restRemaining = 0
         restTotal = 0
+    }
+
+    // MARK: - Routines (saved curations)
+
+    /// Creates and persists a new routine from an ordered list of
+    /// (exercise, targetSets) pairs.
+    @discardableResult
+    func createRoutine(
+        name: String,
+        notes: String? = nil,
+        isAIGenerated: Bool = false,
+        focusLabel: String? = nil,
+        items: [(exercise: Exercise, targetSets: Int)]
+    ) -> Routine {
+        let routine = Routine(
+            name: name.isEmpty ? "Routine" : name,
+            notes: notes?.isEmpty == true ? nil : notes,
+            isAIGenerated: isAIGenerated,
+            focusLabel: focusLabel
+        )
+        context.insert(routine)
+        applyItems(items, to: routine)
+        try? context.save()
+        Haptics.shared.success()
+        return routine
+    }
+
+    /// Rewrites a routine in place: its name, notes, and full ordered item list.
+    func updateRoutine(
+        _ routine: Routine,
+        name: String,
+        notes: String? = nil,
+        items: [(exercise: Exercise, targetSets: Int)]
+    ) {
+        for item in routine.items {
+            context.delete(item)
+        }
+        try? context.save()
+
+        routine.name = name.isEmpty ? "Routine" : name
+        routine.notes = notes?.isEmpty == true ? nil : notes
+        applyItems(items, to: routine)
+        try? context.save()
+        Haptics.shared.success()
+    }
+
+    /// Inserts ordered `RoutineItem`s for the given pairs and links them.
+    private func applyItems(
+        _ items: [(exercise: Exercise, targetSets: Int)],
+        to routine: Routine
+    ) {
+        for (index, entry) in items.enumerated() {
+            let item = RoutineItem(order: index, targetSets: entry.targetSets, exercise: entry.exercise)
+            item.routine = routine
+            context.insert(item)
+        }
+    }
+
+    func deleteRoutine(_ routine: Routine) {
+        context.delete(routine)
+        try? context.save()
+        Haptics.shared.logSet()
+    }
+
+    /// Builds a routine from a completed session: one slot per exercise, with
+    /// the target set count taken from how many working sets were logged.
+    @discardableResult
+    func saveRoutine(from session: WorkoutSession) -> Routine {
+        let items = session.setsByExercise.map { group in
+            (exercise: group.exercise, targetSets: max(1, group.sets.filter { !$0.isWarmup }.count))
+        }
+        return createRoutine(name: session.name, items: items)
+    }
+
+    /// Starts a live session pre-loaded with a routine's exercises, in order.
+    func startSession(from routine: Routine) {
+        startSession(named: routine.name, exercises: routine.exercises)
     }
 }

@@ -13,6 +13,8 @@ struct NarrativeView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    titleHeader
+
                     telemetryCard
 
                     if let patchNotes {
@@ -30,11 +32,20 @@ struct NarrativeView: View {
                 .padding()
             }
             .obsidianBackground()
-            .navigationTitle("Saga")
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 telemetry = NarrativeEngine.weeklyTelemetry(context: modelContext)
             }
         }
+    }
+
+    private var titleHeader: some View {
+        HStack(alignment: .center) {
+            Text("Saga")
+                .font(.largeTitle.bold())
+            Spacer()
+        }
+        .padding(.bottom, 8)
     }
 
     private var telemetryCard: some View {

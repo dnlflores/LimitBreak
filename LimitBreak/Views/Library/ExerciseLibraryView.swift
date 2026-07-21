@@ -21,19 +21,6 @@ struct ExerciseLibraryView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            filterChip(nil)
-                            ForEach(MuscleGroup.allCases) { muscle in
-                                filterChip(muscle)
-                            }
-                        }
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets())
-                }
-
                 ForEach(filtered, id: \.id) { exercise in
                     NavigationLink {
                         ExerciseDetailView(exercise: exercise)
@@ -42,20 +29,79 @@ struct ExerciseLibraryView: View {
                     }
                 }
             }
-            .searchable(text: $searchText, prompt: "Search movements")
-            .navigationTitle("Library")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showCreator = true
-                    } label: {
-                        Label("New Exercise", systemImage: "plus")
-                    }
-                }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                topBar
             }
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showCreator) {
                 ExerciseEditorView()
             }
+        }
+    }
+
+    /// Title, search, and filter pills as one pinned unit. The list scrolls
+    /// beneath it, so its translucent material only reveals a blur once rows
+    /// pass under while scrolling.
+    private var topBar: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .center) {
+                Text("Library")
+                    .font(.largeTitle.bold())
+                Spacer()
+                Button {
+                    showCreator = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.title2)
+                        .glassCircle()
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal)
+
+            searchField
+                .padding(.horizontal)
+
+            filterBar
+        }
+        .padding(.top, 16)
+        .padding(.bottom, 10)
+        .background(.ultraThinMaterial)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(Theme.textDim)
+            TextField("Search movements", text: $searchText)
+                .textFieldStyle(.plain)
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Theme.textDim)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.glassBorder, lineWidth: 1))
+    }
+
+    /// Horizontal muscle-group filter, part of the pinned top bar. Scrolls
+    /// edge-to-edge while its chips stay inset.
+    private var filterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                filterChip(nil)
+                ForEach(MuscleGroup.allCases) { muscle in
+                    filterChip(muscle)
+                }
+            }
+            .padding(.horizontal)
         }
     }
 

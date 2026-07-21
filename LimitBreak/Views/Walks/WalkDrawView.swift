@@ -1,14 +1,17 @@
 import SwiftUI
 import SwiftData
 import MapKit
+import CoreLocation
 
 /// Log a walk by drawing its route directly on the map with your finger.
 /// Pan mode moves the map; Draw mode turns drags into route points.
+/// Opens zoomed in on the user's current location, with a button to re-center.
 struct WalkDrawView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
-    @State private var camera: MapCameraPosition = .automatic
+    @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
+    @State private var locationManager = CLLocationManager()
     @State private var points: [CLLocationCoordinate2D] = []
     /// points.count checkpoint after each completed drag stroke, so Undo removes one stroke.
     @State private var strokeEnds: [Int] = []
@@ -49,6 +52,9 @@ struct WalkDrawView: View {
                         .disabled(points.count < 2)
                 }
             }
+            .onAppear {
+                locationManager.requestWhenInUseAuthorization()
+            }
         }
     }
 
@@ -57,6 +63,8 @@ struct WalkDrawView: View {
     private var mapCanvas: some View {
         MapReader { proxy in
             Map(position: $camera, interactionModes: isDrawing ? [] : .all) {
+                UserAnnotation()
+
                 if points.count >= 2 {
                     MapPolyline(coordinates: points)
                         .stroke(Theme.emerald, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
@@ -119,6 +127,17 @@ struct WalkDrawView: View {
                 }
                 .buttonStyle(.plain)
 
+                Button {
+                    recenterOnUser()
+                } label: {
+                    Image(systemName: "location.fill")
+                        .font(.caption.weight(.bold))
+                        .padding(10)
+                        .foregroundStyle(Theme.teal)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.plain)
+
                 Spacer()
 
                 Button {
@@ -149,6 +168,14 @@ struct WalkDrawView: View {
             }
         }
         .padding(10)
+    }
+
+    /// Snaps the camera back to the user's current location.
+    private func recenterOnUser() {
+        Haptics.shared.tick()
+        withAnimation(.easeInOut(duration: 0.4)) {
+            camera = .userLocation(fallback: .automatic)
+        }
     }
 
     private func addPoint(at location: CGPoint, proxy: MapProxy) {

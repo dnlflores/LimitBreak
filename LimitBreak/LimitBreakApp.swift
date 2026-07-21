@@ -2,31 +2,38 @@
 //  LimitBreakApp.swift
 //  LimitBreak
 //
-//  Created by Daniel Flores on 7/20/26.
-//
 
 import SwiftUI
 import SwiftData
 
 @main
 struct LimitBreakApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    let container: ModelContainer
+    @State private var workout: WorkoutManager
 
+    init() {
+        let schema = Schema([
+            Exercise.self,
+            WorkoutSession.self,
+            ExerciseSet.self,
+            PRRecord.self,
+            Walk.self,
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            container = try ModelContainer(for: schema, configurations: [configuration])
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
-    }()
+        _workout = State(initialValue: WorkoutManager(context: container.mainContext))
+    }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootTabView()
+                .environment(workout)
+                .preferredColorScheme(.dark)
         }
-        .modelContainer(sharedModelContainer)
+        .modelContainer(container)
     }
 }

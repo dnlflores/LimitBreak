@@ -2,42 +2,47 @@
 //  LimitBreakUITests.swift
 //  LimitBreakUITests
 //
-//  Created by Daniel Flores on 7/20/26.
-//
 
 import XCTest
 
 final class LimitBreakUITests: XCTestCase {
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
     }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-    }
-
+    /// Core loop: start a session, add an exercise, log a set, and verify the
+    /// first-ever record triggers the LimitBreak celebration.
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testLogSetTriggersLimitBreak() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
-    }
+        app.buttons["Train"].tap()
 
-    @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
-        }
+        let startButton = app.buttons["START SESSION"]
+        XCTAssertTrue(startButton.waitForExistence(timeout: 5))
+        startButton.tap()
+
+        let addExercise = app.buttons["Add Exercise"]
+        XCTAssertTrue(addExercise.waitForExistence(timeout: 5))
+        addExercise.tap()
+
+        let benchRow = app.staticTexts["Barbell Bench Press"]
+        XCTAssertTrue(benchRow.waitForExistence(timeout: 5))
+        benchRow.tap()
+
+        let logSet = app.buttons["LOG SET"]
+        XCTAssertTrue(logSet.waitForExistence(timeout: 5))
+        logSet.tap()
+
+        // First-ever set is a new ceiling — the LimitBreak overlay must appear.
+        let banner = app.staticTexts["LIMITBREAK TRIGGERED"]
+        XCTAssertTrue(banner.waitForExistence(timeout: 5))
+
+        // Dismiss and confirm the set row landed with its PR crown.
+        banner.tap()
+        XCTAssertTrue(app.staticTexts["SET 1"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["PR"].exists)
     }
 }

@@ -45,4 +45,36 @@ final class LimitBreakUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["SET 1"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["PR"].exists)
     }
+
+    /// Forge sheet: every section renders, and creating a movement lands it
+    /// in the Library. Captures a screenshot of the scrolled sheet for review.
+    @MainActor
+    func testForgeSheetCreatesExercise() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-open-tab", "3", "-open-forge"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Forge Exercise"].waitForExistence(timeout: 5))
+
+        let nameField = app.textFields["Exercise name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 3))
+        nameField.tap()
+        nameField.typeText("Landmine Belt Squat")
+
+        app.swipeUp()
+        app.swipeUp()
+
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "forge-sheet-bottom"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        let forgeButton = app.buttons["FORGE EXERCISE"]
+        XCTAssertTrue(forgeButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(forgeButton.isEnabled)
+        forgeButton.tap()
+
+        // Sheet dismisses back into the Library, new movement present.
+        XCTAssertTrue(app.staticTexts["Landmine Belt Squat"].waitForExistence(timeout: 5))
+    }
 }

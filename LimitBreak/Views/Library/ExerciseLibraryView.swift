@@ -6,7 +6,8 @@ struct ExerciseLibraryView: View {
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
     @State private var searchText = ""
     @State private var muscleFilter: MuscleGroup?
-    @State private var showCreator = false
+    // Debug/UI-test hook: launch with "-open-forge" to present the creator sheet.
+    @State private var showCreator = ProcessInfo.processInfo.arguments.contains("-open-forge")
 
     private var filtered: [Exercise] {
         exercises.filter { exercise in
@@ -20,18 +21,36 @@ struct ExerciseLibraryView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(filtered, id: \.id) { exercise in
-                    NavigationLink {
-                        ExerciseDetailView(exercise: exercise)
-                    } label: {
-                        exerciseRow(exercise)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    titleHeader
+
+                    searchField
+
+                    filterBar
+
+                    summaryHeader
+
+                    ForEach(filtered, id: \.id) { exercise in
+                        NavigationLink {
+                            ExerciseDetailView(exercise: exercise)
+                        } label: {
+                            exerciseCard(exercise)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if filtered.isEmpty {
+                        Text(emptyMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.textDim)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .cardStyle()
                     }
                 }
+                .padding()
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                topBar
-            }
+            .obsidianBackground()
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showCreator) {
                 ExerciseEditorView()
@@ -39,34 +58,30 @@ struct ExerciseLibraryView: View {
         }
     }
 
-    /// Title, search, and filter pills as one pinned unit. The list scrolls
-    /// beneath it, so its translucent material only reveals a blur once rows
-    /// pass under while scrolling.
-    private var topBar: some View {
-        VStack(spacing: 12) {
-            HStack(alignment: .center) {
-                Text("Library")
-                    .font(.largeTitle.bold())
-                Spacer()
-                Button {
-                    showCreator = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.title2)
-                        .glassCircle()
-                }
-                .buttonStyle(.plain)
+    private var emptyMessage: String {
+        searchText.isEmpty
+            ? "No movements here yet. Forge a custom one with +."
+            : "No movements match \u{201C}\(searchText)\u{201D}."
+    }
+
+    // MARK: - Title & search
+
+    private var titleHeader: some View {
+        HStack(alignment: .center) {
+            Text("Library")
+                .font(.largeTitle.bold())
+            Spacer()
+            Button {
+                Haptics.shared.tick()
+                showCreator = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.title2)
+                    .glassCircle()
             }
-            .padding(.horizontal)
-
-            searchField
-                .padding(.horizontal)
-
-            filterBar
+            .buttonStyle(.plain)
         }
-        .padding(.top, 16)
-        .padding(.bottom, 10)
-        .background(.ultraThinMaterial)
+        .padding(.bottom, 8)
     }
 
     private var searchField: some View {
@@ -91,8 +106,8 @@ struct ExerciseLibraryView: View {
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.glassBorder, lineWidth: 1))
     }
 
-    /// Horizontal muscle-group filter, part of the pinned top bar. Scrolls
-    /// edge-to-edge while its chips stay inset.
+    // MARK: - Filter chips
+
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -101,7 +116,8 @@ struct ExerciseLibraryView: View {
                     filterChip(muscle)
                 }
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
         }
     }
 
@@ -114,34 +130,99 @@ struct ExerciseLibraryView: View {
         .font(.caption.weight(.medium))
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(isSelected ? Theme.emerald : Theme.surfaceRaised, in: Capsule())
+        .background(isSelected ? AnyShapeStyle(Theme.emerald) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
+        .overlay(Capsule().strokeBorder(isSelected ? AnyShapeStyle(.clear) : AnyShapeStyle(Theme.glassBorder), lineWidth: 1))
         .foregroundStyle(isSelected ? .black : .primary)
+        .buttonStyle(.plain)
     }
 
-    private func exerciseRow(_ exercise: Exercise) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text(exercise.name)
-                    .font(.subheadline.weight(.semibold))
-                if exercise.isCustom {
-                    Text("CUSTOM")
-                        .font(.system(size: 9, weight: .bold))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Theme.violet.opacity(0.25), in: Capsule())
-                        .foregroundStyle(Theme.violet)
+    // MARK: - Summary
+
+    private var summaryHeader: some View {
+        let customCount = exercises.filter(\.isCustom).count
+        let recordCount = exercises.reduce(0) { $0 + $1.prRecords.count }
+
+        return HStack(spacing: 12) {
+            summaryTile(value: "\(exercises.count)", label: "movements", color: Theme.teal)
+            summaryTile(value: "\(customCount)", label: "custom", color: Theme.violet)
+            summaryTile(value: "\(recordCount)", label: "records", color: Theme.gold)
+        }
+    }
+
+    private func summaryTile(value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .statNumberStyle()
+                .foregroundStyle(color)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(Theme.textDim)
+        }
+        .frame(maxWidth: .infinity)
+        .cardStyle()
+    }
+
+    // MARK: - Exercise cards
+
+    private func exerciseCard(_ exercise: Exercise) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: iconName(for: exercise.muscleGroup))
+                .font(.title3)
+                .foregroundStyle(Theme.teal)
+                .frame(width: 40, height: 40)
+                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(exercise.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    if exercise.isCustom {
+                        Text("CUSTOM")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Theme.violet.opacity(0.25), in: Capsule())
+                            .foregroundStyle(Theme.violet)
+                    }
                 }
-            }
-            HStack(spacing: 4) {
                 Text("\(exercise.muscleGroupRaw) · \(exercise.equipmentType)")
-                let ceiling = exercise.ceiling(for: "1RM")
-                if ceiling > 0 {
-                    Text("· 1RM \(ceiling.cleanWeight)")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textDim)
+            }
+
+            Spacer()
+
+            let ceiling = exercise.ceiling(for: "1RM")
+            if ceiling > 0 {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(ceiling.cleanWeight)
+                        .font(.subheadline.weight(.bold))
+                        .monospacedDigit()
                         .foregroundStyle(Theme.gold)
+                    Text("1RM")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textDim)
                 }
             }
-            .font(.caption)
-            .foregroundStyle(Theme.textDim)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Theme.textDim)
+        }
+        .cardStyle()
+    }
+
+    private func iconName(for muscle: MuscleGroup) -> String {
+        switch muscle {
+        case .chest: "figure.arms.open"
+        case .lats: "figure.rower"
+        case .quads, .hamstrings: "figure.strengthtraining.functional"
+        case .deltoids: "figure.arms.open"
+        case .triceps, .biceps, .forearms: "dumbbell.fill"
+        case .core: "figure.core.training"
+        case .calves: "figure.walk"
+        case .glutes: "figure.squat"
         }
     }
 }
@@ -149,6 +230,7 @@ struct ExerciseLibraryView: View {
 // MARK: - Detail
 
 struct ExerciseDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     let exercise: Exercise
 
     private var records: [PRRecord] {
@@ -156,43 +238,142 @@ struct ExerciseDetailView: View {
     }
 
     var body: some View {
-        List {
-            Section("Configuration") {
-                LabeledContent("Primary", value: exercise.muscleGroupRaw)
-                if !exercise.secondaryMuscles.isEmpty {
-                    LabeledContent("Secondary", value: exercise.secondaryMuscles.joined(separator: ", "))
-                }
-                LabeledContent("Tracking", value: exercise.trackingType.rawValue)
-                LabeledContent("Equipment", value: exercise.equipmentType)
-                LabeledContent("Increment", value: "\(exercise.defaultIncrement.cleanWeight) lbs")
-                LabeledContent("Rest Timer", value: "\(exercise.defaultRestSeconds)s")
-                LabeledContent("1RM Formula", value: exercise.formulaRaw)
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                detailHeader
 
-            Section("Record Ledger") {
+                configCard
+
+                sectionLabel("RECORD LEDGER")
+
                 if records.isEmpty {
                     Text("No records yet. Every LimitBreak lands here.")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(records, id: \.id) { record in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(record.recordType)
-                                .font(.subheadline.weight(.semibold))
-                            Text(record.dateAchieved.formatted(date: .abbreviated, time: .omitted))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Text(record.numericValue.cleanWeight)
-                            .font(.headline)
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.gold)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textDim)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .cardStyle()
+                } else {
+                    ForEach(records, id: \.id) { record in
+                        recordCard(record)
                     }
                 }
             }
+            .padding()
         }
-        .navigationTitle(exercise.name)
-        .navigationBarTitleDisplayMode(.inline)
+        .obsidianBackground()
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    // MARK: Header
+
+    private var detailHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.headline)
+                    .glassCircle()
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(exercise.name)
+                        .font(.title2.bold())
+                        .lineLimit(2)
+                    if exercise.isCustom {
+                        Text("CUSTOM")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Theme.violet.opacity(0.25), in: Capsule())
+                            .foregroundStyle(Theme.violet)
+                    }
+                }
+                Text("\(exercise.muscleGroupRaw) · \(exercise.equipmentType)")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textDim)
+            }
+
+            Spacer()
+        }
+        .padding(.bottom, 8)
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.bold))
+            .kerning(1.5)
+            .foregroundStyle(Theme.textDim)
+            .padding(.top, 6)
+    }
+
+    // MARK: Configuration
+
+    private var configCard: some View {
+        VStack(spacing: 0) {
+            configRow("Primary", exercise.muscleGroupRaw)
+            if !exercise.secondaryMuscles.isEmpty {
+                divider
+                configRow("Secondary", exercise.secondaryMuscles.joined(separator: ", "))
+            }
+            divider
+            configRow("Tracking", exercise.trackingType.rawValue)
+            divider
+            configRow("Increment", "\(exercise.defaultIncrement.cleanWeight) lbs")
+            divider
+            configRow("Rest Timer", exercise.defaultRestSeconds > 0 ? "\(exercise.defaultRestSeconds)s" : "None")
+            divider
+            configRow("1RM Formula", exercise.formulaRaw)
+        }
+        .cardStyle()
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Theme.stroke)
+            .frame(height: 1)
+            .padding(.vertical, 8)
+    }
+
+    private func configRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(Theme.textDim)
+            Spacer()
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    // MARK: Records
+
+    private func recordCard(_ record: PRRecord) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "crown.fill")
+                .font(.subheadline)
+                .foregroundStyle(Theme.gold)
+                .frame(width: 36, height: 36)
+                .background(Theme.gold.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(record.recordType)
+                    .font(.subheadline.weight(.semibold))
+                Text(record.dateAchieved.formatted(date: .abbreviated, time: .omitted))
+                    .font(.caption)
+                    .foregroundStyle(Theme.textDim)
+            }
+
+            Spacer()
+
+            Text(record.numericValue.cleanWeight)
+                .font(.headline)
+                .monospacedDigit()
+                .foregroundStyle(Theme.gold)
+        }
+        .cardStyle()
     }
 }

@@ -55,6 +55,8 @@ struct PastWorkoutView: View {
                 .padding()
             }
             .obsidianBackground()
+            .scrollDismissesKeyboard(.interactively)
+            .dismissibleKeyboard()
             .navigationTitle("Log Past Workout")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -31,12 +31,21 @@ struct PastSetEntry {
 @MainActor
 @Observable
 final class WorkoutManager {
+    /// The app's single live instance; lets App Intents and the watch bridge
+    /// reach the session without threading references through SwiftUI.
+    static var shared: WorkoutManager?
+
     private let context: ModelContext
 
     var activeSession: WorkoutSession?
     /// Exercises added to the current session, in the order the user picked them
     /// (includes exercises with no sets logged yet).
     var sessionExercises: [Exercise] = []
+    /// Planned working-set counts per exercise (routine targets or default 3) —
+    /// drives ordered logging from the watch and Live Activity.
+    var sessionTargets: [UUID: Int] = [:]
+    /// Exercises the user skipped ahead of (watch "next exercise").
+    var skippedExercises: Set<UUID> = []
 
     var limitBreakEvent: LimitBreakEvent?
 
@@ -63,17 +72,21 @@ final class WorkoutManager {
 
     init(context: ModelContext) {
         self.context = context
+        WorkoutManager.shared = self
     }
 
     // MARK: - Session lifecycle
 
-    func startSession(named name: String, exercises: [Exercise] = []) {
+    func startSession(named name: String, exercises: [Exercise] = [], targets: [UUID: Int]? = nil) {
         let session = WorkoutSession(name: name.isEmpty ? "Training Session" : name)
         context.insert(session)
         activeSession = session
         sessionExercises = exercises
+        sessionTargets = targets ?? Dictionary(uniqueKeysWithValues: exercises.map { ($0.id, 3) })
+        skippedExercises = []
         try? context.save()
         Haptics.shared.success()
+        SessionSync.shared.broadcast(from: self)
     }
 
     func endSession() {
@@ -84,7 +97,10 @@ final class WorkoutManager {
         }
         activeSession = nil
         sessionExercises = []
+        sessionTargets = [:]
+        skippedExercises = []
         stopRest()
+        SessionSync.shared.broadcast(from: self)
     }
 
     /// Discards the active session entirely — deletes it and any logged sets
@@ -100,13 +116,64 @@ final class WorkoutManager {
         }
         activeSession = nil
         sessionExercises = []
+        sessionTargets = [:]
+        skippedExercises = []
         stopRest()
         Haptics.shared.logSet()
+        SessionSync.shared.broadcast(from: self)
     }
 
     func addExercise(_ exercise: Exercise) {
         guard !sessionExercises.contains(where: { $0.id == exercise.id }) else { return }
         sessionExercises.append(exercise)
+        if sessionTargets[exercise.id] == nil { sessionTargets[exercise.id] = 3 }
+        SessionSync.shared.broadcast(from: self)
+    }
+
+    // MARK: - Ordered logging (watch & Live Activity)
+
+    /// Planned working sets for an exercise, never less than what's logged.
+    func targetSets(for exercise: Exercise) -> Int {
+        max(sessionTargets[exercise.id] ?? 3, sets(for: exercise).count)
+    }
+
+    /// The exercise LOG SET works through next: first in session order that
+    /// isn't skipped and still has planned sets remaining.
+    var currentExercise: Exercise? {
+        sessionExercises.first {
+            !skippedExercises.contains($0.id) && sets(for: $0).count < targetSets(for: $0)
+        }
+    }
+
+    /// One-tap logging: checks off the next planned set in exercise order,
+    /// quick-filling values from this session (or history, or defaults).
+    @discardableResult
+    func logNextSetInOrder() -> LimitBreakEvent? {
+        guard activeSession != nil, let exercise = currentExercise else { return nil }
+        let template = lastSet(for: exercise)
+            ?? exercise.sets.max(by: { $0.timestamp < $1.timestamp })
+
+        switch exercise.trackingType {
+        case .weightAndReps:
+            return logSet(exercise: exercise, weight: template?.weight ?? 45, reps: template?.reps ?? 8)
+        case .bodyweightAndReps, .customMetric:
+            return logSet(exercise: exercise, weight: template?.weight ?? 0, reps: template?.reps ?? 8)
+        case .durationAndReps:
+            return logSet(exercise: exercise, weight: 0, reps: template?.reps ?? 8,
+                          durationSeconds: template?.durationSeconds ?? 30)
+        case .timeAndDistance:
+            return logSet(exercise: exercise, weight: 0, reps: 1,
+                          durationSeconds: template?.durationSeconds ?? 300,
+                          distanceMeters: template?.distanceMeters ?? 1600)
+        }
+    }
+
+    /// Skips what's left of the current exercise and moves to the next one.
+    func advanceToNextExercise() {
+        guard let exercise = currentExercise else { return }
+        skippedExercises.insert(exercise.id)
+        Haptics.shared.tick()
+        SessionSync.shared.broadcast(from: self)
     }
 
     /// Removes an exercise from the active session, deleting any sets already
@@ -125,6 +192,7 @@ final class WorkoutManager {
         recomputePRs(for: [exercise])
         try? context.save()
         Haptics.shared.logSet()
+        SessionSync.shared.broadcast(from: self)
     }
 
     /// Swaps one exercise slot for another (machine taken, equipment change).
@@ -135,8 +203,11 @@ final class WorkoutManager {
             sessionExercises.remove(at: index)
         } else {
             sessionExercises[index] = new
+            sessionTargets[new.id] = sessionTargets[old.id] ?? 3
         }
+        sessionTargets[old.id] = nil
         Haptics.shared.logSet()
+        SessionSync.shared.broadcast(from: self)
     }
 
     /// Reverts an accidentally logged set: deletes it and replays the exercise's
@@ -152,6 +223,7 @@ final class WorkoutManager {
         recomputePRs(for: [exercise])
         try? context.save()
         Haptics.shared.tick()
+        SessionSync.shared.broadcast(from: self)
     }
 
     // MARK: - Set logging & LimitBreak engine
@@ -195,6 +267,7 @@ final class WorkoutManager {
         if exercise.defaultRestSeconds > 0 {
             startRest(seconds: TimeInterval(exercise.defaultRestSeconds))
         }
+        SessionSync.shared.broadcast(from: self)
         return event
     }
 
@@ -403,6 +476,12 @@ final class WorkoutManager {
 
     // MARK: - Rest timer
 
+    /// Wall-clock end of the current rest period, for countdown rendering on
+    /// the watch and in the Live Activity.
+    var restEndsAt: Date? {
+        isResting ? Date().addingTimeInterval(restRemaining) : nil
+    }
+
     func startRest(seconds: TimeInterval) {
         restTimer?.invalidate()
         restTotal = seconds
@@ -426,10 +505,12 @@ final class WorkoutManager {
     }
 
     func stopRest() {
+        let wasResting = isResting
         restTimer?.invalidate()
         restTimer = nil
         restRemaining = 0
         restTotal = 0
+        if wasResting { SessionSync.shared.broadcast(from: self) }
     }
 
     // MARK: - Routines (saved curations)
@@ -504,8 +585,15 @@ final class WorkoutManager {
         return createRoutine(name: session.name, items: items)
     }
 
-    /// Starts a live session pre-loaded with a routine's exercises, in order.
+    /// Starts a live session pre-loaded with a routine's exercises, in order,
+    /// carrying each slot's target set count into the session plan.
     func startSession(from routine: Routine) {
-        startSession(named: routine.name, exercises: routine.exercises)
+        var targets: [UUID: Int] = [:]
+        for item in routine.orderedItems {
+            if let exercise = item.exercise {
+                targets[exercise.id] = max(1, item.targetSets)
+            }
+        }
+        startSession(named: routine.name, exercises: routine.exercises, targets: targets)
     }
 }

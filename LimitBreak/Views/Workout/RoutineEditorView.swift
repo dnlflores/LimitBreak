@@ -62,6 +62,8 @@ struct RoutineEditorView: View {
             }
             .scrollContentBackground(.hidden)
             .obsidianBackground()
+            .scrollDismissesKeyboard(.interactively)
+            .dismissibleKeyboard()
             .navigationTitle(existing == nil ? "New Routine" : "Edit Routine")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

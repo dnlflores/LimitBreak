@@ -82,6 +82,8 @@ struct EditWorkoutView: View {
                 .padding()
             }
             .obsidianBackground()
+            .scrollDismissesKeyboard(.interactively)
+            .dismissibleKeyboard()
             .navigationTitle("Edit Workout")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

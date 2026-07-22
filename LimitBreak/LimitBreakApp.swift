@@ -30,6 +30,14 @@ struct LimitBreakApp: App {
             fatalError("Could not create ModelContainer: \(error)")
         }
         _workout = State(initialValue: WorkoutManager(context: container.mainContext))
+
+        // Remote surfaces: watch app commands, the Live Activity's button,
+        // and home-screen widget snapshots.
+        PhoneWatchBridge.shared.configure(context: container.mainContext)
+        SessionCommandHub.logNextSet = {
+            WorkoutManager.shared?.logNextSetInOrder()
+        }
+        WidgetSnapshotter.shared.configure(context: container.mainContext)
     }
 
     // "-skip-splash" (UI tests) jumps straight into the app.

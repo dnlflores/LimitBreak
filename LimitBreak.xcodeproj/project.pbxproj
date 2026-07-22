@@ -6,7 +6,26 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		AA10000000000000000000A4 /* LimitBreakWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000C1 /* LimitBreakWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AA10000000000000000000A5 /* LimitBreakWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA10000000000000000000C2 /* LimitBreakWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
+		AA10000000000000000000A8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D69DDCB9300F0B3000339E42 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA10000000000000000000B1;
+			remoteInfo = LimitBreakWatch;
+		};
+		AA10000000000000000000A9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D69DDCB9300F0B3000339E42 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA10000000000000000000B2;
+			remoteInfo = LimitBreakWidgets;
+		};
 		D69DDCD1300F0B3100339E42 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = D69DDCB9300F0B3000339E42 /* Project object */;
@@ -23,13 +42,64 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		AA10000000000000000000A6 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolder = Product;
+			files = (
+				AA10000000000000000000A4 /* LimitBreakWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+		};
+		AA10000000000000000000A7 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				AA10000000000000000000A5 /* LimitBreakWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		AA10000000000000000000C1 /* LimitBreakWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LimitBreakWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA10000000000000000000C2 /* LimitBreakWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LimitBreakWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		D69DDCC1300F0B3000339E42 /* LimitBreak.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LimitBreak.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D69DDCD0300F0B3100339E42 /* LimitBreakTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LimitBreakTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D69DDCDA300F0B3100339E42 /* LimitBreakUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LimitBreakUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AA10000000000000000000E3 /* Exceptions for "LimitBreakWidgets" folder in "LimitBreakWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AA10000000000000000000B2 /* LimitBreakWidgets */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		AA10000000000000000000A1 /* LimitBreakShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = LimitBreakShared;
+			sourceTree = "<group>";
+		};
+		AA10000000000000000000A2 /* LimitBreakWatch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = LimitBreakWatch;
+			sourceTree = "<group>";
+		};
+		AA10000000000000000000A3 /* LimitBreakWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AA10000000000000000000E3 /* Exceptions for "LimitBreakWidgets" folder in "LimitBreakWidgets" target */,
+			);
+			path = LimitBreakWidgets;
+			sourceTree = "<group>";
+		};
 		D69DDCC3300F0B3000339E42 /* LimitBreak */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = LimitBreak;
@@ -48,6 +118,16 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		AA10000000000000000000F2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		AA10000000000000000000F5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
 		D69DDCBE300F0B3000339E42 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
@@ -70,6 +150,9 @@
 			isa = PBXGroup;
 			children = (
 				D69DDCC3300F0B3000339E42 /* LimitBreak */,
+				AA10000000000000000000A1 /* LimitBreakShared */,
+				AA10000000000000000000A2 /* LimitBreakWatch */,
+				AA10000000000000000000A3 /* LimitBreakWidgets */,
 				D69DDCD3300F0B3100339E42 /* LimitBreakTests */,
 				D69DDCDD300F0B3100339E42 /* LimitBreakUITests */,
 				D69DDCC2300F0B3000339E42 /* Products */,
@@ -82,6 +165,8 @@
 				D69DDCC1300F0B3000339E42 /* LimitBreak.app */,
 				D69DDCD0300F0B3100339E42 /* LimitBreakTests.xctest */,
 				D69DDCDA300F0B3100339E42 /* LimitBreakUITests.xctest */,
+				AA10000000000000000000C1 /* LimitBreakWatch.app */,
+				AA10000000000000000000C2 /* LimitBreakWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -89,6 +174,44 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		AA10000000000000000000B1 /* LimitBreakWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA10000000000000000000D0 /* Build configuration list for PBXNativeTarget "LimitBreakWatch" */;
+			buildPhases = (
+				AA10000000000000000000F1 /* Sources */,
+				AA10000000000000000000F2 /* Frameworks */,
+				AA10000000000000000000F3 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				AA10000000000000000000A1 /* LimitBreakShared */,
+				AA10000000000000000000A2 /* LimitBreakWatch */,
+			);
+			name = LimitBreakWatch;
+			productName = LimitBreakWatch;
+			productReference = AA10000000000000000000C1 /* LimitBreakWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		AA10000000000000000000B2 /* LimitBreakWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA10000000000000000000E0 /* Build configuration list for PBXNativeTarget "LimitBreakWidgets" */;
+			buildPhases = (
+				AA10000000000000000000F4 /* Sources */,
+				AA10000000000000000000F5 /* Frameworks */,
+				AA10000000000000000000F6 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				AA10000000000000000000A1 /* LimitBreakShared */,
+				AA10000000000000000000A3 /* LimitBreakWidgets */,
+			);
+			name = LimitBreakWidgets;
+			productName = LimitBreakWidgets;
+			productReference = AA10000000000000000000C2 /* LimitBreakWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		D69DDCC0300F0B3000339E42 /* LimitBreak */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = D69DDCE2300F0B3100339E42 /* Build configuration list for PBXNativeTarget "LimitBreak" */;
@@ -96,10 +219,17 @@
 				D69DDCBD300F0B3000339E42 /* Sources */,
 				D69DDCBE300F0B3000339E42 /* Frameworks */,
 				D69DDCBF300F0B3000339E42 /* Resources */,
+				AA10000000000000000000A6 /* Embed Watch Content */,
+				AA10000000000000000000A7 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
+			dependencies = (
+				AA10000000000000000000B3 /* PBXTargetDependency */,
+				AA10000000000000000000B4 /* PBXTargetDependency */,
+			);
 			fileSystemSynchronizedGroups = (
+				AA10000000000000000000A1 /* LimitBreakShared */,
 				D69DDCC3300F0B3000339E42 /* LimitBreak */,
 			);
 			name = LimitBreak;
@@ -189,11 +319,23 @@
 				D69DDCC0300F0B3000339E42 /* LimitBreak */,
 				D69DDCCF300F0B3100339E42 /* LimitBreakTests */,
 				D69DDCD9300F0B3100339E42 /* LimitBreakUITests */,
+				AA10000000000000000000B1 /* LimitBreakWatch */,
+				AA10000000000000000000B2 /* LimitBreakWidgets */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		AA10000000000000000000F3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		AA10000000000000000000F6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
 		D69DDCBF300F0B3000339E42 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
@@ -212,6 +354,16 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		AA10000000000000000000F1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		AA10000000000000000000F4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 		D69DDCBD300F0B3000339E42 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
@@ -230,6 +382,16 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		AA10000000000000000000B3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA10000000000000000000B1 /* LimitBreakWatch */;
+			targetProxy = AA10000000000000000000A8 /* PBXContainerItemProxy */;
+		};
+		AA10000000000000000000B4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA10000000000000000000B2 /* LimitBreakWidgets */;
+			targetProxy = AA10000000000000000000A9 /* PBXContainerItemProxy */;
+		};
 		D69DDCD2300F0B3100339E42 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = D69DDCC0300F0B3000339E42 /* LimitBreak */;
@@ -243,6 +405,128 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		AA10000000000000000000D1 /* Debug configuration for PBXNativeTarget "LimitBreakWatch" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SKN4A8SF67;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = LimitBreak;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = testing.app.LimitBreak;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = testing.app.LimitBreak.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		AA10000000000000000000D2 /* Release configuration for PBXNativeTarget "LimitBreakWatch" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SKN4A8SF67;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = LimitBreak;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = testing.app.LimitBreak;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = testing.app.LimitBreak.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		AA10000000000000000000E1 /* Debug configuration for PBXNativeTarget "LimitBreakWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = LimitBreakWidgets/LimitBreakWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SKN4A8SF67;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LimitBreakWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = LimitBreakWidgets;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = testing.app.LimitBreak.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA10000000000000000000E2 /* Release configuration for PBXNativeTarget "LimitBreakWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = LimitBreakWidgets/LimitBreakWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SKN4A8SF67;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LimitBreakWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = LimitBreakWidgets;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = testing.app.LimitBreak.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		D69DDCE0300F0B3100339E42 /* Debug configuration for PBXProject "LimitBreak" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -379,6 +663,7 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "LimitBreak reads your steps and active energy to show your daily activity alongside your training.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "LimitBreak saves your strength sessions and walks (including drawn routes) to Apple Health.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "LimitBreak uses your location to center the map on where you are so you can trace your walk route.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -417,6 +702,7 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "LimitBreak reads your steps and active energy to show your daily activity alongside your training.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "LimitBreak saves your strength sessions and walks (including drawn routes) to Apple Health.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "LimitBreak uses your location to center the map on where you are so you can trace your walk route.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -527,6 +813,22 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		AA10000000000000000000D0 /* Build configuration list for PBXNativeTarget "LimitBreakWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA10000000000000000000D1 /* Debug configuration for PBXNativeTarget "LimitBreakWatch" */,
+				AA10000000000000000000D2 /* Release configuration for PBXNativeTarget "LimitBreakWatch" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		AA10000000000000000000E0 /* Build configuration list for PBXNativeTarget "LimitBreakWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA10000000000000000000E1 /* Debug configuration for PBXNativeTarget "LimitBreakWidgets" */,
+				AA10000000000000000000E2 /* Release configuration for PBXNativeTarget "LimitBreakWidgets" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		D69DDCBC300F0B3000339E42 /* Build configuration list for PBXProject "LimitBreak" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -2,11 +2,11 @@ import SwiftUI
 
 /// Per-exercise logging card built around planned set rows.
 ///
-/// Expanded, the card shows one editable row per set — Add Set appends another
-/// row. LOG SET checks off the next pending row (persisting it); tapping a
-/// completed row's checkmark undoes the log. Collapsed, inputs and the LOG
-/// button hide behind a compact progress readout of checked-off sets, and the
-/// card offers Replace/Remove controls for mid-session pivots.
+/// Expanded, the card lists every set: checked-off sets show their summary
+/// with a crown for PRs and a tappable check to undo; upcoming sets are dim
+/// placeholders. One big value pair below the rows edits whatever LOG SET
+/// will record next. Collapsed, the card shows a compact progress strip, and
+/// Replace/Remove controls cover mid-session pivots.
 struct ExerciseLogCard: View {
     @Environment(WorkoutManager.self) private var workout
     let exercise: Exercise
@@ -36,6 +36,8 @@ struct ExerciseLogCard: View {
             header
             if isExpanded {
                 setRows
+                nextSetInputs
+                addSetButton
                 warmupToggle
                 logButton
                 sessionActions
@@ -45,6 +47,11 @@ struct ExerciseLogCard: View {
         }
         .cardStyle()
         .onAppear(perform: initialSetup)
+        .onChange(of: workout.sets(for: exercise).count) {
+            // Sets can arrive from the watch or the Live Activity button;
+            // fold them into the planned rows so the card stays in step.
+            adoptLoggedSets()
+        }
         .sheet(isPresented: $showReplacePicker) {
             ExercisePickerSheet { replacement in
                 workout.replaceExercise(exercise, with: replacement)
@@ -108,16 +115,16 @@ struct ExerciseLogCard: View {
             withAnimation(.snappy) { isExpanded.toggle() }
             Haptics.shared.tick()
         } label: {
-            HStack {
+            HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(exercise.name)
                             .font(.headline)
                             .multilineTextAlignment(.leading)
-                        Image(systemName: "chevron.right")
+                        Image(systemName: "chevron.down")
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(Theme.textDim)
-                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .rotationEffect(.degrees(isExpanded ? 0 : -90))
                     }
                     Text(exercise.muscleGroupRaw)
                         .font(.caption)
@@ -127,10 +134,10 @@ struct ExerciseLogCard: View {
                 if isExpanded && showsOneRM {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("e1RM")
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(Theme.textDim)
                         Text(liveOneRepMax.cleanWeight)
-                            .font(.headline)
+                            .font(.title3.weight(.bold))
                             .monospacedDigit()
                             .foregroundStyle(wouldLimitBreak ? Theme.gold : .primary)
                     }
@@ -184,49 +191,38 @@ struct ExerciseLogCard: View {
     // MARK: - Set rows
 
     private var setRows: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(drafts.enumerated()), id: \.element.id) { index, draft in
                 if draft.isLogged {
                     loggedRow(index: index, draft: draft)
                 } else {
-                    pendingRow(index: index)
+                    upcomingRow(index: index)
                 }
             }
-
-            Button {
-                addSet()
-            } label: {
-                Label("Add Set", systemImage: "plus.circle.fill")
-                    .font(.subheadline.weight(.semibold))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.emerald)
-            .padding(.top, 2)
         }
     }
 
-    /// A checked-off set: summary text, tags, and a tappable check to undo.
+    /// A checked-off set: summary text, crown for PRs, tappable check to undo.
     private func loggedRow(index: Int, draft: SetDraft) -> some View {
         let set = draft.loggedSet!
-        return HStack(spacing: 8) {
+        return HStack(spacing: 10) {
             Text("SET \(index + 1)")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(set.isPR ? Theme.gold : Theme.textDim)
-                .frame(width: 44, alignment: .leading)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(set.isPR ? Theme.gold : Theme.emerald)
 
             Text(setSummary(set))
-                .font(.subheadline)
+                .font(.subheadline.weight(.medium))
                 .monospacedDigit()
 
             Spacer()
 
             if set.isPR {
                 Label("PR", systemImage: "crown.fill")
-                    .font(.caption2.weight(.bold))
+                    .font(.subheadline.weight(.bold))
                     .foregroundStyle(Theme.gold)
             } else if set.isWarmup {
                 Text("warmup")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(Theme.textDim)
             }
 
@@ -235,84 +231,48 @@ struct ExerciseLogCard: View {
             } label: {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title3)
-                    .foregroundStyle(set.isPR ? Theme.gold : Theme.emerald)
+                    .foregroundStyle(Theme.emerald)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Undo set \(index + 1)")
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .padding(.horizontal, 12)
         .background(
-            set.isPR ? Theme.gold.opacity(0.08) : Theme.emerald.opacity(0.06),
+            set.isPR ? Theme.gold.opacity(0.10) : Theme.emerald.opacity(0.07),
             in: RoundedRectangle(cornerRadius: 10)
         )
     }
 
-    /// An editable planned set; the next one up is rimmed in emerald.
-    private func pendingRow(index: Int) -> some View {
-        let isNext = index == nextPendingIndex
-        return HStack(spacing: 8) {
+    /// A planned set still to come: dim placeholder line. Long-press to remove.
+    private func upcomingRow(index: Int) -> some View {
+        HStack(spacing: 10) {
             Text("SET \(index + 1)")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(isNext ? Theme.emerald : Theme.textDim)
-                .frame(width: 44, alignment: .leading)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.textDim)
 
-            switch exercise.trackingType {
-            case .weightAndReps, .bodyweightAndReps, .customMetric:
-                CompactStepper(
-                    value: $drafts[index].primary,
-                    step: exercise.defaultIncrement,
-                    allowsNegative: exercise.isAssisted
-                )
-                Text("×")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Theme.textDim)
-                repsStepper(index: index)
-            case .durationAndReps:
-                CompactStepper(value: $drafts[index].primary, step: 5, allowsNegative: false)
-                Text("×")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Theme.textDim)
-                repsStepper(index: index)
-            case .timeAndDistance:
-                CompactStepper(value: $drafts[index].primary, step: 15, allowsNegative: false)
-                Text("·")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Theme.textDim)
-                CompactStepper(value: $drafts[index].distance, step: 100, allowsNegative: false)
-            }
+            Text("…")
+                .font(.subheadline)
+                .foregroundStyle(Theme.textDim)
 
-            Button {
-                deleteSet(at: index)
-            } label: {
-                Image(systemName: "trash")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 30, height: 30)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.textDim)
-            .opacity(canDeleteRows ? 1 : 0)
-            .disabled(!canDeleteRows)
+            Spacer()
+
+            Text("upcoming")
+                .font(.subheadline)
+                .foregroundStyle(Theme.textDim)
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 8)
-        .background(Color.white.opacity(isNext ? 0.03 : 0), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(isNext ? Theme.emerald.opacity(0.35) : .clear, lineWidth: 1)
-        )
-    }
-
-    private func repsStepper(index: Int) -> some View {
-        CompactStepper(
-            value: Binding(
-                get: { Double(drafts[index].reps) },
-                set: { drafts[index].reps = max(1, Int($0)) }
-            ),
-            step: 1,
-            allowsNegative: false,
-            minimum: 1
-        )
+        .padding(.vertical, 9)
+        .padding(.horizontal, 12)
+        .contentShape(Rectangle())
+        .contextMenu {
+            if canDeleteRows {
+                Button(role: .destructive) {
+                    deleteSet(at: index)
+                } label: {
+                    Label("Remove Set", systemImage: "trash")
+                }
+            }
+        }
     }
 
     private var canDeleteRows: Bool { drafts.count > 1 }
@@ -332,6 +292,61 @@ struct ExerciseLogCard: View {
         case .customMetric:
             return "\(set.weight.cleanWeight) \(exercise.customMetricUnit ?? "") × \(set.reps)"
         }
+    }
+
+    // MARK: - Next-set inputs
+
+    /// One big value pair that edits whatever LOG SET records next.
+    @ViewBuilder
+    private var nextSetInputs: some View {
+        if let index = nextPendingIndex {
+            HStack(spacing: 12) {
+                switch exercise.trackingType {
+                case .weightAndReps, .bodyweightAndReps, .customMetric:
+                    BigValueField(
+                        value: $drafts[index].primary,
+                        step: exercise.defaultIncrement,
+                        allowsNegative: exercise.isAssisted
+                    )
+                    separator("x")
+                    BigValueField(value: repsBinding(index), step: 1, allowsNegative: false, minimum: 1)
+                        .frame(maxWidth: 110)
+                case .durationAndReps:
+                    BigValueField(value: $drafts[index].primary, step: 5, allowsNegative: false)
+                    separator("x")
+                    BigValueField(value: repsBinding(index), step: 1, allowsNegative: false, minimum: 1)
+                        .frame(maxWidth: 110)
+                case .timeAndDistance:
+                    BigValueField(value: $drafts[index].primary, step: 15, allowsNegative: false)
+                    separator("·")
+                    BigValueField(value: $drafts[index].distance, step: 100, allowsNegative: false)
+                }
+            }
+        }
+    }
+
+    private func separator(_ symbol: String) -> some View {
+        Text(symbol)
+            .font(.headline)
+            .foregroundStyle(Theme.textDim)
+    }
+
+    private func repsBinding(_ index: Int) -> Binding<Double> {
+        Binding(
+            get: { Double(drafts[index].reps) },
+            set: { drafts[index].reps = max(1, Int($0)) }
+        )
+    }
+
+    private var addSetButton: some View {
+        Button {
+            addSet()
+        } label: {
+            Label("Add Set", systemImage: "plus.circle.fill")
+                .font(.subheadline.weight(.semibold))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.emerald)
     }
 
     // MARK: - Warmup & actions
@@ -529,11 +544,11 @@ struct ExerciseLogCard: View {
     }
 }
 
-// MARK: - Compact stepper
+// MARK: - Big value field
 
-/// Inline value control sized for set rows: minus/plus buttons flank a value
-/// that can be typed into or scrubbed with a horizontal drag. Every step ticks.
-private struct CompactStepper: View {
+/// A large, tappable value field for the next set: type directly, or scrub
+/// horizontally to step the value with a haptic tick per increment.
+private struct BigValueField: View {
     @Binding var value: Double
     let step: Double
     let allowsNegative: Bool
@@ -543,55 +558,41 @@ private struct CompactStepper: View {
     @FocusState private var isEditing: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
-            adjustButton(systemImage: "minus") { adjust(by: -step) }
-
-            TextField("", value: $value, format: .number)
-                .keyboardType(allowsNegative ? .numbersAndPunctuation : .decimalPad)
-                .multilineTextAlignment(.center)
-                .font(.system(.subheadline, design: .rounded, weight: .bold))
-                .monospacedDigit()
-                .focused($isEditing)
-                .frame(maxWidth: .infinity, minHeight: 34)
-                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 8))
-                .contentShape(Rectangle())
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 8)
-                        .onChanged { gesture in
-                            let delta = gesture.translation.width - dragAccumulator
-                            if abs(delta) >= 9 {
-                                adjust(by: delta > 0 ? step : -step)
-                                dragAccumulator = gesture.translation.width
-                            }
-                        }
-                        .onEnded { _ in dragAccumulator = 0 }
-                )
-                .onChange(of: value) { _, newValue in
-                    value = clamped(newValue)
-                }
-                .toolbar {
-                    if isEditing {
-                        ToolbarItemGroup(placement: .keyboard) {
-                            Spacer()
-                            Button("Done") { isEditing = false }
+        TextField("", value: $value, format: .number)
+            .keyboardType(allowsNegative ? .numbersAndPunctuation : .decimalPad)
+            .multilineTextAlignment(.center)
+            .font(.system(.title2, design: .rounded, weight: .bold))
+            .monospacedDigit()
+            .focused($isEditing)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .background(Theme.surfaceRaised.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Color.white.opacity(isEditing ? 0.45 : 0.22), lineWidth: 1.5)
+            )
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8)
+                    .onChanged { gesture in
+                        let delta = gesture.translation.width - dragAccumulator
+                        if abs(delta) >= 9 {
+                            adjust(by: delta > 0 ? step : -step)
+                            dragAccumulator = gesture.translation.width
                         }
                     }
+                    .onEnded { _ in dragAccumulator = 0 }
+            )
+            .onChange(of: value) { _, newValue in
+                value = clamped(newValue)
+            }
+            .toolbar {
+                if isEditing {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") { isEditing = false }
+                    }
                 }
-
-            adjustButton(systemImage: "plus") { adjust(by: step) }
-        }
-    }
-
-    private func adjustButton(systemImage: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.bold))
-                .frame(width: 30, height: 34)
-                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 8))
-                .foregroundStyle(.primary)
-        }
-        .buttonStyle(.plain)
-        .buttonRepeatBehavior(.enabled)
+            }
     }
 
     private func clamped(_ proposed: Double) -> Double {

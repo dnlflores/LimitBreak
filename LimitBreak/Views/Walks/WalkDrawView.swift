@@ -40,6 +40,7 @@ struct WalkDrawView: View {
                 controlPanel
             }
             .obsidianBackground()
+            .dismissibleKeyboard()
             .navigationTitle("Add a Walk")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

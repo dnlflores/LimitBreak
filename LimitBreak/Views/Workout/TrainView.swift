@@ -51,6 +51,8 @@ private struct SessionLauncherView: View {
             .padding()
             .padding(.top, 8)
         }
+        .scrollDismissesKeyboard(.interactively)
+        .dismissibleKeyboard()
         .sheet(isPresented: $showPastWorkout) {
             PastWorkoutView()
         }
@@ -365,6 +367,8 @@ private struct ActiveSessionView: View {
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { oldValue, newValue in
             updateEndBarVisibility(from: oldValue, to: newValue)
         }
+        .scrollDismissesKeyboard(.interactively)
+        .dismissibleKeyboard()
         .navigationTitle(workout.activeSession?.name ?? "Session")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -627,6 +631,7 @@ struct ExercisePickerSheet: View {
         .obsidianBackground()
         .presentationDragIndicator(.visible)
         .scrollDismissesKeyboard(.interactively)
+        .dismissibleKeyboard()
         .sheet(isPresented: $showCreator) {
             ExerciseEditorView { created in
                 onPick(created)

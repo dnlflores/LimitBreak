@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// LimitBreak's visual language: "Obsidian Liquid Glass".
 /// A deep obsidian mesh canvas, floating glass surfaces with light-refracting
@@ -105,6 +106,26 @@ extension View {
         self
             .font(.system(.title2, design: .rounded, weight: .bold))
             .monospacedDigit()
+    }
+
+    /// Adds a "Done" button above the keyboard so any keyboard — including the
+    /// numeric pads (.decimalPad/.numberPad) that have no return key — can
+    /// always be dismissed. Pair with `.scrollDismissesKeyboard(.interactively)`
+    /// on scrollable screens for swipe-to-dismiss as well.
+    func dismissibleKeyboard() -> some View {
+        toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder),
+                        to: nil, from: nil, for: nil
+                    )
+                }
+                .fontWeight(.semibold)
+                .tint(Theme.emerald)
+            }
+        }
     }
 }
 

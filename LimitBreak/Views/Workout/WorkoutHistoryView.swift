@@ -1,42 +1,87 @@
 import SwiftUI
 import SwiftData
+import MapKit
+import CoreLocation
 
 /// The training archive: a scrollable, month-grouped timeline of every workout
-/// ever logged. This is the single place to browse, edit, and delete sessions.
+/// and walk ever logged. This is the single place to browse, edit, and delete
+/// sessions and walks.
 struct WorkoutHistoryView: View {
     @Environment(WorkoutManager.self) private var workout
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \WorkoutSession.startDate, order: .reverse) private var allSessions: [WorkoutSession]
+    @Query(sort: \Walk.date, order: .reverse) private var allWalks: [Walk]
 
     @State private var searchText = ""
     @State private var sessionToEdit: WorkoutSession?
     @State private var sessionToDelete: WorkoutSession?
     @State private var sessionToSaveAsRoutine: WorkoutSession?
+    @State private var walkToDelete: Walk?
     @State private var expandedSessions: Set<UUID> = []
 
-    // MARK: - Derived data
+    // MARK: - Timeline item
 
-    private var filteredSessions: [WorkoutSession] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return allSessions }
-        return allSessions.filter { session in
-            session.name.localizedCaseInsensitiveContains(trimmed)
-                || session.sets.contains {
-                    $0.exercise?.name.localizedCaseInsensitiveContains(trimmed) ?? false
-                }
+    /// A single entry in the unified history timeline: either a logged workout
+    /// or a logged walk. Lets both appear interleaved by date.
+    private enum TimelineItem: Identifiable {
+        case session(WorkoutSession)
+        case walk(Walk)
+
+        var id: String {
+            switch self {
+            case .session(let session): return "session-\(session.id)"
+            case .walk(let walk): return "walk-\(walk.id)"
+            }
+        }
+
+        var date: Date {
+            switch self {
+            case .session(let session): return session.startDate
+            case .walk(let walk): return walk.date
+            }
         }
     }
 
-    /// Sessions bucketed into month sections, newest month first.
-    private var monthGroups: [(id: Date, label: String, sessions: [WorkoutSession])] {
+    // MARK: - Derived data
+
+    private var isEmpty: Bool { allSessions.isEmpty && allWalks.isEmpty }
+
+    /// Sessions and walks, filtered by the search term and sorted newest first.
+    /// Walks match only the term "walk" since they have no name or exercises.
+    private var filteredItems: [TimelineItem] {
+        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
+        let sessionItems: [TimelineItem]
+        let walkItems: [TimelineItem]
+
+        if trimmed.isEmpty {
+            sessionItems = allSessions.map(TimelineItem.session)
+            walkItems = allWalks.map(TimelineItem.walk)
+        } else {
+            sessionItems = allSessions.filter { session in
+                session.name.localizedCaseInsensitiveContains(trimmed)
+                    || session.sets.contains {
+                        $0.exercise?.name.localizedCaseInsensitiveContains(trimmed) ?? false
+                    }
+            }.map(TimelineItem.session)
+            walkItems = "walk".localizedCaseInsensitiveContains(trimmed)
+                ? allWalks.map(TimelineItem.walk)
+                : []
+        }
+
+        return (sessionItems + walkItems).sorted { $0.date > $1.date }
+    }
+
+    /// Timeline items bucketed into month sections, newest month first.
+    private var monthGroups: [(id: Date, label: String, items: [TimelineItem])] {
         let calendar = Calendar.current
         var order: [Date] = []
-        var buckets: [Date: [WorkoutSession]] = [:]
-        for session in filteredSessions {
+        var buckets: [Date: [TimelineItem]] = [:]
+        for item in filteredItems {
             let monthStart = calendar.date(
-                from: calendar.dateComponents([.year, .month], from: session.startDate)
-            ) ?? session.startDate
+                from: calendar.dateComponents([.year, .month], from: item.date)
+            ) ?? item.date
             if buckets[monthStart] == nil { order.append(monthStart) }
-            buckets[monthStart, default: []].append(session)
+            buckets[monthStart, default: []].append(item)
         }
         return order.map { month in
             (month, month.formatted(.dateTime.month(.wide).year()), buckets[month] ?? [])
@@ -49,7 +94,7 @@ struct WorkoutHistoryView: View {
                 LazyVStack(alignment: .leading, spacing: 14, pinnedViews: [.sectionHeaders]) {
                     titleHeader
 
-                    if allSessions.isEmpty {
+                    if isEmpty {
                         emptyState
                     } else {
                         searchField
@@ -58,15 +103,15 @@ struct WorkoutHistoryView: View {
 
                         ForEach(monthGroups, id: \.id) { group in
                             Section {
-                                ForEach(group.sessions, id: \.id) { session in
-                                    sessionCard(session)
+                                ForEach(group.items) { item in
+                                    timelineCard(item)
                                 }
                             } header: {
-                                monthHeader(group.label, count: group.sessions.count)
+                                monthHeader(group.label, count: group.items.count)
                             }
                         }
 
-                        if filteredSessions.isEmpty {
+                        if filteredItems.isEmpty {
                             Text("No workouts match \u{201C}\(searchText)\u{201D}.")
                                 .font(.subheadline)
                                 .foregroundStyle(Theme.textDim)
@@ -79,6 +124,8 @@ struct WorkoutHistoryView: View {
             }
             .obsidianBackground()
             .toolbar(.hidden, for: .navigationBar)
+            .scrollDismissesKeyboard(.interactively)
+            .dismissibleKeyboard()
             .sheet(item: $sessionToEdit) { session in
                 EditWorkoutView(session: session)
             }
@@ -98,6 +145,15 @@ struct WorkoutHistoryView: View {
             } message: { session in
                 Text("\u{201C}\(session.name)\u{201D} and all its sets will be permanently removed. Records will be recalculated.")
             }
+            .alert("Delete Walk?", isPresented: deleteWalkAlertBinding, presenting: walkToDelete) { walk in
+                Button("Delete", role: .destructive) {
+                    modelContext.delete(walk)
+                    try? modelContext.save()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { walk in
+                Text("This \(String(format: "%.2f mi", walk.distanceMiles)) walk will be permanently removed.")
+            }
         }
     }
 
@@ -106,6 +162,14 @@ struct WorkoutHistoryView: View {
         Binding(
             get: { sessionToDelete != nil },
             set: { if !$0 { sessionToDelete = nil } }
+        )
+    }
+
+    /// Bridges the `presenting:` alert to the optional walk state.
+    private var deleteWalkAlertBinding: Binding<Bool> {
+        Binding(
+            get: { walkToDelete != nil },
+            set: { if !$0 { walkToDelete = nil } }
         )
     }
 
@@ -187,6 +251,16 @@ struct WorkoutHistoryView: View {
         }
         .padding(.vertical, 6)
         .background(Theme.canvas.opacity(0.01))
+    }
+
+    // MARK: - Timeline card
+
+    @ViewBuilder
+    private func timelineCard(_ item: TimelineItem) -> some View {
+        switch item {
+        case .session(let session): sessionCard(session)
+        case .walk(let walk): walkCard(walk)
+        }
     }
 
     // MARK: - Session card
@@ -302,6 +376,64 @@ struct WorkoutHistoryView: View {
         return set.weight > 0
             ? "\(set.weight.cleanWeight) lbs \u{00D7} \(set.reps)"
             : "\(set.reps) reps"
+    }
+
+    // MARK: - Walk card
+
+    private func walkCard(_ walk: Walk) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Walk")
+                            .font(.headline)
+                        Text(walk.date.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption)
+                            .foregroundStyle(Theme.textDim)
+                    }
+                } icon: {
+                    Image(systemName: "figure.walk")
+                        .foregroundStyle(Theme.teal)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(String(format: "%.2f mi", walk.distanceMiles))
+                        .font(.subheadline.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.teal)
+                    if walk.durationSeconds > 0 {
+                        Text(walk.durationSeconds.clockString)
+                            .font(.caption)
+                            .foregroundStyle(Theme.textDim)
+                    }
+                }
+            }
+
+            if walk.routePoints.count >= 2 {
+                routePreview(walk)
+            }
+        }
+        .cardStyle()
+        .contextMenu {
+            Button(role: .destructive) {
+                walkToDelete = walk
+            } label: {
+                Label("Delete Walk", systemImage: "trash")
+            }
+        }
+    }
+
+    private func routePreview(_ walk: Walk) -> some View {
+        let coordinates = walk.routePoints.map {
+            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+        }
+        return Map(interactionModes: []) {
+            MapPolyline(coordinates: coordinates)
+                .stroke(Theme.teal, lineWidth: 4)
+        }
+        .frame(height: 130)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .allowsHitTesting(false)
     }
 
     // MARK: - Empty state

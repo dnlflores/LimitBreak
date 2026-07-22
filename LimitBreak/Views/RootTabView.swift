@@ -49,6 +49,14 @@ struct RootTabView: View {
         }
         .task {
             ExerciseCatalog.seedIfNeeded(context: modelContext)
+            WidgetSnapshotter.shared.refresh()
+            // Debug/UI-test hook: launch with "-auto-start-session" to begin a
+            // session immediately (drives watch & Live Activity verification).
+            if ProcessInfo.processInfo.arguments.contains("-auto-start-session"),
+               workout.activeSession == nil {
+                let all = (try? modelContext.fetch(FetchDescriptor<Exercise>())) ?? []
+                workout.startSession(named: "Boss Fight", exercises: Array(all.prefix(2)))
+            }
         }
     }
 }

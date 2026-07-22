@@ -36,6 +36,8 @@ struct HealthKitSheet: View {
                 .padding()
             }
             .obsidianBackground()
+            .scrollDismissesKeyboard(.interactively)
+            .dismissibleKeyboard()
             .navigationTitle("Apple Health")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

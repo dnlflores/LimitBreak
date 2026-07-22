@@ -154,4 +154,49 @@ struct PREngineTests {
         let volume = harness.manager.activeSession?.totalVolume ?? 0
         #expect(abs(volume - 150 * 5) < 0.001)
     }
+
+    @Test func orderedLoggingWalksExercisesInOrder() throws {
+        let harness = try makeHarness()
+        let bench = Exercise(name: "Bench", muscleGroup: "Chest")
+        let squat = Exercise(name: "Squat", muscleGroup: "Quads")
+        harness.context.insert(bench)
+        harness.context.insert(squat)
+
+        harness.manager.startSession(
+            named: "Test",
+            exercises: [bench, squat],
+            targets: [bench.id: 2, squat.id: 1]
+        )
+
+        #expect(harness.manager.currentExercise?.id == bench.id)
+        harness.manager.logNextSetInOrder()
+        #expect(harness.manager.currentExercise?.id == bench.id) // 1 of 2 done
+        harness.manager.logNextSetInOrder()
+        #expect(harness.manager.currentExercise?.id == squat.id) // bench complete
+        harness.manager.logNextSetInOrder()
+        #expect(harness.manager.currentExercise == nil) // all planned sets done
+
+        #expect(harness.manager.sets(for: bench).count == 2)
+        #expect(harness.manager.sets(for: squat).count == 1)
+    }
+
+    @Test func advanceSkipsRemainderOfCurrentExercise() throws {
+        let harness = try makeHarness()
+        let bench = Exercise(name: "Bench", muscleGroup: "Chest")
+        let squat = Exercise(name: "Squat", muscleGroup: "Quads")
+        harness.context.insert(bench)
+        harness.context.insert(squat)
+
+        harness.manager.startSession(
+            named: "Test",
+            exercises: [bench, squat],
+            targets: [bench.id: 3, squat.id: 2]
+        )
+
+        harness.manager.logNextSetInOrder()          // bench 1/3
+        harness.manager.advanceToNextExercise()      // skip bench remainder
+        #expect(harness.manager.currentExercise?.id == squat.id)
+        harness.manager.logNextSetInOrder()
+        #expect(harness.manager.sets(for: squat).count == 1)
+    }
 }

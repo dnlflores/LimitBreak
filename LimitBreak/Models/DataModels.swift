@@ -238,6 +238,61 @@ final class ExerciseSet {
     }
 }
 
+// MARK: - Activity Model
+
+enum SportType: String, Codable, CaseIterable, Identifiable {
+    case basketball = "Basketball"
+    case volleyball = "Volleyball"
+    case soccer = "Soccer"
+    case tennis = "Tennis"
+    case pickleball = "Pickleball"
+    case swimming = "Swimming"
+    case cycling = "Cycling"
+    case hiking = "Hiking"
+    case yoga = "Yoga"
+    case climbing = "Climbing"
+    case other = "Other"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .basketball: "basketball.fill"
+        case .volleyball: "volleyball.fill"
+        case .soccer: "soccerball"
+        case .tennis: "tennisball.fill"
+        case .pickleball: "figure.pickleball"
+        case .swimming: "figure.pool.swim"
+        case .cycling: "bicycle"
+        case .hiking: "figure.hiking"
+        case .yoga: "figure.yoga"
+        case .climbing: "figure.climbing"
+        case .other: "sportscourt.fill"
+        }
+    }
+}
+
+/// A non-lifting activity — pickup basketball, a volleyball night, a swim.
+/// Time played converts to XP so cross-training feeds the level curve.
+@Model
+final class Activity {
+    @Attribute(.unique) var id: UUID
+    var sportRaw: String
+    var date: Date
+    var durationMinutes: Int
+    var createdAt: Date
+
+    init(sport: SportType, date: Date = Date(), durationMinutes: Int) {
+        self.id = UUID()
+        self.sportRaw = sport.rawValue
+        self.date = date
+        self.durationMinutes = durationMinutes
+        self.createdAt = Date()
+    }
+
+    var sport: SportType { SportType(rawValue: sportRaw) ?? .other }
+}
+
 // MARK: - PR Record Model
 
 @Model

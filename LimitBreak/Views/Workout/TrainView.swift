@@ -26,25 +26,25 @@ private struct SessionLauncherView: View {
     @Query(sort: \Routine.createdAt, order: .reverse) private var routines: [Routine]
     @State private var sessionName = ""
     @State private var isNaming = false
+    @State private var showNameField = false
     @State private var showPastWorkout = false
     @State private var showWalkDraw = false
     @State private var showAIWorkout = false
     @State private var showRoutineLibrary = false
+    // Debug/UI-test hook: launch with "-open-activity" to present the logger.
+    @State private var showActivityLog = ProcessInfo.processInfo.arguments.contains("-open-activity")
+    @FocusState private var nameFieldFocused: Bool
 
     private let suggestions = ["Push Day", "Pull Day", "Leg Day", "Upper Body", "Full Body"]
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(alignment: .leading, spacing: 24) {
                 header
 
                 aiWorkoutCard
 
                 routinesSection
-
-                orDivider
-
-                manualStartCard
 
                 secondaryActions
             }
@@ -53,6 +53,9 @@ private struct SessionLauncherView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .dismissibleKeyboard()
+        .safeAreaInset(edge: .bottom) {
+            startCluster
+        }
         .sheet(isPresented: $showPastWorkout) {
             PastWorkoutView()
         }
@@ -67,102 +70,9 @@ private struct SessionLauncherView: View {
         .sheet(isPresented: $showRoutineLibrary) {
             RoutineLibraryView()
         }
-    }
-
-    // MARK: Routines
-
-    /// Saved curations, shown as quick-start cards. Tap to launch a session
-    /// pre-loaded with the routine's exercises; "Manage" opens the full library.
-    private var routinesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("ROUTINES")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Theme.textDim)
-                    .kerning(1)
-                Spacer()
-                Button {
-                    Haptics.shared.tick()
-                    showRoutineLibrary = true
-                } label: {
-                    Label(routines.isEmpty ? "New" : "Manage", systemImage: routines.isEmpty ? "plus" : "slider.horizontal.3")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.emerald)
-                }
-            }
-
-            if routines.isEmpty {
-                Button {
-                    Haptics.shared.tick()
-                    showRoutineLibrary = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "square.stack.3d.up.fill")
-                            .font(.title3)
-                            .foregroundStyle(Theme.emerald)
-                        Text("Save a routine to quick-start it — build one or generate it with AI.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.leading)
-                        Spacer()
-                    }
-                    .padding(14)
-                    .glassControl(cornerRadius: 16)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(routines, id: \.id) { routine in
-                            routineCard(routine)
-                        }
-                    }
-                    .padding(.horizontal, 2)
-                }
-            }
+        .sheet(isPresented: $showActivityLog) {
+            ActivityLogView()
         }
-    }
-
-    private func routineCard(_ routine: Routine) -> some View {
-        Button {
-            Haptics.shared.tick()
-            workout.startSession(from: routine)
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(routine.name)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Spacer()
-                    if routine.isAIGenerated {
-                        Image(systemName: "sparkles")
-                            .font(.caption2)
-                            .foregroundStyle(Theme.violet)
-                    }
-                }
-                Text(routine.exercises.prefix(3).map(\.name).joined(separator: "\n"))
-                    .font(.caption)
-                    .foregroundStyle(Theme.textDim)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Spacer(minLength: 0)
-                HStack(spacing: 4) {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 9))
-                    Text("\(routine.exerciseCount) exercise\(routine.exerciseCount == 1 ? "" : "s")")
-                        .font(.caption2.weight(.semibold))
-                }
-                .foregroundStyle(Theme.emerald)
-            }
-            .padding(14)
-            .frame(width: 168, height: 132, alignment: .topLeading)
-            .glassControl(cornerRadius: 18)
-            .contentShape(RoundedRectangle(cornerRadius: 18))
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: Header
@@ -175,10 +85,98 @@ private struct SessionLauncherView: View {
             Text("Ready to break limits?")
                 .font(.title2.weight(.bold))
         }
+        .frame(maxWidth: .infinity)
         .padding(.top, 8)
     }
 
-    // MARK: AI workout hero
+    // MARK: Primary start (pinned at the bottom, in thumb range)
+
+    /// The one big action, docked at the bottom. The pencil button reveals an
+    /// optional name field; an empty name gets an AI-invented one on the way in.
+    private var startCluster: some View {
+        VStack(spacing: 10) {
+            if showNameField {
+                VStack(spacing: 10) {
+                    TextField("Session name", text: $sessionName)
+                        .textFieldStyle(.plain)
+                        .focused($nameFieldFocused)
+                        .submitLabel(.go)
+                        .onSubmit { Task { await start() } }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.glassBorder, lineWidth: 1))
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(suggestions, id: \.self) { suggestion in
+                                Button(suggestion) {
+                                    sessionName = suggestion
+                                    Haptics.shared.tick()
+                                }
+                                .font(.caption.weight(.medium))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(Theme.surfaceRaised, in: Capsule())
+                                .foregroundStyle(.primary)
+                            }
+                        }
+                        .padding(.horizontal, 2)
+                    }
+
+                    Text("Leave it blank and I\u{2019}ll invent a fun one.")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textDim)
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    Task { await start() }
+                } label: {
+                    HStack(spacing: 10) {
+                        if isNaming {
+                            ProgressView().tint(.white)
+                            Text("NAMING\u{2026}")
+                        } else {
+                            Image(systemName: "bolt.fill")
+                            Text("START SESSION")
+                        }
+                    }
+                    .font(.headline)
+                    .kerning(1.5)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 17)
+                    .foregroundStyle(.white)
+                    .glassCTA(tint: Theme.emerald.opacity(0.85))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isNaming)
+
+                Button {
+                    withAnimation(.snappy) { showNameField.toggle() }
+                    nameFieldFocused = showNameField
+                    if !showNameField { sessionName = "" }
+                    Haptics.shared.tick()
+                } label: {
+                    Image(systemName: showNameField ? "xmark" : "pencil")
+                        .font(.headline)
+                        .foregroundStyle(showNameField ? Theme.textDim : Theme.emerald)
+                        .glassCircle(diameter: 54)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(showNameField ? "Hide name field" : "Name this session")
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+        .padding(.bottom, 20)
+    }
+
+    // MARK: AI workout
 
     private var aiWorkoutCard: some View {
         Button {
@@ -196,7 +194,7 @@ private struct SessionLauncherView: View {
                     Text("AI Workout")
                         .font(.headline.weight(.bold))
                         .foregroundStyle(.primary)
-                    Text("Pick a focus and length — I'll build the session.")
+                    Text("Pick a focus and length \u{2014} I\u{2019}ll build the session.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
@@ -217,85 +215,131 @@ private struct SessionLauncherView: View {
         .buttonStyle(.plain)
     }
 
-    private var orDivider: some View {
-        HStack(spacing: 12) {
-            Rectangle().fill(Theme.stroke).frame(height: 1)
-            Text("OR START YOUR OWN")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(Theme.textDim)
-                .kerning(1)
-            Rectangle().fill(Theme.stroke).frame(height: 1)
-        }
-    }
+    // MARK: Routines
 
-    // MARK: Manual start
-
-    private var manualStartCard: some View {
-        VStack(spacing: 14) {
-            TextField("Session name (optional)", text: $sessionName)
-                .textFieldStyle(.plain)
-                .submitLabel(.go)
-                .onSubmit { Task { await start() } }
-                .padding()
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.glassBorder, lineWidth: 1))
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(suggestions, id: \.self) { suggestion in
-                        Button(suggestion) {
-                            sessionName = suggestion
-                            Haptics.shared.tick()
-                        }
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(Theme.surfaceRaised, in: Capsule())
-                        .foregroundStyle(.primary)
-                    }
-                }
-                .padding(.horizontal, 2)
-            }
-
-            Button {
-                Task { await start() }
-            } label: {
-                HStack(spacing: 8) {
-                    if isNaming {
-                        ProgressView().tint(.white)
-                        Text("NAMING…")
-                    } else {
-                        Text("START SESSION")
-                    }
-                }
-                .font(.headline)
-                .kerning(1.5)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .foregroundStyle(.white)
-                .glassCTA(tint: Theme.emerald.opacity(0.85))
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(isNaming)
-
-            if sessionName.trimmingCharacters(in: .whitespaces).isEmpty {
-                Text("No name? I'll invent a fun one for you.")
-                    .font(.caption2)
+    /// Saved curations as compact quick-start cards. Tap to launch; the
+    /// slider icon opens the full library for editing.
+    private var routinesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("ROUTINES")
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(Theme.textDim)
+                    .kerning(1.5)
+                Spacer()
+                Button {
+                    Haptics.shared.tick()
+                    showRoutineLibrary = true
+                } label: {
+                    Image(systemName: routines.isEmpty ? "plus" : "slider.horizontal.3")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.emerald)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(routines.isEmpty ? "New routine" : "Manage routines")
+            }
+
+            if routines.isEmpty {
+                Button {
+                    Haptics.shared.tick()
+                    showRoutineLibrary = true
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "square.stack.3d.up.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.emerald)
+                        Text("Save a routine to quick-start it here.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.textDim)
+                        Spacer()
+                    }
+                    .padding(12)
+                    .glassControl(cornerRadius: 14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(routines, id: \.id) { routine in
+                            routineCard(routine)
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 2)
+                }
             }
         }
     }
+
+    private func routineCard(_ routine: Routine) -> some View {
+        Button {
+            Haptics.shared.tick()
+            workout.startSession(from: routine)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top) {
+                    Text(routine.name)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: 4)
+                    if routine.isAIGenerated {
+                        Image(systemName: "sparkles")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.violet)
+                    }
+                }
+                Spacer(minLength: 0)
+                HStack(spacing: 5) {
+                    Image(systemName: "play.circle.fill")
+                        .font(.subheadline)
+                    Text("\(routine.exerciseCount) movement\(routine.exerciseCount == 1 ? "" : "s")")
+                        .font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(Theme.emerald)
+            }
+            .padding(12)
+            .frame(width: 150, height: 92, alignment: .topLeading)
+            .glassControl(cornerRadius: 16)
+            .contentShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Utilities
 
     private var secondaryActions: some View {
         HStack(spacing: 12) {
             launcherSecondaryButton(title: "Past Workout", icon: "calendar.badge.plus") {
                 showPastWorkout = true
             }
-            launcherSecondaryButton(title: "Add a Walk", icon: "figure.walk") {
+            launcherSecondaryButton(title: "Walk", icon: "figure.walk") {
                 showWalkDraw = true
             }
+            launcherSecondaryButton(title: "Activity", icon: "basketball.fill") {
+                showActivityLog = true
+            }
         }
+    }
+
+    private func launcherSecondaryButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button {
+            Haptics.shared.tick()
+            action()
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .foregroundStyle(Theme.emerald)
+                .glassControl()
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Actions
@@ -313,21 +357,6 @@ private struct SessionLauncherView: View {
             workout.startSession(named: trimmed)
         }
         sessionName = ""
-    }
-
-    private func launcherSecondaryButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button {
-            Haptics.shared.tick()
-            action()
-        } label: {
-            Label(title, systemImage: icon)
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .foregroundStyle(Theme.emerald)
-                .glassControl()
-                .contentShape(Rectangle())
-        }
     }
 }
 

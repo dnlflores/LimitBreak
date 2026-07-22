@@ -16,6 +16,7 @@ struct WorkoutHistoryView: View {
     @State private var sessionToEdit: WorkoutSession?
     @State private var sessionToDelete: WorkoutSession?
     @State private var sessionToSaveAsRoutine: WorkoutSession?
+    @State private var walkToEdit: Walk?
     @State private var walkToDelete: Walk?
     @State private var expandedSessions: Set<UUID> = []
 
@@ -144,6 +145,9 @@ struct WorkoutHistoryView: View {
                 Button("Cancel", role: .cancel) {}
             } message: { session in
                 Text("\u{201C}\(session.name)\u{201D} and all its sets will be permanently removed. Records will be recalculated.")
+            }
+            .sheet(item: $walkToEdit) { walk in
+                EditWalkSheet(walk: walk)
             }
             .alert("Delete Walk?", isPresented: deleteWalkAlertBinding, presenting: walkToDelete) { walk in
                 Button("Delete", role: .destructive) {
@@ -415,6 +419,11 @@ struct WorkoutHistoryView: View {
         }
         .cardStyle()
         .contextMenu {
+            Button {
+                walkToEdit = walk
+            } label: {
+                Label("Edit Walk", systemImage: "pencil")
+            }
             Button(role: .destructive) {
                 walkToDelete = walk
             } label: {
@@ -453,5 +462,62 @@ struct WorkoutHistoryView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 120)
+    }
+}
+
+// MARK: - Edit walk sheet
+
+/// A compact editor for a logged walk. Currently lets the user correct the
+/// date and time the walk was recorded, saving straight back to the store.
+private struct EditWalkSheet: View {
+    let walk: Walk
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var date: Date
+
+    init(walk: Walk) {
+        self.walk = walk
+        _date = State(initialValue: walk.date)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        DatePicker(
+                            "When",
+                            selection: $date,
+                            in: ...Date(),
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .font(.subheadline.weight(.semibold))
+                        .tint(Theme.teal)
+                    }
+                    .cardStyle()
+                }
+                .padding()
+            }
+            .obsidianBackground()
+            .navigationTitle("Edit Walk")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") { save() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    private func save() {
+        walk.date = date
+        try? modelContext.save()
+        dismiss()
     }
 }

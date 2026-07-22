@@ -23,7 +23,7 @@ struct RootTabView: View {
         @Bindable var workout = workout
 
         TabView(selection: $selectedTab) {
-            Tab("Matrix", systemImage: "square.grid.3x3.fill", value: 0) {
+            Tab("Level", systemImage: "star.circle.fill", value: 0) {
                 SkillMatrixView()
             }
             Tab("Train", systemImage: "bolt.fill", value: 1) {

@@ -18,6 +18,7 @@ struct LimitBreakApp: App {
             ExerciseSet.self,
             PRRecord.self,
             Walk.self,
+            Activity.self,
             Routine.self,
             RoutineItem.self,
         ])

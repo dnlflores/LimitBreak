@@ -78,7 +78,7 @@ final class SessionSync {
     // MARK: - Live Activity
 
     #if canImport(ActivityKit)
-    private var activity: Activity<SessionActivityAttributes>?
+    private var activity: ActivityKit.Activity<SessionActivityAttributes>?
 
     private func updateLiveActivity(with state: WatchStateSnapshot) {
         guard state.isActive else {
@@ -104,7 +104,7 @@ final class SessionSync {
             Task { await activity.update(content) }
         } else if ActivityAuthorizationInfo().areActivitiesEnabled {
             do {
-                activity = try Activity.request(
+                activity = try ActivityKit.Activity.request(
                     attributes: SessionActivityAttributes(sessionName: state.sessionName),
                     content: content
                 )

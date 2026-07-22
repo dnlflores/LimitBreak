@@ -3,6 +3,7 @@
 //  LimitBreakTests
 //
 
+import Foundation
 import Testing
 import SwiftData
 @testable import LimitBreak
@@ -23,6 +24,61 @@ struct FormulaTests {
 
     @Test func rawMaxIgnoresReps() {
         #expect(OneRMFormula.rawMax.estimate(weight: 185, reps: 12) == 185)
+    }
+}
+
+struct XPEngineTests {
+
+    @Test func levelCurveClimbs() {
+        // Level 1 → 2 costs 150; below that you're still level 1.
+        #expect(XPEngine.levelInfo(totalXP: 0).level == 1)
+        #expect(XPEngine.levelInfo(totalXP: 149).level == 1)
+        #expect(XPEngine.levelInfo(totalXP: 150).level == 2)
+
+        // 150 + 200 = 350 total reaches level 3, starting it with 0 into-level XP.
+        let info = XPEngine.levelInfo(totalXP: 350)
+        #expect(info.level == 3)
+        #expect(info.xpIntoLevel == 0)
+        #expect(info.xpForNext == 250)
+    }
+
+    @Test func ranksProgress() {
+        #expect(XPEngine.rankTitle(for: 1) == "Novice")
+        #expect(XPEngine.rankTitle(for: 12) == "Warrior")
+        #expect(XPEngine.rankTitle(for: 50) == "Raid Boss")
+    }
+
+    @Test func activityXPScalesWithTime() {
+        // +10 for showing up, +1 per 2 minutes.
+        #expect(XPEngine.xpForActivity(minutes: 60) == 40)
+        #expect(XPEngine.xpForActivity(minutes: 0) == 10)
+        #expect(XPEngine.xpForActivity(minutes: 90) == 55)
+    }
+
+    @Test @MainActor func timelineMarksLevelUps() throws {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self, Walk.self, Activity.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        let manager = WorkoutManager(context: container.mainContext)
+        let bench = Exercise(name: "Bench", muscleGroup: "Chest")
+        container.mainContext.insert(bench)
+
+        // Two heavy past sessions push total XP well past the first threshold (150).
+        let entries: [(exercise: Exercise, sets: [PastSetEntry])] = [
+            (bench, (0..<5).map { _ in PastSetEntry(weight: 200, reps: 5) })
+        ]
+        manager.logPastSession(name: "Day 1", date: Date().addingTimeInterval(-172_800), entries: entries)
+        manager.logPastSession(name: "Day 2", date: Date().addingTimeInterval(-86_400), entries: entries)
+
+        let sessions = try container.mainContext.fetch(FetchDescriptor<WorkoutSession>())
+        let records = try container.mainContext.fetch(FetchDescriptor<PRRecord>())
+        let timeline = XPEngine.timeline(sessions: sessions, records: records, walks: [], activities: [])
+
+        let levelUps = timeline.flatMap(\.events).filter(\.isLevelUp)
+        #expect(!levelUps.isEmpty)
+        #expect(levelUps.allSatisfy { ($0.levelReached ?? 0) > 1 })
     }
 }
 

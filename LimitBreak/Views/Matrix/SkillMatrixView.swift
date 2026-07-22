@@ -8,9 +8,13 @@ struct SkillMatrixView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \WorkoutSession.startDate, order: .reverse) private var sessions: [WorkoutSession]
     @Query(sort: \Walk.date, order: .reverse) private var walks: [Walk]
+    @Query(sort: \PRRecord.dateAchieved, order: .reverse) private var records: [PRRecord]
+    @Query(sort: \Activity.date, order: .reverse) private var activities: [Activity]
 
     @State private var selectedDay: Date?
     @State private var showHealthSheet = false
+    // Debug/UI-test hook: launch with "-open-timeline" to push the timeline.
+    @State private var showTimeline = ProcessInfo.processInfo.arguments.contains("-open-timeline")
 
     private let weeksShown = 22
 
@@ -19,7 +23,9 @@ struct SkillMatrixView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     titleHeader
+                    levelCard
                     statHeader
+                    rewardsSection
                     StatDialsView(sessions: sessions)
                     BodyDiagramView(sessions: sessions)
                     ProgressChartView(sessions: sessions)
@@ -35,6 +41,9 @@ struct SkillMatrixView: View {
             }
             .sheet(isPresented: $showHealthSheet) {
                 HealthKitSheet()
+            }
+            .navigationDestination(isPresented: $showTimeline) {
+                RewardsTimelineView()
             }
         }
     }
@@ -79,7 +88,7 @@ struct SkillMatrixView: View {
 
     private var titleHeader: some View {
         HStack(alignment: .center) {
-            Text("Skill Matrix")
+            Text("Level Up")
                 .font(.largeTitle.bold())
             Spacer()
             Button {
@@ -103,8 +112,9 @@ struct SkillMatrixView: View {
                 color: Theme.emerald
             )
             statTile(
-                value: Int(weeklyVolume).formatted(.number.notation(.compactName)),
-                label: "Weekly lbs",
+                value: XPEngine.weeklyXP(sessions: sessions, walks: walks, activities: activities)
+                    .formatted(.number.notation(.compactName)),
+                label: "Weekly XP",
                 color: Theme.violet
             )
             statTile(
@@ -112,6 +122,121 @@ struct SkillMatrixView: View {
                 label: "LimitBreaks",
                 color: Theme.gold
             )
+        }
+    }
+
+    // MARK: - Level & rewards
+
+    private var levelInfo: XPEngine.LevelInfo {
+        XPEngine.levelInfo(totalXP: XPEngine.totalXP(sessions: sessions, walks: walks, activities: activities))
+    }
+
+    /// The character sheet: current level in a gradient ring, rank title, and
+    /// the XP bar marching toward the next level.
+    private var levelCard: some View {
+        let info = levelInfo
+
+        return HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.08), lineWidth: 6)
+                Circle()
+                    .trim(from: 0, to: info.progress)
+                    .stroke(Theme.limitBreakGradient, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: 0) {
+                    Text("LV")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(Theme.textDim)
+                    Text("\(info.level)")
+                        .font(.system(.title, design: .rounded, weight: .black))
+                        .monospacedDigit()
+                }
+            }
+            .frame(width: 74, height: 74)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(XPEngine.rankTitle(for: info.level).uppercased())
+                    .font(.subheadline.weight(.black))
+                    .kerning(1.5)
+                    .foregroundStyle(Theme.limitBreakGradient)
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.white.opacity(0.08))
+                        Capsule()
+                            .fill(Theme.limitBreakGradient)
+                            .frame(width: max(6, geo.size.width * info.progress))
+                    }
+                }
+                .frame(height: 8)
+
+                Text("\(info.xpIntoLevel.formatted()) / \(info.xpForNext.formatted()) XP to LV \(info.level + 1)")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.textDim)
+            }
+        }
+        .cardStyle()
+    }
+
+    /// The latest loot: LimitBreaks, finished quests, and side quests with
+    /// the XP each one paid out.
+    @ViewBuilder
+    private var rewardsSection: some View {
+        let rewards = XPEngine.recentRewards(sessions: sessions, records: records, walks: walks, activities: activities)
+        if !rewards.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("RECENT REWARDS")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.textDim)
+                        .kerning(1.5)
+                    Spacer()
+                    NavigationLink {
+                        RewardsTimelineView()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("Timeline")
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.bold))
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.emerald)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                VStack(spacing: 6) {
+                    ForEach(rewards) { reward in
+                        HStack(spacing: 10) {
+                            Image(systemName: reward.icon)
+                                .font(.caption)
+                                .foregroundStyle(reward.tint)
+                                .frame(width: 28, height: 28)
+                                .background(reward.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(reward.title)
+                                    .font(.caption.weight(.bold))
+                                Text(reward.detail)
+                                    .font(.caption2)
+                                    .foregroundStyle(Theme.textDim)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            Text("+\(reward.xp) XP")
+                                .font(.caption.weight(.black))
+                                .monospacedDigit()
+                                .foregroundStyle(reward.tint)
+                        }
+                    }
+                }
+                .cardStyle()
+            }
         }
     }
 

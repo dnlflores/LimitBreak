@@ -126,7 +126,6 @@ struct WorkoutHistoryView: View {
             .obsidianBackground()
             .toolbar(.hidden, for: .navigationBar)
             .scrollDismissesKeyboard(.interactively)
-            .dismissibleKeyboard()
             .sheet(item: $sessionToEdit) { session in
                 EditWorkoutView(session: session)
             }

@@ -62,11 +62,16 @@ enum MuscleRecovery {
         return result
     }
 
-    /// Share of muscle groups that have been trained this week and are recovered.
+    /// Share of ALL muscle groups that are ready to train right now. Recently
+    /// recovered (.ready) and well-rested (.dormant) muscles both count — a
+    /// muscle you haven't touched in a week is fresh, not unavailable.
     static func readyFraction(statuses: [MuscleGroup: MuscleStatus], now: Date = Date()) -> Double {
-        let trained = statuses.values.filter { $0.lastTrained != nil }
-        guard !trained.isEmpty else { return 1 }
-        let ready = trained.filter { $0.state(now: now) == .ready }.count
-        return Double(ready) / Double(trained.count)
+        let all = statuses.values
+        guard !all.isEmpty else { return 1 }
+        let ready = all.filter { status in
+            let state = status.state(now: now)
+            return state == .ready || state == .dormant
+        }.count
+        return Double(ready) / Double(all.count)
     }
 }

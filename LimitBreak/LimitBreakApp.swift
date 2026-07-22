@@ -61,6 +61,7 @@ struct LimitBreakApp: App {
             }
             .environment(workout)
             .preferredColorScheme(.dark)
+            .onAppear { KeyboardDismisser.install() }
         }
         .modelContainer(container)
     }

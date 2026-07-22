@@ -83,7 +83,6 @@ struct EditWorkoutView: View {
             }
             .obsidianBackground()
             .scrollDismissesKeyboard(.interactively)
-            .dismissibleKeyboard()
             .navigationTitle("Edit Workout")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

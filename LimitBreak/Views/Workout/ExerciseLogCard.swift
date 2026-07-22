@@ -585,14 +585,6 @@ private struct BigValueField: View {
             .onChange(of: value) { _, newValue in
                 value = clamped(newValue)
             }
-            .toolbar {
-                if isEditing {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Done") { isEditing = false }
-                    }
-                }
-            }
     }
 
     private func clamped(_ proposed: Double) -> Double {

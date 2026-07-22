@@ -53,7 +53,6 @@ struct ExerciseLibraryView: View {
             .obsidianBackground()
             .toolbar(.hidden, for: .navigationBar)
             .scrollDismissesKeyboard(.interactively)
-            .dismissibleKeyboard()
             .sheet(isPresented: $showCreator) {
                 ExerciseEditorView()
             }

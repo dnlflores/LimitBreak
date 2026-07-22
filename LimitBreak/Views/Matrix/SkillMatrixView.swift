@@ -15,6 +15,8 @@ struct SkillMatrixView: View {
     @State private var showHealthSheet = false
     // Debug/UI-test hook: launch with "-open-timeline" to push the timeline.
     @State private var showTimeline = ProcessInfo.processInfo.arguments.contains("-open-timeline")
+    // Debug/UI-test hook: launch with "-open-level" to present the hero sheet.
+    @State private var showLevelSheet = ProcessInfo.processInfo.arguments.contains("-open-level")
 
     private let weeksShown = 22
 
@@ -44,6 +46,9 @@ struct SkillMatrixView: View {
             }
             .navigationDestination(isPresented: $showTimeline) {
                 RewardsTimelineView()
+            }
+            .sheet(isPresented: $showLevelSheet) {
+                LevelDetailSheet(info: levelInfo)
             }
         }
     }
@@ -105,17 +110,19 @@ struct SkillMatrixView: View {
     }
 
     private var statHeader: some View {
-        HStack(spacing: 12) {
+        let progress = xpProgress
+        return HStack(spacing: 12) {
             statTile(
-                value: "\(NarrativeEngine.currentStreak(context: modelContext))",
-                label: "Day Streak",
+                value: "\(progress.currentStreak)",
+                label: progress.currentMultiplier > 1
+                    ? "Day Streak \u{00D7}\(progress.currentMultiplier) XP"
+                    : "Day Streak",
                 color: Theme.emerald
             )
             statTile(
-                value: XPEngine.weeklyXP(sessions: sessions, walks: walks, activities: activities)
-                    .formatted(.number.notation(.compactName)),
+                value: progress.weeklyXP.formatted(.number.notation(.compactName)),
                 label: "Weekly XP",
-                color: Theme.violet
+                color: progress.weeklyXP < 0 ? Theme.crimson : Theme.violet
             )
             statTile(
                 value: "\(sessions.reduce(0) { $0 + $1.prCount })",
@@ -127,65 +134,58 @@ struct SkillMatrixView: View {
 
     // MARK: - Level & rewards
 
-    private var levelInfo: XPEngine.LevelInfo {
-        XPEngine.levelInfo(totalXP: XPEngine.totalXP(sessions: sessions, walks: walks, activities: activities))
+    private var xpProgress: XPEngine.Progress {
+        XPEngine.progress(sessions: sessions, records: records, walks: walks, activities: activities)
     }
 
-    /// The character sheet: current level in a gradient ring, rank title, and
-    /// the XP bar marching toward the next level.
+    private var levelInfo: XPEngine.LevelInfo {
+        XPEngine.levelInfo(totalXP: xpProgress.totalXP)
+    }
+
+    /// The character sheet teaser: level seal, rank title, and one XP bar.
+    /// Tap for the full hero stats.
     private var levelCard: some View {
         let info = levelInfo
 
-        return HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .stroke(Color.white.opacity(0.08), lineWidth: 6)
-                Circle()
-                    .trim(from: 0, to: info.progress)
-                    .stroke(Theme.limitBreakGradient, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                VStack(spacing: 0) {
-                    Text("LV")
-                        .font(.system(size: 10, weight: .black))
-                        .foregroundStyle(Theme.textDim)
-                    Text("\(info.level)")
-                        .font(.system(.title, design: .rounded, weight: .black))
+        return Button {
+            Haptics.shared.tick()
+            showLevelSheet = true
+        } label: {
+            HStack(spacing: 16) {
+                LevelSealBadge(level: info.level, size: 68)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(XPEngine.rankTitle(for: info.level).uppercased())
+                        .font(.subheadline.weight(.black))
+                        .kerning(1.5)
+                        .foregroundStyle(Theme.limitBreakGradient)
+
+                    XPProgressBar(progress: info.progress)
+
+                    Text("\(info.xpIntoLevel.formatted()) / \(info.xpForNext.formatted()) XP to LV \(info.level + 1)")
+                        .font(.caption)
                         .monospacedDigit()
+                        .foregroundStyle(Theme.textDim)
                 }
-            }
-            .frame(width: 74, height: 74)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(XPEngine.rankTitle(for: info.level).uppercased())
-                    .font(.subheadline.weight(.black))
-                    .kerning(1.5)
-                    .foregroundStyle(Theme.limitBreakGradient)
-
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color.white.opacity(0.08))
-                        Capsule()
-                            .fill(Theme.limitBreakGradient)
-                            .frame(width: max(6, geo.size.width * info.progress))
-                    }
-                }
-                .frame(height: 8)
-
-                Text("\(info.xpIntoLevel.formatted()) / \(info.xpForNext.formatted()) XP to LV \(info.level + 1)")
-                    .font(.caption)
-                    .monospacedDigit()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(Theme.textDim)
             }
+            .cardStyle()
+            .contentShape(RoundedRectangle(cornerRadius: 20))
         }
-        .cardStyle()
+        .buttonStyle(.plain)
     }
 
     /// The latest loot: LimitBreaks, finished quests, and side quests with
     /// the XP each one paid out.
     @ViewBuilder
     private var rewardsSection: some View {
-        let rewards = XPEngine.recentRewards(sessions: sessions, records: records, walks: walks, activities: activities)
+        let rewards = XPEngine.recentRewards(
+            sessions: sessions, records: records, walks: walks, activities: activities,
+            multipliers: xpProgress.multipliers
+        )
         if !rewards.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {

@@ -55,6 +55,30 @@ final class LimitBreakUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["PR"].exists)
     }
 
+    /// Keyboards dismiss by tapping anywhere outside a text input — no
+    /// keyboard toolbar required.
+    @MainActor
+    func testTapAnywhereDismissesKeyboard() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-skip-splash", "-in-memory-store", "-open-tab", "1"]
+        app.launch()
+
+        let nameButton = app.buttons["Name this session"]
+        XCTAssertTrue(nameButton.waitForExistence(timeout: 5))
+        nameButton.tap()
+
+        let keyboard = app.keyboards.element
+        guard keyboard.waitForExistence(timeout: 5) else {
+            throw XCTSkip("Software keyboard unavailable in this simulator configuration")
+        }
+
+        // Tap neutral space (the hero header) — nothing but the window gesture.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
+
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: keyboard)
+        XCTAssertEqual(XCTWaiter().wait(for: [gone], timeout: 5), .completed)
+    }
+
     /// Forge sheet: every section renders, and creating a movement lands it
     /// in the Library. Captures a screenshot of the scrolled sheet for review.
     @MainActor

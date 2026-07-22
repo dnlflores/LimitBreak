@@ -108,10 +108,10 @@ struct RewardsTimelineView: View {
                     }
                 }
 
-                if day.dayXP > 0 {
-                    Text("+\(day.dayXP) XP total")
+                if day.dayXP != 0 {
+                    Text("\(day.dayXP > 0 ? "+" : "")\(day.dayXP) XP total")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Theme.textDim)
+                        .foregroundStyle(day.dayXP < 0 ? Theme.crimson : Theme.textDim)
                 }
             }
         }
@@ -137,42 +137,46 @@ struct RewardsTimelineView: View {
 
             Spacer()
 
-            Text("+\(event.xp) XP")
+            Text("\(event.xp > 0 ? "+" : "")\(event.xp) XP")
                 .font(.caption.weight(.black))
                 .monospacedDigit()
                 .foregroundStyle(event.tint)
         }
     }
 
-    /// The milestone row — rimmed in LimitBreak energy.
+    /// The milestone row — LimitBreak energy climbing up, crimson coming down.
     private func levelUpRow(_ event: XPEngine.TimelineEvent) -> some View {
-        HStack(spacing: 10) {
+        let down = event.isLevelDown
+        return HStack(spacing: 10) {
             Image(systemName: event.icon)
                 .font(.subheadline)
-                .foregroundStyle(Theme.limitBreakGradient)
+                .foregroundStyle(down ? AnyShapeStyle(Theme.crimson) : AnyShapeStyle(Theme.limitBreakGradient))
                 .frame(width: 28, height: 28)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(event.title)
                     .font(.caption.weight(.black))
                     .kerning(1)
-                    .foregroundStyle(Theme.limitBreakGradient)
+                    .foregroundStyle(down ? AnyShapeStyle(Theme.crimson) : AnyShapeStyle(Theme.limitBreakGradient))
                 Text(event.detail)
                     .font(.caption2.weight(.semibold))
             }
 
             Spacer()
 
-            Image(systemName: "sparkles")
+            Image(systemName: down ? "exclamationmark.triangle.fill" : "sparkles")
                 .font(.caption)
-                .foregroundStyle(Theme.gold)
+                .foregroundStyle(down ? Theme.crimson : Theme.gold)
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 10)
-        .background(Theme.violet.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .background(
+            (down ? Theme.crimson : Theme.violet).opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 10)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Theme.limitBreakGradient, lineWidth: 1)
+                .strokeBorder(down ? AnyShapeStyle(Theme.crimson) : AnyShapeStyle(Theme.limitBreakGradient), lineWidth: 1)
                 .opacity(0.5)
         )
     }

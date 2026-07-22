@@ -58,6 +58,19 @@ enum XPEngine {
         return LevelInfo(level: level, xpIntoLevel: remaining, xpForNext: cost(ofLevel: level), totalXP: totalXP)
     }
 
+    /// The next rank above this level and the level that unlocks it,
+    /// or nil at the top of the ladder.
+    static func nextRank(after level: Int) -> (title: String, level: Int)? {
+        let current = rankTitle(for: level)
+        var candidate = level + 1
+        while candidate <= 45 {
+            let title = rankTitle(for: candidate)
+            if title != current { return (title, candidate) }
+            candidate += 1
+        }
+        return nil
+    }
+
     /// RPG rank for a level — the flavor text of progression.
     static func rankTitle(for level: Int) -> String {
         switch level {
@@ -73,21 +86,111 @@ enum XPEngine {
         }
     }
 
+    // MARK: - Streak multipliers & idle decay
+
+    /// Two rest days are free; every idle day beyond that docks XP (no
+    /// multiplier on losses — decay is flat).
+    static let idleGraceDays = 2
+    static let idleDecayPerDay = 10
+
+    /// Every full week of unbroken daily activity adds +1× to all XP earned:
+    /// days 1-6 pay 1×, days 7-13 pay 2×, days 14-20 pay 3×, and so on.
+    static func multiplier(forStreakDay streakDay: Int) -> Int {
+        1 + max(0, streakDay) / 7
+    }
+
+    /// One day in the replayed XP ledger.
+    struct LedgerDay {
+        let day: Date
+        let baseXP: Int
+        let multiplier: Int
+        let penalty: Int
+        let streakLength: Int
+
+        var earnedXP: Int { baseXP * multiplier }
+        var delta: Int { earnedXP - penalty }
+    }
+
+    /// The fully replayed progression: day-by-day ledger with streak
+    /// multipliers applied and idle decay subtracted (floored at zero).
+    struct Progress {
+        let ledger: [LedgerDay]
+        let totalXP: Int
+        let weeklyXP: Int
+        let currentStreak: Int
+        let currentMultiplier: Int
+        /// Multiplier in force on each active day — for scaling displayed rewards.
+        let multipliers: [Date: Int]
+
+        static let empty = Progress(
+            ledger: [], totalXP: 0, weeklyXP: 0,
+            currentStreak: 0, currentMultiplier: 1, multipliers: [:]
+        )
+    }
+
     // MARK: - Aggregates
 
-    static func totalXP(sessions: [WorkoutSession], walks: [Walk], activities: [Activity] = []) -> Int {
-        sessions.reduce(0) { $0 + xp(for: $1) }
-            + walks.count * walkXP
-            + activities.reduce(0) { $0 + xp(for: $1) }
+    static func progress(
+        sessions: [WorkoutSession],
+        records: [PRRecord] = [],
+        walks: [Walk],
+        activities: [Activity] = [],
+        now: Date = Date()
+    ) -> Progress {
+        let rewards = allRewards(sessions: sessions, records: records, walks: walks, activities: activities)
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        let byDay = Dictionary(grouping: rewards) { calendar.startOfDay(for: $0.date) }
+        guard let firstDay = byDay.keys.min(), firstDay <= today else { return .empty }
+
+        var ledger: [LedgerDay] = []
+        var multipliers: [Date: Int] = [:]
+        var total = 0
+        var streak = 0
+        var lastActiveStreak = 0
+        var idleRun = 0
+
+        var day = firstDay
+        while day <= today {
+            let base = (byDay[day] ?? []).reduce(0) { $0 + $1.xp }
+            if base > 0 {
+                streak += 1
+                lastActiveStreak = streak
+                idleRun = 0
+                let mult = multiplier(forStreakDay: streak)
+                multipliers[day] = mult
+                total += base * mult
+                ledger.append(LedgerDay(day: day, baseXP: base, multiplier: mult, penalty: 0, streakLength: streak))
+            } else {
+                idleRun += 1
+                streak = 0
+                if idleRun > idleGraceDays {
+                    let penalty = min(idleDecayPerDay, total) // never below zero
+                    total -= penalty
+                    if penalty > 0 {
+                        ledger.append(LedgerDay(day: day, baseXP: 0, multiplier: 1, penalty: penalty, streakLength: 0))
+                    }
+                }
+            }
+            day = calendar.date(byAdding: .day, value: 1, to: day)!
+        }
+
+        // A streak survives one quiet day: today untrained still shows
+        // yesterday's run (matching the streak tile's semantics).
+        let currentStreak = idleRun <= 1 ? lastActiveStreak : 0
+        let weekStart = calendar.date(byAdding: .day, value: -6, to: today)!
+        let weekly = ledger.filter { $0.day >= weekStart }.reduce(0) { $0 + $1.delta }
+
+        return Progress(
+            ledger: ledger,
+            totalXP: total,
+            weeklyXP: weekly,
+            currentStreak: currentStreak,
+            currentMultiplier: multiplier(forStreakDay: currentStreak),
+            multipliers: multipliers
+        )
     }
 
-    static func weeklyXP(sessions: [WorkoutSession], walks: [Walk], activities: [Activity] = [], now: Date = Date()) -> Int {
-        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: now)!
-        let sessionXP = sessions.filter { $0.startDate >= weekAgo }.reduce(0) { $0 + xp(for: $1) }
-        let walkXPTotal = walks.filter { $0.date >= weekAgo }.count * walkXP
-        let activityXP = activities.filter { $0.date >= weekAgo }.reduce(0) { $0 + xp(for: $1) }
-        return sessionXP + walkXPTotal + activityXP
-    }
 
     // MARK: - Rewards feed
 
@@ -155,18 +258,29 @@ enum XPEngine {
         return rewards
     }
 
-    /// Recent earnings, newest first.
+    /// Recent earnings, newest first. Pass the progress multipliers so each
+    /// reward shows what it actually paid under its day's streak bonus.
     static func recentRewards(
         sessions: [WorkoutSession],
         records: [PRRecord],
         walks: [Walk],
         activities: [Activity] = [],
+        multipliers: [Date: Int] = [:],
         limit: Int = 6
     ) -> [Reward] {
-        Array(
+        let calendar = Calendar.current
+        return Array(
             allRewards(sessions: sessions, records: records, walks: walks, activities: activities)
                 .sorted { $0.date > $1.date }
                 .prefix(limit)
+                .map { reward in
+                    let mult = multipliers[calendar.startOfDay(for: reward.date)] ?? 1
+                    guard mult > 1 else { return reward }
+                    return Reward(
+                        date: reward.date, icon: reward.icon, tint: reward.tint,
+                        title: reward.title, detail: reward.detail, xp: reward.xp * mult
+                    )
+                }
         )
     }
 
@@ -181,6 +295,7 @@ enum XPEngine {
         let detail: String
         let xp: Int
         let levelReached: Int?
+        var isLevelDown = false
 
         var isLevelUp: Bool { levelReached != nil }
     }
@@ -193,49 +308,80 @@ enum XPEngine {
         var dayXP: Int { events.reduce(0) { $0 + $1.xp } }
     }
 
-    /// The full progression story, newest day first: every reward in
-    /// chronological context, with LEVEL UP milestones inserted on the day
-    /// the XP total crossed each threshold.
+    /// The full progression story, newest day first: rewards scaled by their
+    /// day's streak multiplier, idle-decay entries on penalized days, and
+    /// LEVEL UP / LEVEL LOST milestones where the running total crossed a
+    /// threshold in either direction.
     static func timeline(
         sessions: [WorkoutSession],
         records: [PRRecord],
         walks: [Walk],
-        activities: [Activity] = []
+        activities: [Activity] = [],
+        now: Date = Date()
     ) -> [TimelineDay] {
-        let rewards = allRewards(sessions: sessions, records: records, walks: walks, activities: activities)
-            .sorted { $0.date < $1.date }
+        let prog = progress(sessions: sessions, records: records, walks: walks, activities: activities, now: now)
+        let calendar = Calendar.current
+        let rewardsByDay = Dictionary(
+            grouping: allRewards(sessions: sessions, records: records, walks: walks, activities: activities)
+        ) { calendar.startOfDay(for: $0.date) }
 
         var events: [TimelineEvent] = []
         var runningXP = 0
         var level = 1
 
-        for reward in rewards {
-            runningXP += reward.xp
+        func checkLevel(at date: Date) {
+            let newLevel = levelInfo(totalXP: max(0, runningXP)).level
+            guard newLevel != level else { return }
+            let climbed = newLevel > level
+            level = newLevel
             events.append(TimelineEvent(
-                date: reward.date,
-                icon: reward.icon,
-                tint: reward.tint,
-                title: reward.title,
-                detail: reward.detail,
-                xp: reward.xp,
-                levelReached: nil
+                date: date,
+                icon: climbed ? "star.circle.fill" : "arrowtriangle.down.circle.fill",
+                tint: climbed ? Theme.violet : Theme.crimson,
+                title: climbed ? "LEVEL UP" : "LEVEL LOST",
+                detail: climbed
+                    ? "Reached LV \(newLevel) \u{2014} \(rankTitle(for: newLevel))"
+                    : "Dropped to LV \(newLevel) \u{2014} \(rankTitle(for: newLevel))",
+                xp: 0,
+                levelReached: newLevel,
+                isLevelDown: !climbed
             ))
-            let newLevel = levelInfo(totalXP: runningXP).level
-            if newLevel > level {
-                level = newLevel
+        }
+
+        for ledgerDay in prog.ledger {
+            if ledgerDay.penalty > 0 {
+                runningXP -= ledgerDay.penalty
                 events.append(TimelineEvent(
-                    date: reward.date,
-                    icon: "star.circle.fill",
-                    tint: Theme.violet,
-                    title: "LEVEL UP",
-                    detail: "Reached LV \(newLevel) \u{2014} \(rankTitle(for: newLevel))",
-                    xp: 0,
-                    levelReached: newLevel
+                    date: ledgerDay.day,
+                    icon: "moon.zzz.fill",
+                    tint: Theme.crimson,
+                    title: "Inactivity",
+                    detail: "Idle decay",
+                    xp: -ledgerDay.penalty,
+                    levelReached: nil
                 ))
+                checkLevel(at: ledgerDay.day)
+            } else {
+                let dayRewards = (rewardsByDay[ledgerDay.day] ?? []).sorted { $0.date < $1.date }
+                for reward in dayRewards {
+                    let scaled = reward.xp * ledgerDay.multiplier
+                    runningXP += scaled
+                    events.append(TimelineEvent(
+                        date: reward.date,
+                        icon: reward.icon,
+                        tint: reward.tint,
+                        title: ledgerDay.multiplier > 1
+                            ? "\(reward.title) \u{00D7}\(ledgerDay.multiplier)"
+                            : reward.title,
+                        detail: reward.detail,
+                        xp: scaled,
+                        levelReached: nil
+                    ))
+                    checkLevel(at: reward.date)
+                }
             }
         }
 
-        let calendar = Calendar.current
         let byDay = Dictionary(grouping: events) { calendar.startOfDay(for: $0.date) }
         return byDay
             .map { TimelineDay(day: $0.key, events: $0.value.sorted { $0.date > $1.date }) }

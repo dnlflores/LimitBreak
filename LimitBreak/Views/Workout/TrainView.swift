@@ -52,7 +52,6 @@ private struct SessionLauncherView: View {
             .padding(.top, 8)
         }
         .scrollDismissesKeyboard(.interactively)
-        .dismissibleKeyboard()
         .safeAreaInset(edge: .bottom) {
             startCluster
         }
@@ -397,7 +396,6 @@ private struct ActiveSessionView: View {
             updateEndBarVisibility(from: oldValue, to: newValue)
         }
         .scrollDismissesKeyboard(.interactively)
-        .dismissibleKeyboard()
         .navigationTitle(workout.activeSession?.name ?? "Session")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -660,7 +658,6 @@ struct ExercisePickerSheet: View {
         .obsidianBackground()
         .presentationDragIndicator(.visible)
         .scrollDismissesKeyboard(.interactively)
-        .dismissibleKeyboard()
         .sheet(isPresented: $showCreator) {
             ExerciseEditorView { created in
                 onPick(created)

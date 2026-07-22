@@ -48,11 +48,74 @@ struct XPEngineTests {
         #expect(XPEngine.rankTitle(for: 50) == "Raid Boss")
     }
 
+    @Test func nextRankLooksAhead() {
+        let next = XPEngine.nextRank(after: 1)
+        #expect(next?.title == "Squire")
+        #expect(next?.level == 3)
+        #expect(XPEngine.nextRank(after: 50) == nil) // already Raid Boss
+    }
+
     @Test func activityXPScalesWithTime() {
         // +10 for showing up, +1 per 2 minutes.
         #expect(XPEngine.xpForActivity(minutes: 60) == 40)
         #expect(XPEngine.xpForActivity(minutes: 0) == 10)
         #expect(XPEngine.xpForActivity(minutes: 90) == 55)
+    }
+
+    @Test func streakMultiplierClimbsWeekly() {
+        #expect(XPEngine.multiplier(forStreakDay: 1) == 1)
+        #expect(XPEngine.multiplier(forStreakDay: 6) == 1)
+        #expect(XPEngine.multiplier(forStreakDay: 7) == 2)   // one full week -> 2x
+        #expect(XPEngine.multiplier(forStreakDay: 13) == 2)
+        #expect(XPEngine.multiplier(forStreakDay: 14) == 3)  // two weeks -> 3x
+    }
+
+    @Test @MainActor func sevenDayStreakDoublesDaySevenXP() throws {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self, Walk.self, Activity.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        // Seven consecutive daily sessions ending today; no sets, so each is
+        // worth the flat 25 XP before multipliers.
+        for offset in (0..<7).reversed() {
+            let day = calendar.date(byAdding: .day, value: -offset, to: today)!
+            let session = WorkoutSession(name: "Day", startDate: day.addingTimeInterval(3600))
+            container.mainContext.insert(session)
+        }
+        let sessions = try container.mainContext.fetch(FetchDescriptor<WorkoutSession>())
+
+        let progress = XPEngine.progress(sessions: sessions, walks: [])
+        // Days 1-6 pay 25 each; day 7 hits the 2x multiplier and pays 50.
+        #expect(progress.totalXP == 6 * 25 + 50)
+        #expect(progress.currentStreak == 7)
+        #expect(progress.currentMultiplier == 2)
+    }
+
+    @Test @MainActor func idleDecayDocksAndCanDropLevels() throws {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self, Walk.self, Activity.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        // One session 10 days ago (25 XP), then silence: 9 idle days, the
+        // first 2 free, so 7 x 10 = 70 docked — clamped at zero, no negatives.
+        let day = calendar.date(byAdding: .day, value: -10, to: today)!
+        let session = WorkoutSession(name: "Lone", startDate: day.addingTimeInterval(3600))
+        container.mainContext.insert(session)
+        let sessions = try container.mainContext.fetch(FetchDescriptor<WorkoutSession>())
+
+        let progress = XPEngine.progress(sessions: sessions, walks: [])
+        #expect(progress.totalXP == 0)
+        #expect(progress.weeklyXP < 0) // the docked week reads negative
+        #expect(XPEngine.levelInfo(totalXP: progress.totalXP).level == 1)
+        #expect(progress.currentStreak == 0)
     }
 
     @Test @MainActor func timelineMarksLevelUps() throws {
@@ -79,6 +142,36 @@ struct XPEngineTests {
         let levelUps = timeline.flatMap(\.events).filter(\.isLevelUp)
         #expect(!levelUps.isEmpty)
         #expect(levelUps.allSatisfy { ($0.levelReached ?? 0) > 1 })
+    }
+}
+
+struct MuscleRecoveryTests {
+
+    /// Training a few muscles today must not zero out overall readiness —
+    /// everything untouched is rested and therefore ready.
+    @Test func untouchedMusclesCountAsReady() {
+        var statuses: [MuscleGroup: MuscleStatus] = [:]
+        for group in MuscleGroup.allCases {
+            statuses[group] = MuscleStatus(group: group)
+        }
+        // Chest and triceps trained an hour ago -> needs rest.
+        statuses[.chest]?.lastTrained = Date().addingTimeInterval(-3600)
+        statuses[.triceps]?.lastTrained = Date().addingTimeInterval(-3600)
+
+        let fraction = MuscleRecovery.readyFraction(statuses: statuses)
+        let expected = Double(MuscleGroup.allCases.count - 2) / Double(MuscleGroup.allCases.count)
+        #expect(abs(fraction - expected) < 0.001)
+    }
+
+    @Test func recoveredMuscleCountsAsReady() {
+        var statuses: [MuscleGroup: MuscleStatus] = [:]
+        for group in MuscleGroup.allCases {
+            statuses[group] = MuscleStatus(group: group)
+        }
+        // Trained three days ago -> recovered and ready.
+        statuses[.quads]?.lastTrained = Date().addingTimeInterval(-3 * 24 * 3600)
+
+        #expect(abs(MuscleRecovery.readyFraction(statuses: statuses) - 1.0) < 0.001)
     }
 }
 

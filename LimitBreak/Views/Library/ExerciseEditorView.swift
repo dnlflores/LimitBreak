@@ -74,7 +74,6 @@ struct ExerciseEditorView: View {
         .obsidianBackground()
         .presentationDragIndicator(.visible)
         .scrollDismissesKeyboard(.interactively)
-        .dismissibleKeyboard()
     }
 
     // MARK: - Header

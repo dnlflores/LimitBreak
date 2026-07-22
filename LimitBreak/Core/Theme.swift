@@ -108,25 +108,6 @@ extension View {
             .monospacedDigit()
     }
 
-    /// Adds a "Done" button above the keyboard so any keyboard — including the
-    /// numeric pads (.decimalPad/.numberPad) that have no return key — can
-    /// always be dismissed. Pair with `.scrollDismissesKeyboard(.interactively)`
-    /// on scrollable screens for swipe-to-dismiss as well.
-    func dismissibleKeyboard() -> some View {
-        toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder),
-                        to: nil, from: nil, for: nil
-                    )
-                }
-                .fontWeight(.semibold)
-                .tint(Theme.emerald)
-            }
-        }
-    }
 }
 
 extension MuscleGroup {

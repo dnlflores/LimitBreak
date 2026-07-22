@@ -75,18 +75,25 @@ struct ExerciseLogCard: View {
 
     private var nextPending: SetDraft? { nextPendingIndex.map { drafts[$0] } }
 
+    /// Body weight factored into bodyweight/assisted movements (Health first,
+    /// manual fallback), matching what WorkoutManager will stamp on the set.
+    private var bodyWeight: Double? {
+        guard exercise.trackingType == .bodyweightAndReps || exercise.isAssisted else { return nil }
+        return HealthKitManager.shared.currentBodyWeightLbs
+    }
+
     private var showsOneRM: Bool {
         guard let next = nextPending else { return false }
         switch exercise.trackingType {
-        case .weightAndReps: return next.primary > 0
-        case .bodyweightAndReps: return next.primary > 0
+        case .weightAndReps: return next.primary + (bodyWeight ?? 0) > 0
+        case .bodyweightAndReps: return next.primary > 0 || bodyWeight != nil
         default: return false
         }
     }
 
     private var liveOneRepMax: Double {
         guard let next = nextPending else { return 0 }
-        return exercise.formula.estimate(weight: next.primary, reps: next.reps)
+        return exercise.formula.estimate(weight: next.primary + (bodyWeight ?? 0), reps: next.reps)
     }
 
     /// Live preview: would checking off the next set shatter the ceiling?
@@ -341,10 +348,17 @@ struct ExerciseLogCard: View {
 
             Spacer()
 
-            Text(exercise.isAssisted ? "Assisted — negative = help" : "")
+            Text(loadHint)
                 .font(.caption2)
                 .foregroundStyle(Theme.textDim)
         }
+    }
+
+    private var loadHint: String {
+        if let bodyWeight {
+            return "incl. BW \(bodyWeight.cleanWeight) lbs"
+        }
+        return exercise.isAssisted ? "Assisted — negative = help" : ""
     }
 
     @ViewBuilder

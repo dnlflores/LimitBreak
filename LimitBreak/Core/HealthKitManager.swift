@@ -13,6 +13,7 @@ final class HealthKitManager {
     private let store = HKHealthStore()
     private static let connectedKey = "healthKitConnected"
     private static let autoSyncKey = "healthKitAutoSync"
+    private static let manualWeightKey = "manualBodyWeightLbs"
 
     var isConnected: Bool
     var autoSync: Bool {
@@ -22,11 +23,22 @@ final class HealthKitManager {
     var todayActiveEnergy: Double?
     var lastError: String?
 
+    /// Latest body-mass sample from Health, in pounds.
+    var healthBodyWeightLbs: Double?
+    /// User-entered fallback for when Health has no weight sample.
+    var manualBodyWeightLbs: Double? {
+        didSet { UserDefaults.standard.set(manualBodyWeightLbs ?? 0, forKey: Self.manualWeightKey) }
+    }
+    /// The weight the app should reason with: Health first, manual fallback.
+    var currentBodyWeightLbs: Double? { healthBodyWeightLbs ?? manualBodyWeightLbs }
+
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
 
     private init() {
         isConnected = UserDefaults.standard.bool(forKey: Self.connectedKey)
         autoSync = UserDefaults.standard.object(forKey: Self.autoSyncKey) as? Bool ?? true
+        let storedWeight = UserDefaults.standard.double(forKey: Self.manualWeightKey)
+        manualBodyWeightLbs = storedWeight > 0 ? storedWeight : nil
     }
 
     // MARK: - Authorization
@@ -46,6 +58,7 @@ final class HealthKitManager {
             .workoutType(),
             HKQuantityType(.stepCount),
             HKQuantityType(.activeEnergyBurned),
+            HKQuantityType(.bodyMass),
         ]
         do {
             try await store.requestAuthorization(toShare: share, read: read)
@@ -64,6 +77,26 @@ final class HealthKitManager {
         guard isConnected else { return }
         todaySteps = await todaySum(for: HKQuantityType(.stepCount), unit: .count())
         todayActiveEnergy = await todaySum(for: HKQuantityType(.activeEnergyBurned), unit: .kilocalorie())
+        healthBodyWeightLbs = await latestBodyWeight()
+    }
+
+    /// Most recent body-mass sample of any age — weight changes slowly, so the
+    /// latest sample is the right answer even if it's weeks old.
+    private func latestBodyWeight() async -> Double? {
+        await withCheckedContinuation { continuation in
+            let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
+            let query = HKSampleQuery(
+                sampleType: HKQuantityType(.bodyMass),
+                predicate: nil,
+                limit: 1,
+                sortDescriptors: [sort]
+            ) { _, samples, _ in
+                let weight = (samples?.first as? HKQuantitySample)?
+                    .quantity.doubleValue(for: .pound())
+                continuation.resume(returning: weight)
+            }
+            store.execute(query)
+        }
     }
 
     private func todaySum(for type: HKQuantityType, unit: HKUnit) async -> Double? {

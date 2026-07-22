@@ -150,8 +150,9 @@ final class WorkoutSession {
     }
 
     var totalVolume: Double {
-        // Assisted sets carry negative weight (assistance); they add no volume.
-        sets.filter { !$0.isWarmup }.reduce(0) { $0 + max(0, $1.weight) * Double($1.reps) }
+        // Effective load counts body weight on stamped sets; a fully assisted
+        // set can't go below zero contribution.
+        sets.filter { !$0.isWarmup }.reduce(0) { $0 + max(0, $1.effectiveLoad) * Double($1.reps) }
     }
 
     var prCount: Int { sets.filter(\.isPR).count }
@@ -197,6 +198,11 @@ final class ExerciseSet {
     /// remain fully described by `weight`/`reps`/`durationSeconds`.
     var repWeights: [Double] = []
 
+    /// The lifter's body weight (lbs) when this set was logged — stamped for
+    /// bodyweight and assisted movements so effective load survives future
+    /// weight changes. Nil for barbell-style sets or when weight was unknown.
+    var bodyweightAtTime: Double? = nil
+
     var exercise: Exercise?
     var session: WorkoutSession?
 
@@ -220,9 +226,15 @@ final class ExerciseSet {
         self.isPR = false
     }
 
+    /// The real load moved: body weight plus added weight for stamped sets
+    /// (assistance is negative added weight), otherwise just the bar weight.
+    var effectiveLoad: Double {
+        (bodyweightAtTime ?? 0) + weight
+    }
+
     /// Estimated 1RM using the parent exercise's configured formula (Epley by default).
     var estimatedOneRepMax: Double {
-        (exercise?.formula ?? .epley).estimate(weight: weight, reps: reps)
+        (exercise?.formula ?? .epley).estimate(weight: effectiveLoad, reps: reps)
     }
 }
 

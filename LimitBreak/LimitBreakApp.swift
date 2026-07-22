@@ -23,7 +23,6 @@ struct LimitBreakApp: App {
         ])
         // "-in-memory-store" (UI tests) keeps test data off the real store.
         let inMemory = ProcessInfo.processInfo.arguments.contains("-in-memory-store")
-        print("LB-DEBUG inMemory=\(inMemory) args=\(ProcessInfo.processInfo.arguments)")
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory)
         do {
             container = try ModelContainer(for: schema, configurations: [configuration])

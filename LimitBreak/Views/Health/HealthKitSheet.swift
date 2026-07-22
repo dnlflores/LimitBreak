@@ -24,6 +24,8 @@ struct HealthKitSheet: View {
                         disconnectedContent
                     }
 
+                    bodyWeightCard
+
                     if let error = health.lastError {
                         Text(error)
                             .font(.caption)
@@ -126,6 +128,58 @@ struct HealthKitSheet: View {
                 .font(.subheadline.weight(.semibold))
         }
         .foregroundStyle(Theme.emerald)
+    }
+
+    // MARK: - Body weight
+
+    /// Body weight powers effective load on bodyweight and assisted movements.
+    /// Health's latest sample wins; the manual value covers everyone else.
+    private var bodyWeightCard: some View {
+        @Bindable var health = HealthKitManager.shared
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "scalemass.fill")
+                    .font(.title3)
+                    .foregroundStyle(Theme.violet)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Body Weight")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Counted into pull-ups, dips, and assisted movements.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textDim)
+                }
+                Spacer()
+                Text(health.currentBodyWeightLbs.map { "\($0.cleanWeight) lbs" } ?? "—")
+                    .statNumberStyle()
+                    .foregroundStyle(health.currentBodyWeightLbs == nil ? Theme.textDim : Theme.violet)
+            }
+
+            if let healthWeight = health.healthBodyWeightLbs {
+                Text("From Apple Health: \(healthWeight.cleanWeight) lbs")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textDim)
+            } else {
+                HStack(spacing: 8) {
+                    TextField("Manual weight (lbs)", value: $health.manualBodyWeightLbs, format: .number)
+                        .keyboardType(.decimalPad)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+                    Text("lbs")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textDim)
+                }
+                Text(health.isConnected
+                    ? "No weight sample in Health yet — enter one here as a fallback."
+                    : "Used until Health is connected and has a weight sample.")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textDim)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
     }
 
     private func todayTile(value: String, label: String, icon: String, color: Color) -> some View {

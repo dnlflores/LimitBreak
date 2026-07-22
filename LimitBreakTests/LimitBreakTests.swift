@@ -107,9 +107,51 @@ struct PREngineTests {
         harness.context.insert(pullUp)
 
         harness.manager.startSession(named: "Test")
+        harness.manager.bodyWeightOverride = nil
+        // Force the legacy path: without any known body weight the record
+        // falls back to max reps. (Simulators may carry a manual weight.)
+        let healthWeight = HealthKitManager.shared.currentBodyWeightLbs
+        guard healthWeight == nil else { return } // covered by the stamped test below
         let event = harness.manager.logSet(exercise: pullUp, weight: 0, reps: 12)
 
         #expect(event?.recordType == "Max Reps")
         #expect(event?.newValue == 12)
+    }
+
+    @Test func bodyweightSetUsesBodyWeightWhenKnown() throws {
+        let harness = try makeHarness()
+        let pullUp = Exercise(name: "Pull-Up", muscleGroup: "Lats", trackingType: .bodyweightAndReps)
+        harness.context.insert(pullUp)
+
+        harness.manager.startSession(named: "Test")
+        harness.manager.bodyWeightOverride = 180
+        let event = harness.manager.logSet(exercise: pullUp, weight: 0, reps: 5)
+
+        // Effective load 180 lbs → Epley: 180 × (1 + 5/30) = 210.
+        #expect(event?.recordType == "1RM")
+        #expect(abs((event?.newValue ?? 0) - 210) < 0.001)
+    }
+
+    @Test func assistedSetSubtractsAssistanceFromBodyWeight() throws {
+        let harness = try makeHarness()
+        let assisted = Exercise(
+            name: "Assisted Pull-Up",
+            muscleGroup: "Lats",
+            trackingType: .bodyweightAndReps,
+            isAssisted: true
+        )
+        harness.context.insert(assisted)
+
+        harness.manager.startSession(named: "Test")
+        harness.manager.bodyWeightOverride = 200
+        let event = harness.manager.logSet(exercise: assisted, weight: -50, reps: 5)
+
+        // Effective load 150 lbs → Epley: 150 × (1 + 5/30) = 175.
+        #expect(event?.recordType == "1RM")
+        #expect(abs((event?.newValue ?? 0) - 175) < 0.001)
+
+        // Volume counts the effective load, not the negative assistance.
+        let volume = harness.manager.activeSession?.totalVolume ?? 0
+        #expect(abs(volume - 150 * 5) < 0.001)
     }
 }

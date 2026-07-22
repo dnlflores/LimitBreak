@@ -40,6 +40,20 @@ final class WorkoutManager {
 
     var limitBreakEvent: LimitBreakEvent?
 
+    /// Test seam for body weight; production reads Health (with manual fallback).
+    var bodyWeightOverride: Double?
+
+    private var currentBodyWeight: Double? {
+        bodyWeightOverride ?? HealthKitManager.shared.currentBodyWeightLbs
+    }
+
+    /// Bodyweight and assisted movements get the lifter's weight stamped on
+    /// each set so effective load is preserved forever.
+    private func stampBodyweightIfNeeded(_ set: ExerciseSet, exercise: Exercise) {
+        guard exercise.trackingType == .bodyweightAndReps || exercise.isAssisted else { return }
+        set.bodyweightAtTime = currentBodyWeight
+    }
+
     // Rest timer
     var restRemaining: TimeInterval = 0
     var restTotal: TimeInterval = 0
@@ -164,6 +178,7 @@ final class WorkoutManager {
         )
         set.exercise = exercise
         set.session = session
+        stampBodyweightIfNeeded(set, exercise: exercise)
         context.insert(set)
 
         let event = registerPRIfNeeded(for: set, exercise: exercise, celebrating: true)
@@ -210,6 +225,7 @@ final class WorkoutManager {
                 )
                 set.exercise = entry.exercise
                 set.session = session
+                stampBodyweightIfNeeded(set, exercise: entry.exercise)
                 context.insert(set)
                 registerPRIfNeeded(for: set, exercise: entry.exercise, celebrating: false)
                 offset += 150 // ~2.5 min per set keeps timestamps ordered and plausible
@@ -257,6 +273,7 @@ final class WorkoutManager {
                 )
                 set.exercise = entry.exercise
                 set.session = session
+                stampBodyweightIfNeeded(set, exercise: entry.exercise)
                 context.insert(set)
                 offset += 150
             }
@@ -350,6 +367,12 @@ final class WorkoutManager {
             let e1rm = set.estimatedOneRepMax
             return e1rm > 0 ? ("1RM", e1rm, "lbs") : nil
         case .bodyweightAndReps:
+            // With a stamped body weight the true moved load is known, so the
+            // record is a real 1RM (assistance already nets out of the load).
+            if set.bodyweightAtTime != nil {
+                let e1rm = set.estimatedOneRepMax
+                return e1rm > 0 ? ("1RM", e1rm, "lbs") : nil
+            }
             if set.weight > 0 {
                 return ("1RM", set.estimatedOneRepMax, "lbs added")
             }

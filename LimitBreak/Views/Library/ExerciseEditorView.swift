@@ -7,6 +7,8 @@ struct ExerciseEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    /// When set, the editor updates this movement in place instead of forging a new one.
+    var exercise: Exercise? = nil
     var onCreate: ((Exercise) -> Void)? = nil
 
     @State private var name = ""
@@ -18,9 +20,28 @@ struct ExerciseEditorView: View {
     @State private var restSeconds = 90
     @State private var formula: OneRMFormula = .epley
     @State private var customUnit = ""
+    @State private var isAssisted = false
 
     private let incrementOptions = [1.0, 2.5, 5.0, 10.0, 25.0]
     private let restOptions = [0, 30, 45, 60, 90, 120, 180, 240, 300]
+
+    init(exercise: Exercise? = nil, onCreate: ((Exercise) -> Void)? = nil) {
+        self.exercise = exercise
+        self.onCreate = onCreate
+        guard let exercise else { return }
+        _name = State(initialValue: exercise.name)
+        _primaryMuscle = State(initialValue: exercise.muscleGroup)
+        _secondaryMuscles = State(initialValue: Set(exercise.secondaryMuscles.compactMap(MuscleGroup.init)))
+        _trackingType = State(initialValue: exercise.trackingType)
+        _equipment = State(initialValue: EquipmentType(rawValue: exercise.equipmentType) ?? .barbell)
+        _increment = State(initialValue: exercise.defaultIncrement)
+        _restSeconds = State(initialValue: exercise.defaultRestSeconds)
+        _formula = State(initialValue: exercise.formula)
+        _customUnit = State(initialValue: exercise.customMetricUnit ?? "")
+        _isAssisted = State(initialValue: exercise.isAssisted)
+    }
+
+    private var isEditing: Bool { exercise != nil }
 
     private var trimmedName: String {
         name.trimmingCharacters(in: .whitespaces)
@@ -60,9 +81,9 @@ struct ExerciseEditorView: View {
     private var header: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Forge Exercise")
+                Text(isEditing ? "Edit Exercise" : "Forge Exercise")
                     .font(.title.bold())
-                Text("Define a new movement for your arsenal.")
+                Text(isEditing ? "Refine this movement in your arsenal." : "Define a new movement for your arsenal.")
                     .font(.caption)
                     .foregroundStyle(Theme.textDim)
             }
@@ -76,6 +97,7 @@ struct ExerciseEditorView: View {
             }
             .buttonStyle(.plain)
         }
+        .padding(.top, 16)
         .padding(.bottom, 4)
     }
 
@@ -329,6 +351,51 @@ struct ExerciseEditorView: View {
                     .foregroundStyle(Theme.textDim)
                     .animation(nil, value: formula)
             }
+
+            VStack(alignment: .leading, spacing: 8) {
+                fieldLabel("Assistance")
+                Button {
+                    isAssisted.toggle()
+                    Haptics.shared.tick()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.subheadline)
+                            .foregroundStyle(isAssisted ? Theme.violet : Theme.textDim)
+                            .frame(width: 34, height: 34)
+                            .background(
+                                isAssisted ? Theme.violet.opacity(0.15) : Color.white.opacity(0.04),
+                                in: RoundedRectangle(cornerRadius: 10)
+                            )
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Assisted movement")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            Text("Accepts negative weight — more assistance = easier (assisted pull-ups, dips).")
+                                .font(.caption2)
+                                .foregroundStyle(Theme.textDim)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: isAssisted ? "checkmark.circle.fill" : "circle")
+                            .font(.headline)
+                            .foregroundStyle(isAssisted ? Theme.violet : Theme.textDim.opacity(0.5))
+                    }
+                    .padding(10)
+                    .background(
+                        isAssisted ? Theme.violet.opacity(0.07) : .clear,
+                        in: RoundedRectangle(cornerRadius: 14)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .strokeBorder(isAssisted ? Theme.violet.opacity(0.4) : Theme.stroke, lineWidth: 1)
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+            }
         }
         .cardStyle()
     }
@@ -388,11 +455,11 @@ struct ExerciseEditorView: View {
 
     private var forgeButton: some View {
         Button {
-            create()
+            save()
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "hammer.fill")
-                Text("FORGE EXERCISE")
+                Image(systemName: isEditing ? "checkmark" : "hammer.fill")
+                Text(isEditing ? "SAVE CHANGES" : "FORGE EXERCISE")
                     .kerning(1.5)
             }
             .font(.headline)
@@ -407,23 +474,41 @@ struct ExerciseEditorView: View {
         .animation(.easeInOut(duration: 0.25), value: trimmedName.isEmpty)
     }
 
-    private func create() {
-        let exercise = Exercise(
-            name: trimmedName,
-            muscleGroup: primaryMuscle.rawValue,
-            secondaryMuscles: secondaryMuscles.map(\.rawValue),
-            trackingType: trackingType,
-            equipmentType: equipment.rawValue,
-            defaultIncrement: increment,
-            defaultRestSeconds: restSeconds,
-            formula: formula,
-            customMetricUnit: trackingType == .customMetric && !customUnit.isEmpty ? customUnit : nil,
-            isCustom: true
-        )
-        modelContext.insert(exercise)
+    private func save() {
+        let unit = trackingType == .customMetric && !customUnit.isEmpty ? customUnit : nil
+        let target: Exercise
+        if let exercise {
+            // Update the existing movement in place, preserving its records and history.
+            exercise.name = trimmedName
+            exercise.muscleGroupRaw = primaryMuscle.rawValue
+            exercise.secondaryMuscles = secondaryMuscles.map(\.rawValue)
+            exercise.trackingTypeRaw = trackingType.rawValue
+            exercise.equipmentType = equipment.rawValue
+            exercise.defaultIncrement = increment
+            exercise.defaultRestSeconds = restSeconds
+            exercise.formulaRaw = formula.rawValue
+            exercise.customMetricUnit = unit
+            exercise.isAssisted = isAssisted
+            target = exercise
+        } else {
+            target = Exercise(
+                name: trimmedName,
+                muscleGroup: primaryMuscle.rawValue,
+                secondaryMuscles: secondaryMuscles.map(\.rawValue),
+                trackingType: trackingType,
+                equipmentType: equipment.rawValue,
+                defaultIncrement: increment,
+                defaultRestSeconds: restSeconds,
+                formula: formula,
+                customMetricUnit: unit,
+                isCustom: true,
+                isAssisted: isAssisted
+            )
+            modelContext.insert(target)
+        }
         try? modelContext.save()
         Haptics.shared.success()
-        onCreate?(exercise)
+        onCreate?(target)
         dismiss()
     }
 }

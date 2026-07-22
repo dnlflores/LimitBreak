@@ -400,15 +400,27 @@ private struct ActiveSessionView: View {
                 workout.addExercise(exercise)
             }
         }
-        .confirmationDialog("End this session?", isPresented: $showEndConfirmation) {
-            Button("End Session", role: .destructive) { workout.endSession() }
-        } message: {
-            Text("Your sets are saved. Ending closes the session log.")
+        .sheet(isPresented: $showEndConfirmation) {
+            SessionConfirmSheet(
+                icon: "flag.checkered",
+                tint: Theme.crimson,
+                title: "End this session?",
+                message: "Your sets are saved. Ending closes the session log.",
+                confirmLabel: "End Session"
+            ) {
+                workout.endSession()
+            }
         }
-        .confirmationDialog("Cancel this session?", isPresented: $showCancelConfirmation) {
-            Button("Discard Session", role: .destructive) { workout.cancelSession() }
-        } message: {
-            Text("This deletes the session and any sets you've logged. Use this if you started it by accident. This can't be undone.")
+        .sheet(isPresented: $showCancelConfirmation) {
+            SessionConfirmSheet(
+                icon: "trash",
+                tint: Theme.crimson,
+                title: "Discard this session?",
+                message: "This deletes the session and any sets you've logged. Use this if you started it by accident. This can't be undone.",
+                confirmLabel: "Discard Session"
+            ) {
+                workout.cancelSession()
+            }
         }
     }
 
@@ -476,6 +488,79 @@ private struct ActiveSessionView: View {
     }
 }
 
+// MARK: - Session confirmation sheet
+
+/// A themed modal replacing the system action sheet for destructive session
+/// actions (End / Discard). Presents as a compact glass card over the obsidian
+/// canvas with a clear destructive CTA and a dismiss control.
+private struct SessionConfirmSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let icon: String
+    let tint: Color
+    let title: String
+    let message: String
+    let confirmLabel: String
+    let confirm: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: icon)
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 72, height: 72)
+                .glassEffect(.regular.tint(tint.opacity(0.25)), in: Circle())
+
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textDim)
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(spacing: 10) {
+                Button {
+                    Haptics.shared.tick()
+                    dismiss()
+                    confirm()
+                } label: {
+                    Text(confirmLabel)
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .foregroundStyle(.white)
+                        .glassCTA(tint: tint.opacity(0.85))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Keep Training")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .foregroundStyle(.white)
+                        .glassControl(cornerRadius: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .obsidianBackground()
+        .presentationDetents([.height(380)])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(.clear)
+    }
+}
+
 // MARK: - Elapsed time
 
 /// Live-ticking session clock. Owns its own timeline so each per-second tick
@@ -499,56 +584,228 @@ struct ExercisePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
     @State private var searchText = ""
+    @State private var muscleFilter: MuscleGroup?
     @State private var showCreator = false
 
     let onPick: (Exercise) -> Void
 
     private var filtered: [Exercise] {
-        searchText.isEmpty
-            ? exercises
-            : exercises.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        exercises.filter { exercise in
+            let matchesSearch = searchText.isEmpty
+                || exercise.name.localizedCaseInsensitiveContains(searchText)
+            let matchesMuscle = muscleFilter == nil
+                || exercise.muscleGroupRaw == muscleFilter?.rawValue
+            return matchesSearch && matchesMuscle
+        }
     }
 
     var body: some View {
-        NavigationStack {
-            List {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 14) {
+                header
+
+                searchField
+
+                filterBar
+
+                forgeNewCard
+
                 ForEach(filtered, id: \.id) { exercise in
-                    Button {
-                        onPick(exercise)
-                        Haptics.shared.tick()
-                        dismiss()
-                    } label: {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(exercise.name)
-                                .foregroundStyle(.primary)
-                            Text("\(exercise.muscleGroupRaw) · \(exercise.equipmentType)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    exerciseCard(exercise)
+                }
+
+                if filtered.isEmpty {
+                    Text("No movements match \u{201C}\(searchText)\u{201D}. Forge it as a custom exercise instead.")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textDim)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .cardStyle()
                 }
             }
-            .searchable(text: $searchText, prompt: "Search exercises")
-            .navigationTitle("Add Exercise")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showCreator = true
-                    } label: {
-                        Label("New", systemImage: "plus")
-                    }
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-            .sheet(isPresented: $showCreator) {
-                ExerciseEditorView { created in
-                    onPick(created)
-                    dismiss()
-                }
+            .padding()
+        }
+        .obsidianBackground()
+        .presentationDragIndicator(.visible)
+        .scrollDismissesKeyboard(.interactively)
+        .sheet(isPresented: $showCreator) {
+            ExerciseEditorView { created in
+                onPick(created)
+                dismiss()
             }
         }
+    }
+
+    // MARK: Header & search
+
+    private var header: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Add Exercise")
+                    .font(.title.bold())
+                Text("Pick your next movement.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textDim)
+            }
+            Spacer()
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.headline)
+                    .glassCircle()
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.top, 16)
+        .padding(.bottom, 4)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(Theme.textDim)
+            TextField("Search movements", text: $searchText)
+                .textFieldStyle(.plain)
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Theme.textDim)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.glassBorder, lineWidth: 1))
+    }
+
+    private var filterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                filterChip(nil)
+                ForEach(MuscleGroup.allCases) { muscle in
+                    filterChip(muscle)
+                }
+            }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func filterChip(_ muscle: MuscleGroup?) -> some View {
+        let isSelected = muscleFilter == muscle
+        return Button(muscle?.rawValue ?? "All") {
+            muscleFilter = muscle
+            Haptics.shared.tick()
+        }
+        .font(.caption.weight(.medium))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(isSelected ? AnyShapeStyle(Theme.emerald) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
+        .overlay(Capsule().strokeBorder(isSelected ? AnyShapeStyle(.clear) : AnyShapeStyle(Theme.glassBorder), lineWidth: 1))
+        .foregroundStyle(isSelected ? .black : .primary)
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Cards
+
+    /// Entry into the Forge for movements the library doesn't know yet.
+    private var forgeNewCard: some View {
+        Button {
+            Haptics.shared.tick()
+            showCreator = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "hammer.fill")
+                    .font(.title3)
+                    .foregroundStyle(Theme.limitBreakGradient)
+                    .frame(width: 40, height: 40)
+                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Forge New Exercise")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("Define a custom movement on the fly")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textDim)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.textDim)
+            }
+            .cardStyle()
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(Theme.limitBreakGradient, lineWidth: 1)
+                    .opacity(0.4)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 20))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func exerciseCard(_ exercise: Exercise) -> some View {
+        Button {
+            onPick(exercise)
+            Haptics.shared.logSet()
+            dismiss()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: exercise.muscleGroup.iconName)
+                    .font(.title3)
+                    .foregroundStyle(Theme.teal)
+                    .frame(width: 40, height: 40)
+                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(exercise.name)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                        if exercise.isCustom {
+                            Text("CUSTOM")
+                                .font(.system(size: 9, weight: .bold))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Theme.violet.opacity(0.25), in: Capsule())
+                                .foregroundStyle(Theme.violet)
+                        }
+                    }
+                    Text("\(exercise.muscleGroupRaw) · \(exercise.equipmentType)")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textDim)
+                }
+
+                Spacer()
+
+                let ceiling = exercise.ceiling(for: "1RM")
+                if ceiling > 0 {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(ceiling.cleanWeight)
+                            .font(.subheadline.weight(.bold))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.gold)
+                        Text("1RM")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.textDim)
+                    }
+                }
+
+                Image(systemName: "plus.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(Theme.emerald)
+            }
+            .cardStyle()
+            .contentShape(RoundedRectangle(cornerRadius: 20))
+        }
+        .buttonStyle(.plain)
     }
 }

@@ -62,6 +62,9 @@ final class Exercise {
     var formulaRaw: String
     var customMetricUnit: String?
     var isCustom: Bool
+    /// Assisted movements (e.g. assisted pull-ups) accept negative weight:
+    /// the value is assistance provided, so more negative = easier.
+    var isAssisted: Bool = false
     var createdAt: Date
 
     @Relationship(deleteRule: .cascade, inverse: \ExerciseSet.exercise)
@@ -85,7 +88,8 @@ final class Exercise {
         defaultRestSeconds: Int = 90,
         formula: OneRMFormula = .epley,
         customMetricUnit: String? = nil,
-        isCustom: Bool = false
+        isCustom: Bool = false,
+        isAssisted: Bool = false
     ) {
         self.id = UUID()
         self.name = name
@@ -98,6 +102,7 @@ final class Exercise {
         self.formulaRaw = formula.rawValue
         self.customMetricUnit = customMetricUnit
         self.isCustom = isCustom
+        self.isAssisted = isAssisted
         self.createdAt = Date()
         self.sets = []
         self.prRecords = []
@@ -145,7 +150,8 @@ final class WorkoutSession {
     }
 
     var totalVolume: Double {
-        sets.filter { !$0.isWarmup }.reduce(0) { $0 + $1.weight * Double($1.reps) }
+        // Assisted sets carry negative weight (assistance); they add no volume.
+        sets.filter { !$0.isWarmup }.reduce(0) { $0 + max(0, $1.weight) * Double($1.reps) }
     }
 
     var prCount: Int { sets.filter(\.isPR).count }

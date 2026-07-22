@@ -108,6 +108,22 @@ extension View {
     }
 }
 
+extension MuscleGroup {
+    /// SF Symbol used wherever a movement is shown as a card.
+    var iconName: String {
+        switch self {
+        case .chest: "figure.arms.open"
+        case .lats: "figure.rower"
+        case .quads, .hamstrings: "figure.strengthtraining.functional"
+        case .deltoids: "figure.arms.open"
+        case .triceps, .biceps, .forearms: "dumbbell.fill"
+        case .core: "figure.core.training"
+        case .calves: "figure.walk"
+        case .glutes: "figure.squat"
+        }
+    }
+}
+
 extension Double {
     /// "225" or "227.5" — drops the trailing .0 for whole numbers.
     var cleanWeight: String {

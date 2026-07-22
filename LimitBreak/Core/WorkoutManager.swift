@@ -95,6 +95,51 @@ final class WorkoutManager {
         sessionExercises.append(exercise)
     }
 
+    /// Removes an exercise from the active session, deleting any sets already
+    /// logged for it here and rebuilding records so no ceiling is stranded.
+    func removeExercise(_ exercise: Exercise) {
+        sessionExercises.removeAll { $0.id == exercise.id }
+        let doomed = sets(for: exercise)
+        guard !doomed.isEmpty else {
+            Haptics.shared.logSet()
+            return
+        }
+        for set in doomed {
+            context.delete(set)
+        }
+        try? context.save()
+        recomputePRs(for: [exercise])
+        try? context.save()
+        Haptics.shared.logSet()
+    }
+
+    /// Swaps one exercise slot for another (machine taken, equipment change).
+    /// Sets already logged on the old movement stay in the session history.
+    func replaceExercise(_ old: Exercise, with new: Exercise) {
+        guard let index = sessionExercises.firstIndex(where: { $0.id == old.id }) else { return }
+        if sessionExercises.contains(where: { $0.id == new.id }) {
+            sessionExercises.remove(at: index)
+        } else {
+            sessionExercises[index] = new
+        }
+        Haptics.shared.logSet()
+    }
+
+    /// Reverts an accidentally logged set: deletes it and replays the exercise's
+    /// history so any PR it minted is withdrawn.
+    func undoSet(_ set: ExerciseSet) {
+        guard let exercise = set.exercise else {
+            context.delete(set)
+            try? context.save()
+            return
+        }
+        context.delete(set)
+        try? context.save()
+        recomputePRs(for: [exercise])
+        try? context.save()
+        Haptics.shared.tick()
+    }
+
     // MARK: - Set logging & LimitBreak engine
 
     @discardableResult

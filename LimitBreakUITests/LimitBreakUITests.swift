@@ -16,9 +16,12 @@ final class LimitBreakUITests: XCTestCase {
     @MainActor
     func testLogSetTriggersLimitBreak() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["-skip-splash", "-in-memory-store"]
         app.launch()
 
-        app.buttons["Train"].tap()
+        let trainTab = app.buttons["Train"]
+        XCTAssertTrue(trainTab.waitForExistence(timeout: 5))
+        trainTab.tap()
 
         let startButton = app.buttons["START SESSION"]
         XCTAssertTrue(startButton.waitForExistence(timeout: 5))
@@ -30,6 +33,12 @@ final class LimitBreakUITests: XCTestCase {
 
         let benchRow = app.staticTexts["Barbell Bench Press"]
         XCTAssertTrue(benchRow.waitForExistence(timeout: 5))
+
+        let pickerShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        pickerShot.name = "exercise-picker"
+        pickerShot.lifetime = .keepAlways
+        add(pickerShot)
+
         benchRow.tap()
 
         let logSet = app.buttons["LOG SET"]
@@ -51,7 +60,7 @@ final class LimitBreakUITests: XCTestCase {
     @MainActor
     func testForgeSheetCreatesExercise() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-open-tab", "3", "-open-forge"]
+        app.launchArguments = ["-skip-splash", "-in-memory-store", "-open-tab", "3", "-open-forge"]
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Forge Exercise"].waitForExistence(timeout: 5))

@@ -21,7 +21,10 @@ struct LimitBreakApp: App {
             Routine.self,
             RoutineItem.self,
         ])
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        // "-in-memory-store" (UI tests) keeps test data off the real store.
+        let inMemory = ProcessInfo.processInfo.arguments.contains("-in-memory-store")
+        print("LB-DEBUG inMemory=\(inMemory) args=\(ProcessInfo.processInfo.arguments)")
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory)
         do {
             container = try ModelContainer(for: schema, configurations: [configuration])
         } catch {
@@ -30,7 +33,8 @@ struct LimitBreakApp: App {
         _workout = State(initialValue: WorkoutManager(context: container.mainContext))
     }
 
-    @State private var showSplash = true
+    // "-skip-splash" (UI tests) jumps straight into the app.
+    @State private var showSplash = !ProcessInfo.processInfo.arguments.contains("-skip-splash")
 
     var body: some Scene {
         WindowGroup {

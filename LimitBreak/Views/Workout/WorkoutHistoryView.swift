@@ -11,6 +11,7 @@ struct WorkoutHistoryView: View {
     @State private var sessionToEdit: WorkoutSession?
     @State private var sessionToDelete: WorkoutSession?
     @State private var sessionToSaveAsRoutine: WorkoutSession?
+    @State private var expandedSessions: Set<UUID> = []
 
     // MARK: - Derived data
 
@@ -191,8 +192,10 @@ struct WorkoutHistoryView: View {
     // MARK: - Session card
 
     private func sessionCard(_ session: WorkoutSession) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
+        let isExpanded = expandedSessions.contains(session.id)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.name)
                         .font(.headline)
@@ -206,49 +209,61 @@ struct WorkoutHistoryView: View {
                     .monospacedDigit()
                     .foregroundStyle(Theme.emerald)
 
-                Menu {
-                    Button {
-                        sessionToEdit = session
-                    } label: {
-                        Label("Edit Workout", systemImage: "pencil")
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textDim)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+            }
+
+            if isExpanded {
+                ForEach(session.setsByExercise, id: \.exercise.id) { group in
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(group.exercise.name)
+                            .font(.subheadline.weight(.semibold))
+
+                        ForEach(group.sets, id: \.id) { set in
+                            setLine(set, exercise: group.exercise)
+                        }
                     }
-                    Button {
-                        sessionToSaveAsRoutine = session
-                    } label: {
-                        Label("Save as Routine", systemImage: "square.stack.3d.up")
-                    }
-                    Button(role: .destructive) {
-                        sessionToDelete = session
-                    } label: {
-                        Label("Delete Workout", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.subheadline)
+                    .padding(10)
+                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+                }
+
+                if session.sets.isEmpty {
+                    Text("No sets logged.")
+                        .font(.caption)
                         .foregroundStyle(Theme.textDim)
                 }
             }
-
-            ForEach(session.setsByExercise, id: \.exercise.id) { group in
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(group.exercise.name)
-                        .font(.subheadline.weight(.semibold))
-
-                    ForEach(group.sets, id: \.id) { set in
-                        setLine(set, exercise: group.exercise)
-                    }
-                }
-                .padding(10)
-                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-            }
-
-            if session.sets.isEmpty {
-                Text("No sets logged.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textDim)
-            }
         }
         .cardStyle()
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                if isExpanded {
+                    expandedSessions.remove(session.id)
+                } else {
+                    expandedSessions.insert(session.id)
+                }
+            }
+        }
+        .contextMenu {
+            Button {
+                sessionToEdit = session
+            } label: {
+                Label("Edit Workout", systemImage: "pencil")
+            }
+            Button {
+                sessionToSaveAsRoutine = session
+            } label: {
+                Label("Save as Routine", systemImage: "square.stack.3d.up")
+            }
+            Button(role: .destructive) {
+                sessionToDelete = session
+            } label: {
+                Label("Delete Workout", systemImage: "trash")
+            }
+        }
     }
 
     private func setLine(_ set: ExerciseSet, exercise: Exercise) -> some View {

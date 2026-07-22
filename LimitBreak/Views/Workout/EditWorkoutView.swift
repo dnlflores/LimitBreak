@@ -41,7 +41,7 @@ struct EditWorkoutView: View {
                 exercise: group.exercise,
                 sets: group.sets.map { set in
                     SetDraft(
-                        weight: set.weight > 0 ? set.weight.cleanWeight : "",
+                        weight: set.weight != 0 ? set.weight.cleanWeight : "",
                         reps: set.reps > 0 ? "\(set.reps)" : "",
                         isWarmup: set.isWarmup,
                         durationSeconds: set.durationSeconds,
@@ -54,7 +54,7 @@ struct EditWorkoutView: View {
 
     private var canSave: Bool {
         entries.contains { entry in
-            entry.sets.contains { (Int($0.reps) ?? 0) > 0 || (Double($0.weight) ?? 0) > 0 }
+            entry.sets.contains { (Int($0.reps) ?? 0) > 0 || (Double($0.weight) ?? 0) != 0 }
         }
     }
 
@@ -173,7 +173,7 @@ struct EditWorkoutView: View {
                 .foregroundStyle(Theme.textDim)
 
             TextField("lbs", text: set.weight)
-                .keyboardType(.decimalPad)
+                .keyboardType(.numbersAndPunctuation)
                 .multilineTextAlignment(.center)
                 .padding(8)
                 .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
@@ -219,7 +219,7 @@ struct EditWorkoutView: View {
                 let weight = Double(draft.weight) ?? 0
                 let reps = Int(draft.reps) ?? 0
                 let hasCarriedData = (draft.durationSeconds ?? 0) > 0 || (draft.distanceMeters ?? 0) > 0
-                guard weight > 0 || reps > 0 || hasCarriedData else { return nil }
+                guard weight != 0 || reps > 0 || hasCarriedData else { return nil }
                 return PastSetEntry(
                     weight: weight,
                     reps: reps,

@@ -166,7 +166,7 @@ struct ExerciseLibraryView: View {
 
     private func exerciseCard(_ exercise: Exercise) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: iconName(for: exercise.muscleGroup))
+            Image(systemName: exercise.muscleGroup.iconName)
                 .font(.title3)
                 .foregroundStyle(Theme.teal)
                 .frame(width: 40, height: 40)
@@ -213,25 +213,17 @@ struct ExerciseLibraryView: View {
         .cardStyle()
     }
 
-    private func iconName(for muscle: MuscleGroup) -> String {
-        switch muscle {
-        case .chest: "figure.arms.open"
-        case .lats: "figure.rower"
-        case .quads, .hamstrings: "figure.strengthtraining.functional"
-        case .deltoids: "figure.arms.open"
-        case .triceps, .biceps, .forearms: "dumbbell.fill"
-        case .core: "figure.core.training"
-        case .calves: "figure.walk"
-        case .glutes: "figure.squat"
-        }
-    }
 }
 
 // MARK: - Detail
 
 struct ExerciseDetailView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     let exercise: Exercise
+
+    @State private var showEditor = false
+    @State private var showDeleteConfirm = false
 
     private var records: [PRRecord] {
         exercise.prRecords.sorted { $0.dateAchieved > $1.dateAchieved }
@@ -262,6 +254,26 @@ struct ExerciseDetailView: View {
         }
         .obsidianBackground()
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showEditor) {
+            ExerciseEditorView(exercise: exercise)
+        }
+        .confirmationDialog(
+            "Delete \(exercise.name)?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Exercise", role: .destructive, action: deleteExercise)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the movement and its record ledger. Routines using it will drop the slot. This can't be undone.")
+        }
+    }
+
+    private func deleteExercise() {
+        modelContext.delete(exercise)
+        try? modelContext.save()
+        Haptics.shared.success()
+        dismiss()
     }
 
     // MARK: Header
@@ -297,6 +309,26 @@ struct ExerciseDetailView: View {
             }
 
             Spacer()
+
+            if exercise.isCustom {
+                Menu {
+                    Button {
+                        showEditor = true
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.headline)
+                        .glassCircle()
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.bottom, 8)
     }

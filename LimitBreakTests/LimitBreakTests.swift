@@ -57,9 +57,10 @@ struct XPEngineTests {
 
     @Test func activityXPScalesWithTime() {
         // +10 for showing up, +1 per 2 minutes.
-        #expect(XPEngine.xpForActivity(minutes: 60) == 40)
-        #expect(XPEngine.xpForActivity(minutes: 0) == 10)
-        #expect(XPEngine.xpForActivity(minutes: 90) == 55)
+        // Parity with lifting: ~450/hour, like a solid session's set + volume XP.
+        #expect(XPEngine.xpForActivity(minutes: 60) == 445)
+        #expect(XPEngine.xpForActivity(minutes: 0) == 25)
+        #expect(XPEngine.xpForActivity(minutes: 120) == 865)
     }
 
     @Test func streakMultiplierClimbsWeekly() {

@@ -20,13 +20,17 @@ enum XPEngine {
     static let walkXP = 15
     static let limitBreakXP = 50
 
-    /// Activities score on time played: +10 for showing up, +1 per 2 minutes.
+    /// Activities score on time played, at parity with a lifting session.
     static func xp(for activity: Activity) -> Int {
         xpForActivity(minutes: activity.durationMinutes)
     }
 
+    /// Tuned so an hour of sport pays like an hour of lifting: a solid gym
+    /// session (~20 working sets plus volume) lands around 400-500 XP, so
+    /// activities earn the session-completion base plus 7 XP per minute —
+    /// 445 for an hour of basketball, 865 for two.
     static func xpForActivity(minutes: Int) -> Int {
-        10 + max(0, minutes) / 2
+        25 + max(0, minutes) * 7
     }
 
     // MARK: - Levels

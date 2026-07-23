@@ -18,7 +18,9 @@ struct WorkoutHistoryView: View {
     @State private var sessionToSaveAsRoutine: WorkoutSession?
     @State private var walkToEdit: Walk?
     @State private var walkToDelete: Walk?
-    @State private var expandedSessions: Set<UUID> = []
+    // Debug/UI-test hook: launch with "-open-first-workout" to push the newest
+    // workout's detail view.
+    @State private var debugOpenFirst = ProcessInfo.processInfo.arguments.contains("-open-first-workout")
 
     // MARK: - Timeline item
 
@@ -157,6 +159,11 @@ struct WorkoutHistoryView: View {
             } message: { walk in
                 Text("This \(String(format: "%.2f mi", walk.distanceMiles)) walk will be permanently removed.")
             }
+            .navigationDestination(isPresented: $debugOpenFirst) {
+                if let first = allSessions.first {
+                    WorkoutDetailView(session: first)
+                }
+            }
         }
     }
 
@@ -269,13 +276,15 @@ struct WorkoutHistoryView: View {
     // MARK: - Session card
 
     private func sessionCard(_ session: WorkoutSession) -> some View {
-        let isExpanded = expandedSessions.contains(session.id)
-
-        return VStack(alignment: .leading, spacing: 10) {
+        NavigationLink {
+            WorkoutDetailView(session: session)
+        } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.name)
                         .font(.headline)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
                     Text("\(session.startDate.formatted(date: .abbreviated, time: .shortened)) \u{00B7} \(session.duration.clockString)")
                         .font(.caption)
                         .foregroundStyle(Theme.textDim)
@@ -289,41 +298,11 @@ struct WorkoutHistoryView: View {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.textDim)
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
             }
-
-            if isExpanded {
-                ForEach(session.setsByExercise, id: \.exercise.id) { group in
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(group.exercise.name)
-                            .font(.subheadline.weight(.semibold))
-
-                        ForEach(group.sets, id: \.id) { set in
-                            setLine(set, exercise: group.exercise)
-                        }
-                    }
-                    .padding(10)
-                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-                }
-
-                if session.sets.isEmpty {
-                    Text("No sets logged.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.textDim)
-                }
-            }
+            .cardStyle()
+            .contentShape(RoundedRectangle(cornerRadius: 20))
         }
-        .cardStyle()
-        .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                if isExpanded {
-                    expandedSessions.remove(session.id)
-                } else {
-                    expandedSessions.insert(session.id)
-                }
-            }
-        }
+        .buttonStyle(.plain)
         .contextMenu {
             Button {
                 sessionToEdit = session
@@ -343,80 +322,53 @@ struct WorkoutHistoryView: View {
         }
     }
 
-    private func setLine(_ set: ExerciseSet, exercise: Exercise) -> some View {
-        HStack(spacing: 6) {
-            Text(setDescription(set, exercise: exercise))
-                .font(.caption)
-                .monospacedDigit()
-            if set.isWarmup {
-                Text("WARMUP")
-                    .font(.system(size: 8, weight: .bold))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Theme.surface, in: Capsule())
-                    .foregroundStyle(Theme.textDim)
-            }
-            if set.isPR {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(Theme.gold)
-            }
-            Spacer()
-        }
-    }
-
-    private func setDescription(_ set: ExerciseSet, exercise: Exercise) -> String {
-        switch exercise.trackingType {
-        case .durationAndReps:
-            if let duration = set.durationSeconds { return "\(duration.clockString)" }
-        case .timeAndDistance:
-            if let distance = set.distanceMeters { return "\(Int(distance)) m" }
-        case .customMetric:
-            return "\(set.weight.cleanWeight) \(exercise.customMetricUnit ?? "")"
-        case .weightAndReps, .bodyweightAndReps:
-            break
-        }
-        return set.weight > 0
-            ? "\(set.weight.cleanWeight) lbs \u{00D7} \(set.reps)"
-            : "\(set.reps) reps"
-    }
-
     // MARK: - Walk card
 
     private func walkCard(_ walk: Walk) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Walk")
-                            .font(.headline)
-                        Text(walk.date.formatted(date: .abbreviated, time: .shortened))
-                            .font(.caption)
-                            .foregroundStyle(Theme.textDim)
+        NavigationLink {
+            WalkDetailView(walk: walk)
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Walk")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            Text(walk.date.formatted(date: .abbreviated, time: .shortened))
+                                .font(.caption)
+                                .foregroundStyle(Theme.textDim)
+                        }
+                    } icon: {
+                        Image(systemName: "figure.walk")
+                            .foregroundStyle(Theme.teal)
                     }
-                } icon: {
-                    Image(systemName: "figure.walk")
-                        .foregroundStyle(Theme.teal)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(String(format: "%.2f mi", walk.distanceMiles))
-                        .font(.subheadline.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.teal)
-                    if walk.durationSeconds > 0 {
-                        Text(walk.durationSeconds.clockString)
-                            .font(.caption)
-                            .foregroundStyle(Theme.textDim)
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(String(format: "%.2f mi", walk.distanceMiles))
+                            .font(.subheadline.weight(.semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.teal)
+                        if walk.durationSeconds > 0 {
+                            Text(walk.durationSeconds.clockString)
+                                .font(.caption)
+                                .foregroundStyle(Theme.textDim)
+                        }
                     }
-                }
-            }
 
-            if walk.routePoints.count >= 2 {
-                routePreview(walk)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textDim)
+                }
+
+                if walk.routePoints.count >= 2 {
+                    routePreview(walk)
+                }
             }
+            .cardStyle()
+            .contentShape(RoundedRectangle(cornerRadius: 20))
         }
-        .cardStyle()
+        .buttonStyle(.plain)
         .contextMenu {
             Button {
                 walkToEdit = walk
@@ -464,59 +416,3 @@ struct WorkoutHistoryView: View {
     }
 }
 
-// MARK: - Edit walk sheet
-
-/// A compact editor for a logged walk. Currently lets the user correct the
-/// date and time the walk was recorded, saving straight back to the store.
-private struct EditWalkSheet: View {
-    let walk: Walk
-
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
-
-    @State private var date: Date
-
-    init(walk: Walk) {
-        self.walk = walk
-        _date = State(initialValue: walk.date)
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        DatePicker(
-                            "When",
-                            selection: $date,
-                            in: ...Date(),
-                            displayedComponents: [.date, .hourAndMinute]
-                        )
-                        .font(.subheadline.weight(.semibold))
-                        .tint(Theme.teal)
-                    }
-                    .cardStyle()
-                }
-                .padding()
-            }
-            .obsidianBackground()
-            .navigationTitle("Edit Walk")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") { save() }
-                        .fontWeight(.semibold)
-                }
-            }
-        }
-    }
-
-    private func save() {
-        walk.date = date
-        try? modelContext.save()
-        dismiss()
-    }
-}

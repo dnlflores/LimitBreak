@@ -1,0 +1,2508 @@
+[
+ {
+  "name": "Barbell Bench Press",
+  "muscle": "Chest",
+  "secondary": [
+   "Triceps",
+   "Deltoids"
+  ],
+  "desc": "The classic horizontal press for building chest, shoulder, and triceps strength.",
+  "steps": [
+   "Lie flat with eyes under the bar, feet planted, and grip slightly wider than shoulders.",
+   "Unrack and lower the bar to mid-chest with elbows tucked about 45 degrees.",
+   "Press back up to lockout, keeping shoulder blades pinched and hips on the bench."
+  ]
+ },
+ {
+  "name": "Incline Barbell Press",
+  "muscle": "Chest",
+  "secondary": [
+   "Deltoids",
+   "Triceps"
+  ],
+  "desc": "A barbell press on an incline that shifts emphasis to the upper chest.",
+  "steps": [
+   "Set the bench to 30-45 degrees and grip just wider than shoulders.",
+   "Lower the bar to the upper chest under control.",
+   "Drive back to lockout without flaring the elbows."
+  ]
+ },
+ {
+  "name": "Incline Dumbbell Press",
+  "muscle": "Chest",
+  "secondary": [
+   "Deltoids"
+  ],
+  "equipment": "Dumbbell",
+  "desc": "An upper-chest emphasis press with a longer range of motion than the barbell.",
+  "steps": [
+   "Set the bench to 30-45 degrees and start with dumbbells at shoulder level.",
+   "Press up and slightly inward until arms are extended.",
+   "Lower under control until you feel a stretch across the upper chest."
+  ]
+ },
+ {
+  "name": "Flat Dumbbell Press",
+  "muscle": "Chest",
+  "secondary": [
+   "Triceps",
+   "Deltoids"
+  ],
+  "equipment": "Dumbbell",
+  "desc": "A bench press with independent arms for balanced chest development.",
+  "steps": [
+   "Lie flat with a dumbbell at each shoulder.",
+   "Press both bells up until arms are extended over the chest.",
+   "Lower slowly to a deep, comfortable stretch."
+  ]
+ },
+ {
+  "name": "Decline Barbell Press",
+  "muscle": "Chest",
+  "secondary": [
+   "Triceps"
+  ],
+  "desc": "A decline-angle press that biases the lower chest fibers.",
+  "steps": [
+   "Secure your legs and lie back on the decline bench.",
+   "Lower the bar to the lower chest line.",
+   "Press up and slightly back toward your eyes."
+  ]
+ },
+ {
+  "name": "Decline Dumbbell Press",
+  "muscle": "Chest",
+  "secondary": [
+   "Triceps"
+  ],
+  "equipment": "Dumbbell",
+  "desc": "The dumbbell version of the decline press with a freer pressing arc.",
+  "steps": [
+   "Lie on a decline bench with dumbbells at the lower chest.",
+   "Press up until arms are extended.",
+   "Control the descent for a full stretch."
+  ]
+ },
+ {
+  "name": "Cable Fly",
+  "muscle": "Chest",
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "An isolation movement that keeps constant tension on the chest through the full arc.",
+  "steps": [
+   "Set pulleys at chest height and step forward with a slight stagger.",
+   "With soft elbows, sweep the handles together in a hugging arc.",
+   "Squeeze at the midline, then let the cables pull your arms open slowly."
+  ]
+ },
+ {
+  "name": "Incline Cable Fly",
+  "muscle": "Chest",
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "A low-to-high cable fly that finishes the upper chest.",
+  "steps": [
+   "Set pulleys low and stand centered with a slight forward lean.",
+   "Sweep the handles up and together to eye height.",
+   "Pause at the top, then lower on the same arc."
+  ]
+ },
+ {
+  "name": "Dumbbell Fly",
+  "muscle": "Chest",
+  "equipment": "Dumbbell",
+  "rest": 60,
+  "desc": "A stretch-focused isolation for the pecs with light weight and strict form.",
+  "steps": [
+   "Lie flat with dumbbells over the chest, palms facing.",
+   "Open your arms in a wide arc with soft elbows.",
+   "Stop at a deep stretch and squeeze back together."
+  ]
+ },
+ {
+  "name": "Pec Deck",
+  "muscle": "Chest",
+  "equipment": "Machine",
+  "rest": 60,
+  "desc": "A machine fly that locks the path so you can chase the squeeze.",
+  "steps": [
+   "Adjust the seat so handles sit at chest height.",
+   "Bring the pads together in front of you.",
+   "Hold the squeeze, then open slowly to a stretch."
+  ]
+ },
+ {
+  "name": "Machine Chest Press",
+  "muscle": "Chest",
+  "secondary": [
+   "Triceps"
+  ],
+  "equipment": "Machine",
+  "desc": "A guided pressing pattern that is easy to load and easy on the joints.",
+  "steps": [
+   "Set the seat so handles line up with mid-chest.",
+   "Press to full extension without locking hard.",
+   "Return until your hands are just outside the chest."
+  ]
+ },
+ {
+  "name": "Smith Machine Bench Press",
+  "muscle": "Chest",
+  "secondary": [
+   "Triceps",
+   "Deltoids"
+  ],
+  "equipment": "Machine",
+  "desc": "A fixed-path bench press for controlled heavy pressing without a spotter.",
+  "steps": [
+   "Set the bench so the bar tracks to mid-chest.",
+   "Unhook, lower to the chest under control.",
+   "Press to lockout and re-hook safely."
+  ]
+ },
+ {
+  "name": "Push-Up",
+  "muscle": "Chest",
+  "secondary": [
+   "Triceps",
+   "Core"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "The foundational bodyweight press — chest, triceps, and core in one move.",
+  "steps": [
+   "Set hands slightly wider than shoulders in a straight-line plank.",
+   "Lower your chest to just above the floor, elbows about 45 degrees.",
+   "Push back up without letting the hips sag or pike."
+  ]
+ },
+ {
+  "name": "Weighted Push-Up",
+  "muscle": "Chest",
+  "secondary": [
+   "Triceps",
+   "Core"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "desc": "A push-up loaded with a plate or vest once bodyweight gets easy.",
+  "steps": [
+   "Have a partner place a plate on your upper back, or wear a vest.",
+   "Keep a rigid plank as you lower to the floor.",
+   "Press up powerfully without losing the plate position."
+  ]
+ },
+ {
+  "name": "Deficit Push-Up",
+  "muscle": "Chest",
+  "secondary": [
+   "Triceps",
+   "Core"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "Hands on raised blocks for extra range and a deeper chest stretch.",
+  "steps": [
+   "Set hands on plates or handles a few inches off the floor.",
+   "Lower your chest below hand level for a deep stretch.",
+   "Press back to a full plank lockout."
+  ]
+ },
+ {
+  "name": "Close-Grip Push-Up",
+  "muscle": "Chest",
+  "secondary": [
+   "Triceps"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "A narrow-hand push-up that shifts the work onto the triceps and inner chest.",
+  "steps": [
+   "Place hands directly under the shoulders.",
+   "Lower with elbows brushing your ribs.",
+   "Press up to full extension."
+  ]
+ },
+ {
+  "name": "Landmine Press",
+  "muscle": "Chest",
+  "secondary": [
+   "Deltoids",
+   "Triceps"
+  ],
+  "equipment": "Specialty Bar",
+  "desc": "An angled one-arm press that is friendly to cranky shoulders.",
+  "steps": [
+   "Wedge a barbell in a landmine and hold the end at your shoulder.",
+   "Press up and forward along the bar's arc.",
+   "Lower slowly back to the shoulder and repeat."
+  ]
+ },
+ {
+  "name": "Svend Press",
+  "muscle": "Chest",
+  "rest": 45,
+  "equipment": "Bodyweight",
+  "tracking": "Weight & Reps",
+  "incr": 2.5,
+  "desc": "Pressing plates squeezed between the palms for a constant inner-chest squeeze.",
+  "steps": [
+   "Squeeze one or two small plates flat between your palms at the chest.",
+   "Press straight out until arms are extended.",
+   "Keep crushing the plates as you pull them back in."
+  ]
+ },
+ {
+  "name": "Dumbbell Pullover",
+  "muscle": "Chest",
+  "secondary": [
+   "Lats",
+   "Triceps"
+  ],
+  "equipment": "Dumbbell",
+  "desc": "An arc from over the face to behind the head that stretches chest and lats together.",
+  "steps": [
+   "Lie across a bench holding one dumbbell over your chest.",
+   "Lower it in an arc behind your head with soft elbows.",
+   "Pull it back over your chest without sitting up."
+  ]
+ },
+ {
+  "name": "Deadlift",
+  "muscle": "Lats",
+  "secondary": [
+   "Hamstrings",
+   "Glutes",
+   "Forearms"
+  ],
+  "rest": 180,
+  "desc": "The heaviest pull in the gym: total posterior chain, grip, and back strength.",
+  "steps": [
+   "Stand with mid-foot under the bar; hinge and grip just outside your legs.",
+   "Brace, flatten your back, and push the floor away to stand tall.",
+   "Lock out with glutes, then hinge the bar back down under control."
+  ]
+ },
+ {
+  "name": "Trap Bar Deadlift",
+  "muscle": "Lats",
+  "secondary": [
+   "Quads",
+   "Glutes",
+   "Forearms"
+  ],
+  "equipment": "Specialty Bar",
+  "rest": 180,
+  "desc": "A neutral-handle deadlift that is easier on the lower back and simple to learn.",
+  "steps": [
+   "Stand centered inside the trap bar and grip both handles.",
+   "Brace and stand tall, driving through the whole foot.",
+   "Set the bar down under control between reps."
+  ]
+ },
+ {
+  "name": "Snatch-Grip Deadlift",
+  "muscle": "Lats",
+  "secondary": [
+   "Hamstrings",
+   "Glutes",
+   "Forearms"
+  ],
+  "rest": 180,
+  "desc": "A wide-grip deadlift that hammers the upper back and grip.",
+  "steps": [
+   "Take a very wide grip so the bar sits high on your thighs at lockout.",
+   "Keep the chest proud as you break the floor.",
+   "Stand tall, then lower with the same flat back."
+  ]
+ },
+ {
+  "name": "Rack Pull",
+  "muscle": "Lats",
+  "secondary": [
+   "Glutes",
+   "Forearms"
+  ],
+  "rest": 180,
+  "formula": "Raw Max Weight",
+  "desc": "A partial deadlift from the rack for overloading the top half of the pull.",
+  "steps": [
+   "Set the pins just below knee height.",
+   "Grip, brace, and pull to a full standing lockout.",
+   "Return the bar to the pins without bouncing."
+  ]
+ },
+ {
+  "name": "Barbell Row",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps",
+   "Forearms"
+  ],
+  "desc": "The staple bent-over pull for a thick, strong back.",
+  "steps": [
+   "Hinge to about 45 degrees with the bar hanging at arm's length.",
+   "Row the bar to your lower ribs without standing up.",
+   "Lower slowly until arms are straight again."
+  ]
+ },
+ {
+  "name": "Pendlay Row",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps"
+  ],
+  "desc": "A strict row from a dead stop on the floor every rep.",
+  "steps": [
+   "Set up parallel to the floor with the bar on the ground.",
+   "Explosively row the bar to the lower chest.",
+   "Return it fully to the floor and reset each rep."
+  ]
+ },
+ {
+  "name": "Dumbbell Row",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps",
+   "Forearms"
+  ],
+  "equipment": "Dumbbell",
+  "desc": "A one-arm row with support that lets you pull heavy safely.",
+  "steps": [
+   "Brace one hand and knee on a bench, back flat.",
+   "Row the dumbbell to your hip pocket.",
+   "Lower to a full stretch without rotating open."
+  ]
+ },
+ {
+  "name": "Chest-Supported Row",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps"
+  ],
+  "equipment": "Dumbbell",
+  "desc": "Rowing prone on an incline bench takes the lower back out of it entirely.",
+  "steps": [
+   "Lie chest-down on an incline bench with dumbbells hanging.",
+   "Row both bells toward your hips.",
+   "Squeeze the shoulder blades, then lower slowly."
+  ]
+ },
+ {
+  "name": "T-Bar Row",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps",
+   "Forearms"
+  ],
+  "equipment": "Specialty Bar",
+  "desc": "A landmine-style row that lets you stack plates for back thickness.",
+  "steps": [
+   "Straddle the bar and grip the handles under your chest.",
+   "Row the plates to your torso with elbows tight.",
+   "Lower under control without dropping your chest."
+  ]
+ },
+ {
+  "name": "Meadows Row",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps",
+   "Forearms"
+  ],
+  "equipment": "Specialty Bar",
+  "desc": "A one-arm landmine row with a big stretch at the bottom.",
+  "steps": [
+   "Stand perpendicular to a landmine bar and grip the end.",
+   "Row the sleeve up toward your hip.",
+   "Let the weight pull into a deep stretch each rep."
+  ]
+ },
+ {
+  "name": "Seal Row",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps"
+  ],
+  "desc": "Rowing while lying flat on a high bench — zero momentum, all back.",
+  "steps": [
+   "Lie prone on a high flat bench with the bar hanging below.",
+   "Row the bar to touch the bench underside.",
+   "Lower to a dead hang before the next rep."
+  ]
+ },
+ {
+  "name": "Inverted Row",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps",
+   "Core"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "A horizontal bodyweight pull — the push-up's mirror image.",
+  "steps": [
+   "Hang under a bar with your body in a straight line.",
+   "Pull your chest to the bar, squeezing the blades.",
+   "Lower to straight arms without sagging hips."
+  ]
+ },
+ {
+  "name": "Pull-Up",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps",
+   "Forearms"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "incr": 2.5,
+  "rest": 120,
+  "desc": "The king of upper-body pulls: chin over the bar from a dead hang.",
+  "steps": [
+   "Hang from an overhand grip just wider than shoulders.",
+   "Drive elbows down to pull your chin over the bar.",
+   "Lower all the way to a dead hang each rep."
+  ]
+ },
+ {
+  "name": "Chin-Up",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "incr": 2.5,
+  "rest": 120,
+  "desc": "An underhand pull-up with a stronger biceps contribution.",
+  "steps": [
+   "Hang with palms facing you, shoulder-width apart.",
+   "Pull until your chin clears the bar.",
+   "Lower under control to full hang."
+  ]
+ },
+ {
+  "name": "Neutral-Grip Pull-Up",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps",
+   "Forearms"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "incr": 2.5,
+  "rest": 120,
+  "desc": "Palms-facing pull-up that most shoulders find the most comfortable.",
+  "steps": [
+   "Grip parallel handles and start from a dead hang.",
+   "Pull your chest toward the handles.",
+   "Lower slowly with shoulders active."
+  ]
+ },
+ {
+  "name": "Assisted Pull-Up",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Machine",
+  "assisted": true,
+  "rest": 90,
+  "desc": "Machine or band assistance on the way to your first strict pull-ups — more help means an easier rep.",
+  "steps": [
+   "Kneel on the assist pad or loop a band under your feet.",
+   "Pull your chin over the bar with strict form.",
+   "Reduce the assistance over time as reps grow."
+  ]
+ },
+ {
+  "name": "Lat Pulldown",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps"
+  ],
+  "equipment": "Cable",
+  "desc": "The cable version of a pull-up, loadable to the pound.",
+  "steps": [
+   "Grip the bar wide and lock your thighs under the pads.",
+   "Pull the bar to your collarbone with a proud chest.",
+   "Let the bar rise until arms fully stretch."
+  ]
+ },
+ {
+  "name": "Close-Grip Lat Pulldown",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps"
+  ],
+  "equipment": "Cable",
+  "desc": "A narrow neutral grip pulldown with a long stretch and strong lat line.",
+  "steps": [
+   "Attach a close neutral handle and sit tall.",
+   "Pull the handle to your sternum.",
+   "Control the stretch at the top fully."
+  ]
+ },
+ {
+  "name": "Single-Arm Lat Pulldown",
+  "muscle": "Lats",
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "A unilateral pulldown to even out side-to-side lat strength.",
+  "steps": [
+   "Grip one handle overhead, kneeling or seated.",
+   "Pull the elbow down to your side.",
+   "Resist the cable back to a full reach."
+  ]
+ },
+ {
+  "name": "Straight-Arm Pulldown",
+  "muscle": "Lats",
+  "secondary": [
+   "Triceps"
+  ],
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "A lat isolation with locked arms sweeping the bar to the thighs.",
+  "steps": [
+   "Hold the bar at shoulder height, arms straight.",
+   "Sweep it down to your thighs in an arc.",
+   "Let it rise until you feel the lats stretch."
+  ]
+ },
+ {
+  "name": "Cable Pullover",
+  "muscle": "Lats",
+  "secondary": [
+   "Chest"
+  ],
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "A lying or standing cable arc that isolates the lats through a long range.",
+  "steps": [
+   "Face away from a high pulley holding the rope overhead.",
+   "Pull the rope down and past your hips with straight arms.",
+   "Return overhead slowly, keeping ribs down."
+  ]
+ },
+ {
+  "name": "Seated Cable Row",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps"
+  ],
+  "equipment": "Cable",
+  "desc": "A seated horizontal pull with constant cable tension for the mid-back.",
+  "steps": [
+   "Sit tall with knees soft and grab the handle.",
+   "Row to your stomach, driving elbows back.",
+   "Reach forward slowly to stretch between reps."
+  ]
+ },
+ {
+  "name": "Machine Row",
+  "muscle": "Lats",
+  "secondary": [
+   "Biceps"
+  ],
+  "equipment": "Machine",
+  "desc": "A supported machine pull that is simple to load and progress.",
+  "steps": [
+   "Set the chest pad so arms fully extend at the start.",
+   "Row the handles to your torso.",
+   "Squeeze, then return to a full stretch."
+  ]
+ },
+ {
+  "name": "Renegade Row",
+  "muscle": "Lats",
+  "secondary": [
+   "Core",
+   "Biceps"
+  ],
+  "equipment": "Dumbbell",
+  "rest": 60,
+  "desc": "Rowing from a plank — anti-rotation core work meets back training.",
+  "steps": [
+   "Set a plank with hands on two dumbbells.",
+   "Row one bell to your hip without twisting.",
+   "Lower and alternate sides with square hips."
+  ]
+ },
+ {
+  "name": "Barbell Back Squat",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes",
+   "Hamstrings",
+   "Core"
+  ],
+  "rest": 180,
+  "desc": "The barbell squat: the cornerstone of lower-body strength.",
+  "steps": [
+   "Bar on upper back, feet shoulder-width, toes slightly out.",
+   "Sit down between your hips until thighs reach parallel or below.",
+   "Drive up through the whole foot, knees tracking the toes."
+  ]
+ },
+ {
+  "name": "Front Squat",
+  "muscle": "Quads",
+  "secondary": [
+   "Core",
+   "Glutes"
+  ],
+  "rest": 180,
+  "desc": "A bar-in-front squat that keeps the torso tall and quads loaded.",
+  "steps": [
+   "Rack the bar on your front delts with high elbows.",
+   "Squat deep while keeping the chest vertical.",
+   "Stand up without letting the elbows drop."
+  ]
+ },
+ {
+  "name": "Box Squat",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes",
+   "Hamstrings"
+  ],
+  "rest": 180,
+  "desc": "Squatting to a box builds position, depth consistency, and starting power.",
+  "steps": [
+   "Set a box at parallel height behind you.",
+   "Sit back until you touch the box under control.",
+   "Pause briefly, then drive up without rocking."
+  ]
+ },
+ {
+  "name": "Pause Squat",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes",
+   "Core"
+  ],
+  "rest": 180,
+  "desc": "A squat with a dead stop in the hole to kill the bounce and build strength.",
+  "steps": [
+   "Descend to your full depth.",
+   "Hold a strict two-to-three second pause without relaxing.",
+   "Drive up hard with no rebound."
+  ]
+ },
+ {
+  "name": "Zercher Squat",
+  "muscle": "Quads",
+  "secondary": [
+   "Core",
+   "Glutes"
+  ],
+  "equipment": "Barbell",
+  "desc": "Bar cradled in the elbows — brutal for the core and upper back.",
+  "steps": [
+   "Cradle the bar in the crook of your elbows.",
+   "Squat deep, keeping the bar tight to your body.",
+   "Stand tall while resisting the forward pull."
+  ]
+ },
+ {
+  "name": "Goblet Squat",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes",
+   "Core"
+  ],
+  "equipment": "Kettlebell",
+  "rest": 90,
+  "desc": "A single-bell squat that teaches perfect squat posture.",
+  "steps": [
+   "Hold a kettlebell at your chest with both hands.",
+   "Squat between your elbows to full depth.",
+   "Drive up tall without dropping the bell."
+  ]
+ },
+ {
+  "name": "Smith Machine Squat",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes"
+  ],
+  "equipment": "Machine",
+  "desc": "A fixed-path squat useful for controlled overload and burnouts.",
+  "steps": [
+   "Set your feet slightly ahead of the bar path.",
+   "Lower to parallel keeping the torso stable.",
+   "Press through the floor to full lockout."
+  ]
+ },
+ {
+  "name": "Hack Squat",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes"
+  ],
+  "equipment": "Machine",
+  "desc": "A sled-guided squat that loads the quads without balancing a bar.",
+  "steps": [
+   "Shoulders under the pads, feet mid-platform.",
+   "Lower until thighs pass parallel.",
+   "Drive up without slamming into lockout."
+  ]
+ },
+ {
+  "name": "Leg Press",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes"
+  ],
+  "equipment": "Machine",
+  "incr": 10,
+  "desc": "Big leg loading with the back fully supported.",
+  "steps": [
+   "Feet shoulder-width on the platform.",
+   "Lower the sled until knees near your chest.",
+   "Press through the whole foot without locking hard."
+  ]
+ },
+ {
+  "name": "Leg Extension",
+  "muscle": "Quads",
+  "equipment": "Machine",
+  "rest": 60,
+  "desc": "Pure quad isolation with a squeeze at the top.",
+  "steps": [
+   "Line your knees up with the machine's pivot.",
+   "Extend to a straight leg and squeeze.",
+   "Lower slowly without letting the stack slam."
+  ]
+ },
+ {
+  "name": "Bulgarian Split Squat",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes"
+  ],
+  "equipment": "Dumbbell",
+  "rest": 90,
+  "desc": "A rear-foot-elevated split squat — the great equalizer for legs.",
+  "steps": [
+   "Place your rear foot on a bench behind you.",
+   "Lower straight down until the rear knee nears the floor.",
+   "Drive up through the front foot."
+  ]
+ },
+ {
+  "name": "Split Squat",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes"
+  ],
+  "equipment": "Dumbbell",
+  "rest": 90,
+  "desc": "A stationary lunge pattern for single-leg strength and balance.",
+  "steps": [
+   "Take a long stride stance and stay tall.",
+   "Lower the back knee toward the floor.",
+   "Push through the front heel to stand."
+  ]
+ },
+ {
+  "name": "Walking Lunge",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes"
+  ],
+  "equipment": "Dumbbell",
+  "rest": 60,
+  "desc": "Alternating lunges that cover ground and torch the legs.",
+  "steps": [
+   "Step forward into a deep lunge.",
+   "Drive through the front leg and step straight into the next.",
+   "Keep the torso tall the whole walk."
+  ]
+ },
+ {
+  "name": "Reverse Lunge",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes"
+  ],
+  "equipment": "Dumbbell",
+  "rest": 60,
+  "desc": "Stepping backward is easier on the knees and heavy on the glutes.",
+  "steps": [
+   "Step one foot back into a lunge.",
+   "Lower the back knee to just above the floor.",
+   "Push through the front foot to return."
+  ]
+ },
+ {
+  "name": "Curtsy Lunge",
+  "muscle": "Glutes",
+  "secondary": [
+   "Quads"
+  ],
+  "equipment": "Dumbbell",
+  "rest": 60,
+  "desc": "A cross-behind lunge that finds the glute medius.",
+  "steps": [
+   "Step one leg diagonally behind the other.",
+   "Lower until the front thigh is near parallel.",
+   "Drive back up and switch sides."
+  ]
+ },
+ {
+  "name": "Step-Up",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes"
+  ],
+  "equipment": "Dumbbell",
+  "rest": 60,
+  "desc": "Stepping onto a box with load — honest single-leg work.",
+  "steps": [
+   "Place one whole foot on a knee-high box.",
+   "Drive through that leg to stand on top.",
+   "Lower slowly with the same leg doing the work."
+  ]
+ },
+ {
+  "name": "Sissy Squat",
+  "muscle": "Quads",
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "A knees-forward squat variation that isolates the quads intensely.",
+  "steps": [
+   "Rise onto your toes and lean back from the knees.",
+   "Let the knees travel forward as you lower.",
+   "Squeeze the quads to return upright."
+  ]
+ },
+ {
+  "name": "Pistol Squat",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes",
+   "Core"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 90,
+  "desc": "A full single-leg squat to the floor — strength, mobility, and balance in one.",
+  "steps": [
+   "Stand on one leg with the other held out front.",
+   "Squat all the way down under control.",
+   "Drive up without touching the free foot down."
+  ]
+ },
+ {
+  "name": "Cyclist Squat",
+  "muscle": "Quads",
+  "equipment": "Barbell",
+  "desc": "Heels elevated, narrow stance — all knee travel, all quads.",
+  "steps": [
+   "Stand with heels on a wedge or plates.",
+   "Squat deep letting the knees travel far forward.",
+   "Drive up staying tall through the torso."
+  ]
+ },
+ {
+  "name": "Wall Sit",
+  "muscle": "Quads",
+  "tracking": "Duration & Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "An isometric hold at ninety degrees that burns out the quads.",
+  "steps": [
+   "Slide down a wall until thighs are parallel.",
+   "Keep shins vertical and back flat on the wall.",
+   "Hold for time, breathing steadily."
+  ]
+ },
+ {
+  "name": "Romanian Deadlift",
+  "muscle": "Hamstrings",
+  "secondary": [
+   "Glutes",
+   "Forearms"
+  ],
+  "desc": "The hip hinge that builds hamstrings and glutes from a standing start.",
+  "steps": [
+   "Hold the bar at your hips with soft knees.",
+   "Push your hips back until the hamstrings stretch hard.",
+   "Stand tall by squeezing the glutes through."
+  ]
+ },
+ {
+  "name": "Stiff-Leg Deadlift",
+  "muscle": "Hamstrings",
+  "secondary": [
+   "Glutes",
+   "Lats"
+  ],
+  "desc": "A straighter-leg hinge from the floor for maximum hamstring stretch.",
+  "steps": [
+   "Keep knees nearly straight as you hinge to the bar.",
+   "Grip and stand tall with a flat back.",
+   "Lower along your legs with hips high."
+  ]
+ },
+ {
+  "name": "Single-Leg RDL",
+  "muscle": "Hamstrings",
+  "secondary": [
+   "Glutes",
+   "Core"
+  ],
+  "equipment": "Dumbbell",
+  "rest": 60,
+  "desc": "A one-leg hinge that builds balance and hamstring control.",
+  "steps": [
+   "Hinge forward on one leg, free leg trailing straight back.",
+   "Lower the weight toward the floor with square hips.",
+   "Squeeze the glute to return to standing."
+  ]
+ },
+ {
+  "name": "Good Morning",
+  "muscle": "Hamstrings",
+  "secondary": [
+   "Glutes",
+   "Lats"
+  ],
+  "desc": "A barbell hinge with the bar on your back — potent posterior work.",
+  "steps": [
+   "Set the bar as for squats and soften the knees.",
+   "Hinge until your torso nears parallel.",
+   "Drive the hips forward to stand."
+  ]
+ },
+ {
+  "name": "Leg Curl",
+  "muscle": "Hamstrings",
+  "equipment": "Machine",
+  "rest": 60,
+  "desc": "Machine knee flexion to isolate the hamstrings.",
+  "steps": [
+   "Line knees up with the pivot and hook your ankles.",
+   "Curl the pad toward your glutes.",
+   "Lower slowly to a full stretch."
+  ]
+ },
+ {
+  "name": "Seated Leg Curl",
+  "muscle": "Hamstrings",
+  "equipment": "Machine",
+  "rest": 60,
+  "desc": "A seated curl that trains the hamstrings at a long muscle length.",
+  "steps": [
+   "Sit with the pad locked over your thighs.",
+   "Curl your heels beneath the seat.",
+   "Return slowly against the stack."
+  ]
+ },
+ {
+  "name": "Nordic Hamstring Curl",
+  "muscle": "Hamstrings",
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 120,
+  "desc": "Lowering your body from kneeling by hamstring strength alone.",
+  "steps": [
+   "Anchor your ankles and kneel tall.",
+   "Lower your torso forward as slowly as possible.",
+   "Catch with your hands and push back lightly."
+  ]
+ },
+ {
+  "name": "Glute-Ham Raise",
+  "muscle": "Hamstrings",
+  "secondary": [
+   "Glutes"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Machine",
+  "rest": 90,
+  "desc": "The GHD movement that curls your whole body up with hamstrings.",
+  "steps": [
+   "Lock your feet in the GHD with knees on the pad.",
+   "Lower your torso toward horizontal.",
+   "Curl back to upright with hamstrings and glutes."
+  ]
+ },
+ {
+  "name": "Sliding Leg Curl",
+  "muscle": "Hamstrings",
+  "secondary": [
+   "Glutes",
+   "Core"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "A bridge with sliders that curls the heels in and out.",
+  "steps": [
+   "Bridge your hips up with heels on sliders.",
+   "Curl the heels toward your glutes.",
+   "Slide back out without dropping the hips."
+  ]
+ },
+ {
+  "name": "Hip Thrust",
+  "muscle": "Glutes",
+  "secondary": [
+   "Hamstrings"
+  ],
+  "desc": "The barbell bridge that isolates and overloads the glutes.",
+  "steps": [
+   "Upper back on a bench, bar over your hips.",
+   "Drive the hips to full lockout with a posterior tilt.",
+   "Lower a few inches and drive again."
+  ]
+ },
+ {
+  "name": "Barbell Glute Bridge",
+  "muscle": "Glutes",
+  "secondary": [
+   "Hamstrings"
+  ],
+  "desc": "A floor-based bridge for heavy, simple glute loading.",
+  "steps": [
+   "Lie on the floor with the bar padded over your hips.",
+   "Drive hips up until your body forms a line.",
+   "Squeeze hard at the top, then lower."
+  ]
+ },
+ {
+  "name": "Glute Bridge",
+  "muscle": "Glutes",
+  "secondary": [
+   "Hamstrings"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 45,
+  "desc": "The bodyweight bridge — activation, burnouts, and beginners.",
+  "steps": [
+   "Lie with knees bent, feet flat near your hips.",
+   "Squeeze the glutes to lift the hips.",
+   "Hold a beat at the top, then lower."
+  ]
+ },
+ {
+  "name": "Single-Leg Hip Thrust",
+  "muscle": "Glutes",
+  "secondary": [
+   "Hamstrings"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "One-leg thrusts that expose and fix side-to-side gaps.",
+  "steps": [
+   "Set up as a hip thrust with one foot down.",
+   "Drive that heel to full hip extension.",
+   "Keep the hips level the entire rep."
+  ]
+ },
+ {
+  "name": "Frog Pump",
+  "muscle": "Glutes",
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 45,
+  "desc": "Soles-together pumps that flood the glutes with volume.",
+  "steps": [
+   "Lie down, soles of feet pressed together, knees wide.",
+   "Drive the hips up through the outer feet.",
+   "Pump reps with a hard squeeze each time."
+  ]
+ },
+ {
+  "name": "Sumo Deadlift",
+  "muscle": "Glutes",
+  "secondary": [
+   "Hamstrings",
+   "Quads",
+   "Forearms"
+  ],
+  "rest": 180,
+  "desc": "A wide-stance pull that recruits more glutes and inner thigh.",
+  "steps": [
+   "Take a wide stance, toes out, grip inside the knees.",
+   "Wedge hips down, chest up, and pull.",
+   "Lock out by driving the hips through."
+  ]
+ },
+ {
+  "name": "Cable Pull-Through",
+  "muscle": "Glutes",
+  "secondary": [
+   "Hamstrings"
+  ],
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "A cable hinge with the rope between your legs — glutes with backspin.",
+  "steps": [
+   "Face away from a low pulley, rope between your legs.",
+   "Hinge forward letting the cable pull through.",
+   "Snap the hips forward to stand tall."
+  ]
+ },
+ {
+  "name": "Cable Kickback",
+  "muscle": "Glutes",
+  "equipment": "Cable",
+  "rest": 45,
+  "desc": "A strict one-leg cable extension for the glute squeeze.",
+  "steps": [
+   "Attach an ankle cuff and hinge slightly forward.",
+   "Kick the leg back and up without arching.",
+   "Return slowly, keeping tension on the glute."
+  ]
+ },
+ {
+  "name": "Machine Hip Abduction",
+  "muscle": "Glutes",
+  "equipment": "Machine",
+  "rest": 45,
+  "desc": "Pressing the knees apart to build the glute medius.",
+  "steps": [
+   "Sit with pads outside your knees.",
+   "Press your knees apart as far as possible.",
+   "Return slowly without letting the stack rest."
+  ]
+ },
+ {
+  "name": "Banded Lateral Walk",
+  "muscle": "Glutes",
+  "secondary": [
+   "Quads"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Resistance Band",
+  "rest": 45,
+  "desc": "Side steps against a band to wake up the hips.",
+  "steps": [
+   "Loop a band just above the knees and quarter-squat.",
+   "Step sideways keeping tension in the band.",
+   "Lead with the knee, not the foot, both directions."
+  ]
+ },
+ {
+  "name": "Standing Calf Raise",
+  "muscle": "Calves",
+  "equipment": "Machine",
+  "incr": 10,
+  "rest": 45,
+  "desc": "The straight-leg raise that builds the gastrocnemius.",
+  "steps": [
+   "Balls of feet on the platform, heels hanging.",
+   "Drop into a deep stretch at the bottom.",
+   "Rise to your highest tiptoe and pause."
+  ]
+ },
+ {
+  "name": "Seated Calf Raise",
+  "muscle": "Calves",
+  "equipment": "Machine",
+  "rest": 45,
+  "desc": "A bent-knee raise that targets the deeper soleus.",
+  "steps": [
+   "Sit with the pad over your knees, toes on the platform.",
+   "Lower heels to a full stretch.",
+   "Press up and squeeze at the top."
+  ]
+ },
+ {
+  "name": "Donkey Calf Raise",
+  "muscle": "Calves",
+  "equipment": "Machine",
+  "rest": 45,
+  "desc": "A hinged-over raise with a huge stretch on the calves.",
+  "steps": [
+   "Hinge at the hips with toes on a block.",
+   "Sink the heels below the block.",
+   "Drive up onto the toes fully."
+  ]
+ },
+ {
+  "name": "Single-Leg Calf Raise",
+  "muscle": "Calves",
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 45,
+  "desc": "One-leg raises off a step — simple, brutal, effective.",
+  "steps": [
+   "Stand on one foot on a step edge.",
+   "Lower the heel to a deep stretch.",
+   "Rise as high as possible onto the toe."
+  ]
+ },
+ {
+  "name": "Leg Press Calf Raise",
+  "muscle": "Calves",
+  "equipment": "Machine",
+  "incr": 10,
+  "rest": 45,
+  "desc": "Calf presses on the leg press sled for easy heavy loading.",
+  "steps": [
+   "Place the balls of your feet on the platform's low edge.",
+   "Let the sled stretch your calves fully.",
+   "Press through the toes without bending knees."
+  ]
+ },
+ {
+  "name": "Tibialis Raise",
+  "muscle": "Calves",
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 45,
+  "desc": "Raising the toes against gravity to bulletproof the shins.",
+  "steps": [
+   "Lean back against a wall, heels a foot out.",
+   "Lift your toes as high as they go.",
+   "Lower slowly and repeat for high reps."
+  ]
+ },
+ {
+  "name": "Overhead Press",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Triceps",
+   "Core"
+  ],
+  "incr": 2.5,
+  "desc": "The standing barbell press — raw shoulder strength, no backrest.",
+  "steps": [
+   "Bar at your collarbones, grip just outside shoulders.",
+   "Brace and press straight up past your face.",
+   "Lock out overhead with biceps by your ears."
+  ]
+ },
+ {
+  "name": "Push Press",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Triceps",
+   "Quads"
+  ],
+  "desc": "A leg-drive press that lets you overload the overhead lockout.",
+  "steps": [
+   "Dip a few inches with a vertical torso.",
+   "Drive up with the legs and punch the bar overhead.",
+   "Lower to the shoulders under control."
+  ]
+ },
+ {
+  "name": "Seated Dumbbell Press",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Triceps"
+  ],
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "desc": "A supported dumbbell press for strict shoulder work.",
+  "steps": [
+   "Sit tall with dumbbells at shoulder height.",
+   "Press up until the bells nearly touch overhead.",
+   "Lower to ear level under control."
+  ]
+ },
+ {
+  "name": "Arnold Press",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Triceps"
+  ],
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "desc": "A rotating press that sweeps the front and side delts.",
+  "steps": [
+   "Start with palms facing you at the shoulders.",
+   "Rotate palms forward as you press overhead.",
+   "Reverse the rotation on the way down."
+  ]
+ },
+ {
+  "name": "Machine Shoulder Press",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Triceps"
+  ],
+  "equipment": "Machine",
+  "desc": "A guided press that keeps shoulders honest and safe under fatigue.",
+  "steps": [
+   "Set the seat so handles start at shoulder height.",
+   "Press to full extension overhead.",
+   "Lower slowly without clanking the stack."
+  ]
+ },
+ {
+  "name": "Landmine Shoulder Press",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Triceps",
+   "Core"
+  ],
+  "equipment": "Specialty Bar",
+  "desc": "An angled press that suits shoulders that hate strict vertical pressing.",
+  "steps": [
+   "Hold the landmine end at one shoulder, staggered stance.",
+   "Press up and forward along the arc.",
+   "Control the return without shrugging."
+  ]
+ },
+ {
+  "name": "Behind-the-Neck Press",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Triceps"
+  ],
+  "desc": "A behind-the-head press for mobile shoulders — light and strict.",
+  "steps": [
+   "Grip wide with the bar behind your head.",
+   "Press straight up from the base of the neck.",
+   "Lower carefully only as far as mobility allows."
+  ]
+ },
+ {
+  "name": "Lateral Raise",
+  "muscle": "Deltoids",
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "rest": 45,
+  "desc": "The side-delt builder that gives shoulders their width.",
+  "steps": [
+   "Stand tall with dumbbells at your sides.",
+   "Raise out to shoulder height, leading with the elbows.",
+   "Lower slowly — no swinging."
+  ]
+ },
+ {
+  "name": "Cable Lateral Raise",
+  "muscle": "Deltoids",
+  "equipment": "Cable",
+  "rest": 45,
+  "desc": "A cable side raise with tension from the very bottom.",
+  "steps": [
+   "Stand beside a low pulley, handle in the far hand.",
+   "Raise the arm across and out to shoulder height.",
+   "Lower against the cable's pull slowly."
+  ]
+ },
+ {
+  "name": "Single-Arm Cable Lateral",
+  "muscle": "Deltoids",
+  "equipment": "Cable",
+  "rest": 45,
+  "desc": "Strict one-arm laterals for even shoulder caps.",
+  "steps": [
+   "Grab the low pulley with your outside hand.",
+   "Raise to shoulder height without leaning.",
+   "Resist the negative all the way down."
+  ]
+ },
+ {
+  "name": "Front Raise",
+  "muscle": "Deltoids",
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "rest": 45,
+  "desc": "Raises to the front for the anterior delts.",
+  "steps": [
+   "Hold dumbbells in front of your thighs.",
+   "Raise one or both to eye level.",
+   "Lower under control without swinging."
+  ]
+ },
+ {
+  "name": "Plate Front Raise",
+  "muscle": "Deltoids",
+  "rest": 45,
+  "desc": "A single plate raised to eye level — simple front-delt finisher.",
+  "steps": [
+   "Hold a plate at both sides like a steering wheel.",
+   "Raise it to eye level with straight-ish arms.",
+   "Lower slowly to the thighs."
+  ]
+ },
+ {
+  "name": "Rear Delt Fly",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Lats"
+  ],
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "rest": 45,
+  "desc": "Bent-over reverse flys for the neglected rear delts.",
+  "steps": [
+   "Hinge to near-parallel with dumbbells hanging.",
+   "Sweep the arms wide to shoulder height.",
+   "Lower slowly without standing up."
+  ]
+ },
+ {
+  "name": "Face Pull",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Lats"
+  ],
+  "equipment": "Cable",
+  "rest": 45,
+  "desc": "A high rope pull to the face for rear delts and healthy shoulders.",
+  "steps": [
+   "Set the rope at face height and grip thumbs-back.",
+   "Pull toward your eyes, elbows high and wide.",
+   "Finish with knuckles beside your ears."
+  ]
+ },
+ {
+  "name": "Upright Row",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Biceps",
+   "Forearms"
+  ],
+  "desc": "A vertical pull to the sternum for delts and traps.",
+  "steps": [
+   "Grip the bar about shoulder width.",
+   "Pull to sternum height, elbows leading.",
+   "Lower under control; keep wrists relaxed."
+  ]
+ },
+ {
+  "name": "Cuban Rotation",
+  "muscle": "Deltoids",
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "rest": 45,
+  "desc": "An external-rotation press that armors the rotator cuff.",
+  "steps": [
+   "Row light bells to an upright-row position.",
+   "Rotate the forearms up until vertical.",
+   "Press overhead, then reverse each step."
+  ]
+ },
+ {
+  "name": "Pike Push-Up",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Triceps"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "A hips-high push-up that presses like a handstand.",
+  "steps": [
+   "Set a pike with hips high and hands ahead.",
+   "Lower the crown of your head to the floor.",
+   "Press back up along the same angle."
+  ]
+ },
+ {
+  "name": "Handstand Push-Up",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Triceps",
+   "Core"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 120,
+  "desc": "The bodyweight overhead press — vertical pressing against the wall.",
+  "steps": [
+   "Kick up to a wall handstand.",
+   "Lower your head to the floor under control.",
+   "Press back to a locked handstand."
+  ]
+ },
+ {
+  "name": "Triceps Pushdown",
+  "muscle": "Triceps",
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "The staple cable extension for horseshoe triceps.",
+  "steps": [
+   "Elbows pinned to your sides on a high pulley.",
+   "Push the bar down to full lockout.",
+   "Let it rise to a stretch without moving the elbows."
+  ]
+ },
+ {
+  "name": "Rope Pushdown",
+  "muscle": "Triceps",
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "A rope pushdown with a spread at the bottom for a harder squeeze.",
+  "steps": [
+   "Grip the rope with thumbs up, elbows tucked.",
+   "Push down and pull the rope apart at lockout.",
+   "Return slowly to a full stretch."
+  ]
+ },
+ {
+  "name": "Skull Crusher",
+  "muscle": "Triceps",
+  "equipment": "Specialty Bar",
+  "incr": 2.5,
+  "rest": 60,
+  "desc": "Lying extensions to the forehead for mass on the long head.",
+  "steps": [
+   "Lie back with the bar over your chest.",
+   "Bend only the elbows to lower toward your forehead.",
+   "Extend back to lockout without flaring."
+  ]
+ },
+ {
+  "name": "Close-Grip Bench Press",
+  "muscle": "Triceps",
+  "secondary": [
+   "Chest",
+   "Deltoids"
+  ],
+  "desc": "A narrow-grip bench that turns the press into triceps work.",
+  "steps": [
+   "Grip the bar just inside shoulder width.",
+   "Lower to the lower chest with tucked elbows.",
+   "Press up focusing on pushing with the triceps."
+  ]
+ },
+ {
+  "name": "JM Press",
+  "muscle": "Triceps",
+  "secondary": [
+   "Chest"
+  ],
+  "desc": "A hybrid of close-grip bench and skull crusher for pressing lockout.",
+  "steps": [
+   "Lower the bar toward your chin, elbows tucked hard.",
+   "Let the forearms fold to about 45 degrees.",
+   "Extend back to lockout."
+  ]
+ },
+ {
+  "name": "Overhead Cable Extension",
+  "muscle": "Triceps",
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "An overhead extension that stretches the long head under cable tension.",
+  "steps": [
+   "Face away from the pulley with the rope overhead.",
+   "Extend to a full lockout in front of you.",
+   "Let the rope pull back to a deep stretch."
+  ]
+ },
+ {
+  "name": "Dumbbell Overhead Extension",
+  "muscle": "Triceps",
+  "equipment": "Dumbbell",
+  "rest": 60,
+  "desc": "A two-hand dumbbell extension from behind the head.",
+  "steps": [
+   "Hold one bell overhead with both palms under the plate.",
+   "Lower it behind your head to a full stretch.",
+   "Extend to lockout keeping elbows narrow."
+  ]
+ },
+ {
+  "name": "Triceps Kickback",
+  "muscle": "Triceps",
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "rest": 45,
+  "desc": "A strict rear extension with the upper arm frozen in place.",
+  "steps": [
+   "Hinge over with the upper arm parallel to the floor.",
+   "Extend the forearm straight back to lockout.",
+   "Pause, then lower only the forearm."
+  ]
+ },
+ {
+  "name": "Dip",
+  "muscle": "Triceps",
+  "secondary": [
+   "Chest"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 90,
+  "desc": "The bodyweight press for triceps and lower chest — add weight when ready.",
+  "steps": [
+   "Support yourself on parallel bars, shoulders down.",
+   "Lower until upper arms reach parallel.",
+   "Press back to a straight-arm lockout."
+  ]
+ },
+ {
+  "name": "Assisted Dip",
+  "muscle": "Triceps",
+  "secondary": [
+   "Chest"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Machine",
+  "assisted": true,
+  "rest": 90,
+  "desc": "Machine-assisted dips on the way to full bodyweight — more help, easier rep.",
+  "steps": [
+   "Kneel on the assist pad and grip the bars.",
+   "Lower to parallel upper arms.",
+   "Press up, trimming assistance as you get stronger."
+  ]
+ },
+ {
+  "name": "Bench Dip",
+  "muscle": "Triceps",
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "Dips with hands on a bench — an anywhere triceps builder.",
+  "steps": [
+   "Hands on a bench edge, legs extended forward.",
+   "Lower your hips until elbows hit ninety degrees.",
+   "Press back up without shrugging."
+  ]
+ },
+ {
+  "name": "Diamond Push-Up",
+  "muscle": "Triceps",
+  "secondary": [
+   "Chest",
+   "Core"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "Hands in a diamond — the hardest push-up for triceps.",
+  "steps": [
+   "Form a diamond with thumbs and index fingers.",
+   "Lower your chest to your hands, elbows tight.",
+   "Press to lockout without flaring."
+  ]
+ },
+ {
+  "name": "Tate Press",
+  "muscle": "Triceps",
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "rest": 60,
+  "desc": "Elbows-out dumbbell extensions to the chest for the lockout.",
+  "steps": [
+   "Lie back with bells over your chest, palms forward.",
+   "Fold the elbows out so plates touch your chest.",
+   "Extend back up keeping bells together."
+  ]
+ },
+ {
+  "name": "Barbell Curl",
+  "muscle": "Biceps",
+  "secondary": [
+   "Forearms"
+  ],
+  "incr": 2.5,
+  "rest": 60,
+  "desc": "The straight-bar curl — the biceps mass standard.",
+  "steps": [
+   "Grip shoulder-width with elbows at your sides.",
+   "Curl to shoulder height without swinging.",
+   "Lower slowly to full extension."
+  ]
+ },
+ {
+  "name": "EZ-Bar Curl",
+  "muscle": "Biceps",
+  "secondary": [
+   "Forearms"
+  ],
+  "equipment": "Specialty Bar",
+  "incr": 2.5,
+  "rest": 60,
+  "desc": "An angled-grip curl that spares the wrists.",
+  "steps": [
+   "Grip the angled sections at shoulder width.",
+   "Curl to the top with pinned elbows.",
+   "Control the negative fully."
+  ]
+ },
+ {
+  "name": "Hammer Curl",
+  "muscle": "Biceps",
+  "secondary": [
+   "Forearms"
+  ],
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "rest": 60,
+  "desc": "Neutral-grip curls that thicken the arm through the brachialis.",
+  "steps": [
+   "Hold dumbbells with palms facing each other.",
+   "Curl without rotating the wrists.",
+   "Lower under control to your sides."
+  ]
+ },
+ {
+  "name": "Cross-Body Hammer Curl",
+  "muscle": "Biceps",
+  "secondary": [
+   "Forearms"
+  ],
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "rest": 60,
+  "desc": "Hammer curls across the torso for brachialis and forearm.",
+  "steps": [
+   "Curl one bell across toward the opposite shoulder.",
+   "Keep the palm neutral the whole way.",
+   "Alternate arms with strict form."
+  ]
+ },
+ {
+  "name": "Preacher Curl",
+  "muscle": "Biceps",
+  "equipment": "Specialty Bar",
+  "incr": 2.5,
+  "rest": 60,
+  "desc": "Curling over a pad removes all cheating from the equation.",
+  "steps": [
+   "Armpits snug over the preacher pad.",
+   "Curl to the top without lifting the elbows.",
+   "Lower to a near-full stretch, no bouncing."
+  ]
+ },
+ {
+  "name": "Incline Dumbbell Curl",
+  "muscle": "Biceps",
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "rest": 60,
+  "desc": "Curling from a long stretch behind the body on an incline bench.",
+  "steps": [
+   "Lie back on an incline with arms hanging.",
+   "Curl both bells without drifting the elbows forward.",
+   "Lower to a deep stretch behind you."
+  ]
+ },
+ {
+  "name": "Concentration Curl",
+  "muscle": "Biceps",
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "rest": 45,
+  "desc": "The classic seated single-arm peak builder.",
+  "steps": [
+   "Brace your elbow against your inner thigh.",
+   "Curl to your shoulder with zero swing.",
+   "Lower slow and full."
+  ]
+ },
+ {
+  "name": "Spider Curl",
+  "muscle": "Biceps",
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "rest": 60,
+  "desc": "Chest-down curls with arms hanging vertical — pure peak contraction.",
+  "steps": [
+   "Lie prone on an incline bench, arms hanging.",
+   "Curl the bells as high as possible.",
+   "Squeeze hard, then lower fully."
+  ]
+ },
+ {
+  "name": "Cable Curl",
+  "muscle": "Biceps",
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "Curls with constant cable tension top to bottom.",
+  "steps": [
+   "Grab a bar on the low pulley.",
+   "Curl to shoulder height with pinned elbows.",
+   "Resist the stack on the way down."
+  ]
+ },
+ {
+  "name": "Bayesian Cable Curl",
+  "muscle": "Biceps",
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "A behind-the-body cable curl that loads the stretch hardest.",
+  "steps": [
+   "Face away from a low pulley, arm trailing behind.",
+   "Curl forward and up to full contraction.",
+   "Let the cable pull back to a long stretch."
+  ]
+ },
+ {
+  "name": "Zottman Curl",
+  "muscle": "Biceps",
+  "secondary": [
+   "Forearms"
+  ],
+  "equipment": "Dumbbell",
+  "incr": 2.5,
+  "rest": 60,
+  "desc": "Curl up palms-up, lower palms-down — biceps and forearms in one.",
+  "steps": [
+   "Curl the bells with palms up.",
+   "Rotate to palms-down at the top.",
+   "Lower slowly in the reverse grip."
+  ]
+ },
+ {
+  "name": "Drag Curl",
+  "muscle": "Biceps",
+  "incr": 2.5,
+  "rest": 60,
+  "desc": "Dragging the bar up the torso with elbows sweeping back.",
+  "steps": [
+   "Start a curl but pull the elbows behind you.",
+   "Drag the bar up your torso to the lower chest.",
+   "Lower along the same path."
+  ]
+ },
+ {
+  "name": "Machine Curl",
+  "muscle": "Biceps",
+  "equipment": "Machine",
+  "rest": 60,
+  "desc": "A supported machine curl for clean, heavy contractions.",
+  "steps": [
+   "Set the seat so elbows match the pivot.",
+   "Curl to full contraction.",
+   "Lower without letting the stack touch down."
+  ]
+ },
+ {
+  "name": "Barbell 21s",
+  "muscle": "Biceps",
+  "incr": 2.5,
+  "rest": 90,
+  "desc": "Seven bottom-half, seven top-half, seven full curls — one burning set.",
+  "steps": [
+   "Do seven curls from bottom to halfway.",
+   "Do seven from halfway to the top.",
+   "Finish with seven full-range curls."
+  ]
+ },
+ {
+  "name": "Wrist Curl",
+  "muscle": "Forearms",
+  "incr": 2.5,
+  "rest": 45,
+  "desc": "Palms-up wrist flexion for forearm size and grip.",
+  "steps": [
+   "Forearms on a bench, palms up, bar in fingers.",
+   "Curl the wrists up as high as possible.",
+   "Lower until the bar rolls to your fingertips."
+  ]
+ },
+ {
+  "name": "Reverse Wrist Curl",
+  "muscle": "Forearms",
+  "incr": 2.5,
+  "rest": 45,
+  "desc": "Palms-down wrist extension to balance the forearm.",
+  "steps": [
+   "Forearms on a bench, palms down.",
+   "Raise the knuckles as high as possible.",
+   "Lower slowly to a full stretch."
+  ]
+ },
+ {
+  "name": "Behind-the-Back Wrist Curl",
+  "muscle": "Forearms",
+  "incr": 2.5,
+  "rest": 45,
+  "desc": "Standing wrist curls with the bar behind you — heavy and simple.",
+  "steps": [
+   "Hold a bar behind your thighs, palms back.",
+   "Curl the wrists up, rolling to the fingers and back.",
+   "Keep arms still; only wrists move."
+  ]
+ },
+ {
+  "name": "Reverse Curl",
+  "muscle": "Forearms",
+  "secondary": [
+   "Biceps"
+  ],
+  "incr": 2.5,
+  "rest": 60,
+  "desc": "An overhand curl that builds the brachioradialis ridge.",
+  "steps": [
+   "Grip the bar palms-down at shoulder width.",
+   "Curl with pinned elbows and locked wrists.",
+   "Lower slowly to full extension."
+  ]
+ },
+ {
+  "name": "Farmer's Carry",
+  "muscle": "Forearms",
+  "secondary": [
+   "Core"
+  ],
+  "tracking": "Duration & Reps",
+  "equipment": "Dumbbell",
+  "rest": 90,
+  "desc": "Pick up heavy things and walk — grip, traps, and core in one.",
+  "steps": [
+   "Deadlift a heavy bell in each hand.",
+   "Walk tall with tight ribs and level hips.",
+   "Carry for time or distance, then set down safely."
+  ]
+ },
+ {
+  "name": "Plate Pinch",
+  "muscle": "Forearms",
+  "tracking": "Duration & Reps",
+  "rest": 60,
+  "desc": "Pinch-gripping smooth plates for crushing thumb strength.",
+  "steps": [
+   "Pinch two plates smooth-side out between fingers and thumb.",
+   "Hold at your side for time.",
+   "Set them down before your grip fails."
+  ]
+ },
+ {
+  "name": "Dead Hang",
+  "muscle": "Forearms",
+  "secondary": [
+   "Lats"
+  ],
+  "tracking": "Duration & Reps",
+  "equipment": "Bodyweight",
+  "rest": 90,
+  "desc": "Hanging from the bar for time — grip, shoulders, and spine decompression.",
+  "steps": [
+   "Hang from a pull-up bar with an overhand grip.",
+   "Keep shoulders slightly active, body still.",
+   "Hang for time and step off with control."
+  ]
+ },
+ {
+  "name": "Towel Pull-Up",
+  "muscle": "Forearms",
+  "secondary": [
+   "Lats",
+   "Biceps"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 120,
+  "desc": "Pull-ups gripping towels — savage grip with your back work.",
+  "steps": [
+   "Drape two towels over the bar and grip them.",
+   "Pull your chin to hand height.",
+   "Lower under control without slipping."
+  ]
+ },
+ {
+  "name": "Plank",
+  "muscle": "Core",
+  "tracking": "Duration & Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "The isometric baseline for a braced, rigid torso.",
+  "steps": [
+   "Forearms down, body in one straight line.",
+   "Squeeze glutes and brace like taking a punch.",
+   "Hold for time without sagging or piking."
+  ]
+ },
+ {
+  "name": "Weighted Plank",
+  "muscle": "Core",
+  "tracking": "Duration & Reps",
+  "equipment": "Bodyweight",
+  "rest": 90,
+  "desc": "A plank with plates on your back once time gets long.",
+  "steps": [
+   "Have a partner set a plate on your mid-back.",
+   "Hold a perfect line under the load.",
+   "End the set before form breaks."
+  ]
+ },
+ {
+  "name": "Side Plank",
+  "muscle": "Core",
+  "tracking": "Duration & Reps",
+  "equipment": "Bodyweight",
+  "rest": 45,
+  "desc": "A lateral hold for the obliques and hip stability.",
+  "steps": [
+   "Stack your feet with one forearm down.",
+   "Lift the hips into a straight side-on line.",
+   "Hold, then switch sides evenly."
+  ]
+ },
+ {
+  "name": "Copenhagen Plank",
+  "muscle": "Core",
+  "secondary": [
+   "Quads"
+  ],
+  "tracking": "Duration & Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "A side plank with the top leg on a bench — adductors of steel.",
+  "steps": [
+   "Top foot on a bench, bottom leg free.",
+   "Lift into a side plank from the inner thigh.",
+   "Hold without letting the hips drop."
+  ]
+ },
+ {
+  "name": "Hollow Body Hold",
+  "muscle": "Core",
+  "tracking": "Duration & Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "The gymnast's dish hold that teaches total-body tension.",
+  "steps": [
+   "Press your lower back into the floor.",
+   "Float arms and legs with ribs pulled down.",
+   "Hold the dish shape while breathing."
+  ]
+ },
+ {
+  "name": "L-Sit",
+  "muscle": "Core",
+  "secondary": [
+   "Triceps"
+  ],
+  "tracking": "Duration & Reps",
+  "equipment": "Bodyweight",
+  "rest": 90,
+  "desc": "Legs held at ninety on bars — compression strength for time.",
+  "steps": [
+   "Support on parallettes or dip bars.",
+   "Lift straight legs to horizontal.",
+   "Hold with locked knees and tall shoulders."
+  ]
+ },
+ {
+  "name": "Ab Wheel Rollout",
+  "muscle": "Core",
+  "secondary": [
+   "Lats"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "Rolling out to a stretched plank and pulling back with pure abs.",
+  "steps": [
+   "Kneel with the wheel under your shoulders.",
+   "Roll out as far as you can hold a flat line.",
+   "Pull back with abs, not hips."
+  ]
+ },
+ {
+  "name": "Hanging Leg Raise",
+  "muscle": "Core",
+  "secondary": [
+   "Forearms"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "Raising straight legs from a dead hang — the elite ab move.",
+  "steps": [
+   "Hang with legs straight and together.",
+   "Raise your toes toward the bar without swinging.",
+   "Lower under control to a full hang."
+  ]
+ },
+ {
+  "name": "Hanging Knee Raise",
+  "muscle": "Core",
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "The bent-knee version — the on-ramp to full leg raises.",
+  "steps": [
+   "Hang from the bar, shoulders active.",
+   "Curl the knees to your chest.",
+   "Lower slowly without swinging."
+  ]
+ },
+ {
+  "name": "Cable Crunch",
+  "muscle": "Core",
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "Kneeling crunches against the stack — abs you can load forever.",
+  "steps": [
+   "Kneel below a high rope, hands by your head.",
+   "Crunch ribs to hips against the cable.",
+   "Return tall without pulling with your arms."
+  ]
+ },
+ {
+  "name": "Sit-Up",
+  "muscle": "Core",
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 45,
+  "desc": "The classic full sit-up, strict and unanchored.",
+  "steps": [
+   "Knees bent, feet flat, hands across chest.",
+   "Curl all the way up to your knees.",
+   "Lower one vertebra at a time."
+  ]
+ },
+ {
+  "name": "V-Up",
+  "muscle": "Core",
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 45,
+  "desc": "Folding into a V — abs and hip flexors together.",
+  "steps": [
+   "Lie flat with arms overhead.",
+   "Fold up, touching hands toward toes.",
+   "Lower both halves under control."
+  ]
+ },
+ {
+  "name": "Russian Twist",
+  "muscle": "Core",
+  "tracking": "Weight & Reps",
+  "incr": 2.5,
+  "rest": 45,
+  "equipment": "Kettlebell",
+  "desc": "Seated rotations with a weight for the obliques.",
+  "steps": [
+   "Sit back to a 45-degree lean, heels light.",
+   "Rotate the weight side to side.",
+   "Turn the shoulders, not just the arms."
+  ]
+ },
+ {
+  "name": "Woodchopper",
+  "muscle": "Core",
+  "equipment": "Cable",
+  "rest": 45,
+  "desc": "A diagonal cable chop that trains rotation with load.",
+  "steps": [
+   "Set the cable high and stand side-on.",
+   "Chop diagonally across to the opposite hip.",
+   "Control the return along the same line."
+  ]
+ },
+ {
+  "name": "Pallof Press",
+  "muscle": "Core",
+  "equipment": "Cable",
+  "rest": 45,
+  "desc": "An anti-rotation press-out that the obliques hate quietly.",
+  "steps": [
+   "Stand side-on holding the cable at your chest.",
+   "Press straight out and hold against the pull.",
+   "Return without letting your torso twist."
+  ]
+ },
+ {
+  "name": "Dead Bug",
+  "muscle": "Core",
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 45,
+  "desc": "Opposite arm and leg reaches with the low back glued down.",
+  "steps": [
+   "Lie down, arms up, knees over hips.",
+   "Extend opposite arm and leg to hover.",
+   "Return and switch without arching."
+  ]
+ },
+ {
+  "name": "Bird Dog",
+  "muscle": "Core",
+  "secondary": [
+   "Glutes"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 45,
+  "desc": "Opposite-limb reaches from all fours for a stable spine.",
+  "steps": [
+   "From hands and knees, reach one arm and the opposite leg.",
+   "Hold a level pelvis for a beat.",
+   "Return quietly and switch sides."
+  ]
+ },
+ {
+  "name": "Mountain Climbers",
+  "muscle": "Core",
+  "secondary": [
+   "Quads"
+  ],
+  "tracking": "Duration & Reps",
+  "equipment": "Bodyweight",
+  "rest": 45,
+  "desc": "Running knees in a plank — core work at conditioning pace.",
+  "steps": [
+   "Set a strong high plank.",
+   "Drive knees toward your chest alternately.",
+   "Keep hips level and pace steady."
+  ]
+ },
+ {
+  "name": "Dragon Flag",
+  "muscle": "Core",
+  "secondary": [
+   "Lats"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 120,
+  "desc": "The Bruce Lee move: lowering a rigid body from the shoulders.",
+  "steps": [
+   "Grip the bench behind your head.",
+   "Raise your body to vertical on your shoulders.",
+   "Lower dead straight as slowly as possible."
+  ]
+ },
+ {
+  "name": "Kettlebell Swing",
+  "muscle": "Glutes",
+  "secondary": [
+   "Hamstrings",
+   "Core"
+  ],
+  "equipment": "Kettlebell",
+  "rest": 60,
+  "desc": "The ballistic hinge — power, posterior chain, and conditioning.",
+  "steps": [
+   "Hike the bell back between your legs.",
+   "Snap the hips to float it to chest height.",
+   "Let it fall and hinge straight into the next rep."
+  ]
+ },
+ {
+  "name": "Treadmill Run",
+  "muscle": "Quads",
+  "secondary": [
+   "Calves"
+  ],
+  "tracking": "Time & Distance",
+  "equipment": "Machine",
+  "rest": 0,
+  "desc": "Steady-state or interval running, measured to the meter.",
+  "steps": [
+   "Set your pace and incline.",
+   "Run tall with a quick, quiet cadence.",
+   "Cool down before stepping off."
+  ]
+ },
+ {
+  "name": "Incline Treadmill Walk",
+  "muscle": "Quads",
+  "secondary": [
+   "Calves",
+   "Glutes"
+  ],
+  "tracking": "Time & Distance",
+  "equipment": "Machine",
+  "rest": 0,
+  "desc": "A steep walk that builds engine without pounding the joints.",
+  "steps": [
+   "Set a steep incline and moderate speed.",
+   "Walk without holding the rails.",
+   "Keep a pace you could just hold a conversation at."
+  ]
+ },
+ {
+  "name": "Rowing Erg",
+  "muscle": "Lats",
+  "secondary": [
+   "Quads",
+   "Core"
+  ],
+  "tracking": "Time & Distance",
+  "equipment": "Machine",
+  "rest": 60,
+  "desc": "The full-body engine builder: legs, back, and lungs.",
+  "steps": [
+   "Drive with the legs first, then swing and pull.",
+   "Return hands-body-legs in that order.",
+   "Hold consistent split times."
+  ]
+ },
+ {
+  "name": "Ski Erg",
+  "muscle": "Lats",
+  "secondary": [
+   "Core",
+   "Triceps"
+  ],
+  "tracking": "Time & Distance",
+  "equipment": "Machine",
+  "rest": 60,
+  "desc": "A double-pole pull-down machine for lats and lungs.",
+  "steps": [
+   "Reach tall and drive the handles down past your hips.",
+   "Hinge slightly with each pull.",
+   "Rise and repeat in rhythm."
+  ]
+ },
+ {
+  "name": "Assault Bike",
+  "muscle": "Quads",
+  "secondary": [
+   "Deltoids",
+   "Core"
+  ],
+  "tracking": "Time & Distance",
+  "equipment": "Machine",
+  "rest": 60,
+  "desc": "The fan bike that punishes arms and legs together.",
+  "steps": [
+   "Set your seat height and grab the handles.",
+   "Drive legs and arms together.",
+   "Hold pace or sprint in intervals."
+  ]
+ },
+ {
+  "name": "Stationary Bike",
+  "muscle": "Quads",
+  "secondary": [
+   "Calves"
+  ],
+  "tracking": "Time & Distance",
+  "equipment": "Machine",
+  "rest": 0,
+  "desc": "Low-impact cycling for steady aerobic work.",
+  "steps": [
+   "Set saddle height so knees stay soft at the bottom.",
+   "Pedal at a steady cadence.",
+   "Add resistance for intervals."
+  ]
+ },
+ {
+  "name": "Elliptical",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes"
+  ],
+  "tracking": "Time & Distance",
+  "equipment": "Machine",
+  "rest": 0,
+  "desc": "A smooth full-body glide for joint-friendly cardio.",
+  "steps": [
+   "Step on and find a natural stride.",
+   "Push and pull the handles as you stride.",
+   "Keep effort even for the duration."
+  ]
+ },
+ {
+  "name": "Stair Climber",
+  "muscle": "Glutes",
+  "secondary": [
+   "Quads",
+   "Calves"
+  ],
+  "tracking": "Time & Distance",
+  "equipment": "Machine",
+  "rest": 0,
+  "desc": "Endless stairs for legs and lungs.",
+  "steps": [
+   "Step with your whole foot each stair.",
+   "Stand tall; fingertips only on the rails.",
+   "Climb at a sustainable pace."
+  ]
+ },
+ {
+  "name": "Sled Push",
+  "muscle": "Quads",
+  "secondary": [
+   "Glutes",
+   "Core"
+  ],
+  "tracking": "Time & Distance",
+  "equipment": "Machine",
+  "rest": 90,
+  "desc": "Driving a loaded sled — pure leg power with zero eccentric.",
+  "steps": [
+   "Grip the poles low with a long spine.",
+   "Drive the sled with powerful steps.",
+   "Push for distance, rest, repeat."
+  ]
+ },
+ {
+  "name": "Battle Ropes",
+  "muscle": "Deltoids",
+  "secondary": [
+   "Core",
+   "Forearms"
+  ],
+  "tracking": "Duration & Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "Violent rope waves for shoulders and conditioning.",
+  "steps": [
+   "Athletic stance, one rope end per hand.",
+   "Whip alternating or double waves.",
+   "Keep the waves tall for the whole interval."
+  ]
+ },
+ {
+  "name": "Jump Rope",
+  "muscle": "Calves",
+  "secondary": [
+   "Forearms",
+   "Core"
+  ],
+  "tracking": "Duration & Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "Skipping for footwork, calves, and cheap conditioning.",
+  "steps": [
+   "Elbows in, wrists doing the turning.",
+   "Bounce low on the balls of your feet.",
+   "Build up time or add double-unders."
+  ]
+ },
+ {
+  "name": "Burpees",
+  "muscle": "Quads",
+  "secondary": [
+   "Chest",
+   "Core"
+  ],
+  "tracking": "Bodyweight + Reps",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "Floor to jump in one move — the conditioning tax collector.",
+  "steps": [
+   "Drop through a push-up to the floor.",
+   "Snap your feet under you.",
+   "Jump tall with hands overhead."
+  ]
+ },
+ {
+  "name": "Swimming Laps",
+  "muscle": "Lats",
+  "secondary": [
+   "Deltoids",
+   "Core"
+  ],
+  "tracking": "Time & Distance",
+  "equipment": "Bodyweight",
+  "rest": 60,
+  "desc": "Full-body, zero-impact endurance in the pool.",
+  "steps": [
+   "Pick a stroke and a target distance.",
+   "Swim controlled lengths with steady breathing.",
+   "Rest briefly at the wall between sets."
+  ]
+ }
+]

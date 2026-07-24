@@ -136,7 +136,13 @@ final class LimitBreakUITests: XCTestCase {
         XCTAssertTrue(forgeButton.isEnabled)
         forgeButton.tap()
 
-        // Sheet dismisses back into the Library, new movement present.
+        // Sheet dismisses back into the Library. The list is lazy and ~175
+        // movements deep now, so find the new movement through search rather
+        // than expecting it on screen.
+        let searchField = app.textFields["Search movements"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5))
+        searchField.tap()
+        searchField.typeText("Landmine Belt")
         XCTAssertTrue(app.staticTexts["Landmine Belt Squat"].waitForExistence(timeout: 5))
     }
 }

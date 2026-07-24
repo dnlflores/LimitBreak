@@ -148,6 +148,36 @@ struct XPEngineTests {
 
 struct CatalogGuideTests {
 
+    /// The bundled library is big, unique, and enum-valid.
+    @Test func bundledCatalogIsLargeAndValid() {
+        let entries = ExerciseCatalog.entries
+        #expect(entries.count >= 150)
+
+        let names = entries.map(\.name)
+        #expect(Set(names).count == names.count)
+
+        for entry in entries {
+            #expect(MuscleGroup(rawValue: entry.muscle) != nil)
+            #expect(entry.tracking.map { TrackingType(rawValue: $0) != nil } ?? true)
+            #expect(entry.formula.map { OneRMFormula(rawValue: $0) != nil } ?? true)
+            #expect(!entry.desc.isEmpty && entry.steps.count >= 3)
+        }
+    }
+
+    /// Seeding twice never duplicates; every entry lands exactly once.
+    @Test @MainActor func seedIsIdempotent() throws {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self, Walk.self, Activity.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        ExerciseCatalog.seedIfNeeded(context: container.mainContext)
+        ExerciseCatalog.seedIfNeeded(context: container.mainContext)
+
+        let count = try container.mainContext.fetchCount(FetchDescriptor<Exercise>())
+        #expect(count == ExerciseCatalog.entries.count)
+    }
+
     @Test @MainActor func seedIncludesGuides() throws {
         let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self, Walk.self, Activity.self])
         let container = try ModelContainer(
@@ -181,6 +211,36 @@ struct CatalogGuideTests {
         #expect(legacy.exerciseDescription != nil)
         #expect(!legacy.instructionSteps.isEmpty)
         #expect(custom.exerciseDescription == nil)
+    }
+}
+
+struct AICatalogFilterTests {
+
+    private func brief(_ name: String, _ muscles: [String]) -> ExerciseBrief {
+        ExerciseBrief(name: name, muscleGroups: muscles, equipment: "Barbell")
+    }
+
+    /// The prompt catalog is capped and prioritizes the focus muscles.
+    @Test func focusedCatalogCapsAndPrioritizes() {
+        let chest = (0..<60).map { brief("Chest \($0)", ["Chest"]) }
+        let legs = (0..<60).map { brief("Legs \($0)", ["Quads"]) }
+        let result = WorkoutAI.focusedCatalog(chest + legs, targetMuscleGroups: ["Chest"], cap: 40)
+
+        #expect(result.count == 40)
+        #expect(result.allSatisfy { $0.muscleGroups.contains("Chest") })
+    }
+
+    /// Small catalogs pass through untouched; short focus lists get padded
+    /// with accessories up to the cap.
+    @Test func focusedCatalogFillsWithAccessories() {
+        let chest = (0..<10).map { brief("Chest \($0)", ["Chest"]) }
+        let legs = (0..<60).map { brief("Legs \($0)", ["Quads"]) }
+
+        #expect(WorkoutAI.focusedCatalog(chest, targetMuscleGroups: ["Chest"], cap: 40).count == 10)
+
+        let padded = WorkoutAI.focusedCatalog(chest + legs, targetMuscleGroups: ["Chest"], cap: 40)
+        #expect(padded.count == 40)
+        #expect(padded.filter { $0.muscleGroups.contains("Chest") }.count == 10)
     }
 }
 

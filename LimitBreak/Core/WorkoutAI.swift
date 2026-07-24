@@ -101,7 +101,7 @@ enum WorkoutAI {
                     focusLabel: focusLabel,
                     exerciseCount: count,
                     durationMinutes: durationMinutes,
-                    catalog: catalog
+                    catalog: focusedCatalog(catalog, targetMuscleGroups: targetMuscleGroups)
                 )
             } catch {
                 return fallbackPlan(focusLabel: focusLabel, targetMuscleGroups: targetMuscleGroups, exerciseCount: count, catalog: catalog)
@@ -109,6 +109,35 @@ enum WorkoutAI {
         }
         #endif
         return fallbackPlan(focusLabel: focusLabel, targetMuscleGroups: targetMuscleGroups, exerciseCount: count, catalog: catalog)
+    }
+
+    /// Trims the library to what the on-device model actually needs: movements
+    /// hitting the focus muscles first, a shuffled handful of accessories after,
+    /// capped so a ~175-exercise catalog can't overflow the model's context.
+    static func focusedCatalog(
+        _ catalog: [ExerciseBrief],
+        targetMuscleGroups: [String],
+        cap: Int = 70
+    ) -> [ExerciseBrief] {
+        guard catalog.count > cap else { return catalog }
+        guard !targetMuscleGroups.isEmpty else { return Array(catalog.shuffled().prefix(cap)) }
+
+        let targets = Set(targetMuscleGroups)
+        var focused: [ExerciseBrief] = []
+        var accessories: [ExerciseBrief] = []
+        for brief in catalog {
+            if brief.muscleGroups.contains(where: targets.contains) {
+                focused.append(brief)
+            } else {
+                accessories.append(brief)
+            }
+        }
+
+        var result = Array(focused.shuffled().prefix(cap))
+        if result.count < cap {
+            result += accessories.shuffled().prefix(cap - result.count)
+        }
+        return result
     }
 
     #if canImport(FoundationModels)

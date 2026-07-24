@@ -47,6 +47,40 @@ enum EquipmentType: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// The unit a weight-tracked exercise is entered and displayed in. Weight is
+/// always *stored* in pounds (the app's canonical currency for volume, XP, PRs
+/// and 1RM); this only governs how a movement's loads are shown and typed, so
+/// switching it is instant and never rewrites history.
+enum WeightUnit: String, Codable, CaseIterable, Identifiable {
+    case pounds = "lb"
+    case kilograms = "kg"
+
+    var id: String { rawValue }
+
+    /// Label shown next to a value, e.g. "185 lbs" / "84 kg".
+    var abbreviation: String {
+        switch self {
+        case .pounds: return "lbs"
+        case .kilograms: return "kg"
+        }
+    }
+
+    /// Compact two-letter tag for toggles.
+    var tag: String { rawValue }
+
+    private static let poundsPerKilogram = 2.2046226218
+
+    /// Convert a value expressed in this unit into canonical pounds.
+    func toPounds(_ value: Double) -> Double {
+        self == .pounds ? value : value * Self.poundsPerKilogram
+    }
+
+    /// Convert canonical pounds into a value expressed in this unit.
+    func fromPounds(_ pounds: Double) -> Double {
+        self == .pounds ? pounds : pounds / Self.poundsPerKilogram
+    }
+}
+
 // MARK: - Exercise Model
 
 @Model
@@ -61,6 +95,9 @@ final class Exercise {
     var defaultRestSeconds: Int
     var formulaRaw: String
     var customMetricUnit: String?
+    /// The unit this movement's weights are entered and shown in. Defaults to
+    /// pounds so existing data (all stored in pounds) is unaffected.
+    var weightUnitRaw: String = WeightUnit.pounds.rawValue
     var isCustom: Bool
     /// Assisted movements (e.g. assisted pull-ups) accept negative weight:
     /// the value is assistance provided, so more negative = easier.
@@ -92,6 +129,7 @@ final class Exercise {
         defaultRestSeconds: Int = 90,
         formula: OneRMFormula = .epley,
         customMetricUnit: String? = nil,
+        weightUnit: WeightUnit = .pounds,
         isCustom: Bool = false,
         isAssisted: Bool = false
     ) {
@@ -105,6 +143,7 @@ final class Exercise {
         self.defaultRestSeconds = defaultRestSeconds
         self.formulaRaw = formula.rawValue
         self.customMetricUnit = customMetricUnit
+        self.weightUnitRaw = weightUnit.rawValue
         self.isCustom = isCustom
         self.isAssisted = isAssisted
         self.createdAt = Date()
@@ -115,6 +154,22 @@ final class Exercise {
     var trackingType: TrackingType { TrackingType(rawValue: trackingTypeRaw) ?? .weightAndReps }
     var formula: OneRMFormula { OneRMFormula(rawValue: formulaRaw) ?? .epley }
     var muscleGroup: MuscleGroup { MuscleGroup(rawValue: muscleGroupRaw) ?? .chest }
+    var weightUnit: WeightUnit {
+        get { WeightUnit(rawValue: weightUnitRaw) ?? .pounds }
+        set { weightUnitRaw = newValue.rawValue }
+    }
+
+    /// Whether loads for this movement are a real weight (so a lb/kg unit
+    /// applies). Duration, distance and custom-metric movements have their own
+    /// units and ignore `weightUnit`.
+    var usesWeightUnit: Bool {
+        trackingType == .weightAndReps || trackingType == .bodyweightAndReps
+    }
+
+    /// Format a canonical pounds value in this movement's unit, e.g. "84".
+    func displayWeightString(fromPounds pounds: Double) -> String {
+        weightUnit.fromPounds(pounds).cleanWeight
+    }
 
     /// All muscle groups this exercise hits: primary first, then secondaries.
     var allMuscleGroups: [MuscleGroup] {

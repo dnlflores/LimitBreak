@@ -56,23 +56,14 @@ enum NarrativeEngine {
         return telemetry
     }
 
+    /// The active streak, counting any activity — sessions, sports, and walks
+    /// over a mile — via the shared XP-engine definition, so the narrative,
+    /// the Skill Matrix tile and the widget all agree.
     static func currentStreak(context: ModelContext) -> Int {
         let sessions = (try? context.fetch(FetchDescriptor<WorkoutSession>())) ?? []
-        let calendar = Calendar.current
-        let trainedDays = Set(sessions.map { calendar.startOfDay(for: $0.startDate) })
-        guard !trainedDays.isEmpty else { return 0 }
-
-        var streak = 0
-        var day = calendar.startOfDay(for: Date())
-        // A streak survives if today hasn't been trained yet but yesterday was.
-        if !trainedDays.contains(day) {
-            day = calendar.date(byAdding: .day, value: -1, to: day)!
-        }
-        while trainedDays.contains(day) {
-            streak += 1
-            day = calendar.date(byAdding: .day, value: -1, to: day)!
-        }
-        return streak
+        let walks = (try? context.fetch(FetchDescriptor<Walk>())) ?? []
+        let activities = (try? context.fetch(FetchDescriptor<Activity>())) ?? []
+        return XPEngine.currentStreak(sessions: sessions, walks: walks, activities: activities)
     }
 
     // MARK: - Generation

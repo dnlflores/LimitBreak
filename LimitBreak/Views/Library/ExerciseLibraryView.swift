@@ -205,11 +205,11 @@ struct ExerciseLibraryView: View {
             let ceiling = exercise.ceiling(for: "1RM")
             if ceiling > 0 {
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(ceiling.cleanWeight)
+                    Text(exercise.usesWeightUnit ? exercise.displayWeightString(fromPounds: ceiling) : ceiling.cleanWeight)
                         .font(.subheadline.weight(.bold))
                         .monospacedDigit()
                         .foregroundStyle(Theme.gold)
-                    Text("1RM")
+                    Text(exercise.usesWeightUnit ? "1RM · \(exercise.weightUnit.abbreviation)" : "1RM")
                         .font(.caption2)
                         .foregroundStyle(Theme.textDim)
                 }
@@ -423,7 +423,7 @@ struct ExerciseDetailView: View {
             divider
             configRow("Tracking", exercise.trackingType.rawValue)
             divider
-            configRow("Increment", "\(exercise.defaultIncrement.cleanWeight) lbs")
+            configRow("Increment", "\(exercise.defaultIncrement.cleanWeight) \(exercise.usesWeightUnit ? exercise.weightUnit.abbreviation : "lbs")")
             divider
             configRow("Rest Timer", exercise.defaultRestSeconds > 0 ? "\(exercise.defaultRestSeconds)s" : "None")
             divider
@@ -471,11 +471,19 @@ struct ExerciseDetailView: View {
 
             Spacer()
 
-            Text(record.numericValue.cleanWeight)
+            Text(recordValueText(record))
                 .font(.headline)
                 .monospacedDigit()
                 .foregroundStyle(Theme.gold)
         }
         .cardStyle()
+    }
+
+    /// A record's value, shown in the exercise's unit for weight records (1RM).
+    private func recordValueText(_ record: PRRecord) -> String {
+        if record.recordType == "1RM", let ex = record.exercise, ex.usesWeightUnit {
+            return "\(ex.displayWeightString(fromPounds: record.numericValue)) \(ex.weightUnit.abbreviation)"
+        }
+        return record.numericValue.cleanWeight
     }
 }

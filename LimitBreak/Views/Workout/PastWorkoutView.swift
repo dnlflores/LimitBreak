@@ -113,8 +113,11 @@ struct PastWorkoutView: View {
                 }
             }
 
+            let unitLabel = entry.wrappedValue.exercise.usesWeightUnit
+                ? entry.wrappedValue.exercise.weightUnit.abbreviation
+                : "lbs"
             ForEach(entry.sets) { $set in
-                setRow($set, index: entry.wrappedValue.sets.firstIndex { $0.id == set.id } ?? 0) {
+                setRow($set, index: entry.wrappedValue.sets.firstIndex { $0.id == set.id } ?? 0, unit: unitLabel) {
                     entry.wrappedValue.sets.removeAll { $0.id == set.id }
                 }
             }
@@ -139,14 +142,14 @@ struct PastWorkoutView: View {
         .cardStyle()
     }
 
-    private func setRow(_ set: Binding<SetDraft>, index: Int, onDelete: @escaping () -> Void) -> some View {
+    private func setRow(_ set: Binding<SetDraft>, index: Int, unit: String, onDelete: @escaping () -> Void) -> some View {
         HStack(spacing: 8) {
             Text("\(index + 1)")
                 .font(.caption.weight(.bold))
                 .frame(width: 20)
                 .foregroundStyle(Theme.textDim)
 
-            TextField("lbs", text: set.weight)
+            TextField(unit, text: set.weight)
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.center)
                 .padding(8)
@@ -190,7 +193,7 @@ struct PastWorkoutView: View {
     private func save() {
         let payload: [(exercise: Exercise, sets: [PastSetEntry])] = entries.compactMap { entry in
             let sets = entry.sets.compactMap { draft -> PastSetEntry? in
-                let weight = Double(draft.weight) ?? 0
+                let weight = entry.exercise.weightUnit.toPounds(Double(draft.weight) ?? 0)
                 let reps = Int(draft.reps) ?? 0
                 guard weight > 0 || reps > 0 else { return nil }
                 return PastSetEntry(weight: weight, reps: reps, isWarmup: draft.isWarmup)

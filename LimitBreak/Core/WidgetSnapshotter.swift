@@ -28,13 +28,24 @@ final class WidgetSnapshotter {
         let sessions = (try? context.fetch(FetchDescriptor<WorkoutSession>())) ?? []
         let records = (try? context.fetch(FetchDescriptor<PRRecord>())) ?? []
         let exercises = (try? context.fetch(FetchDescriptor<Exercise>())) ?? []
+        let walks = (try? context.fetch(FetchDescriptor<Walk>())) ?? []
+        let activities = (try? context.fetch(FetchDescriptor<Activity>())) ?? []
 
-        // Per-day activity level, oldest first, ending today.
+        // Per-day activity level, oldest first, ending today. Any qualifying
+        // activity — session, sport, or a walk over a mile — lights a day.
         var levels: [Date: Int] = [:]
         for session in sessions {
             let day = calendar.startOfDay(for: session.startDate)
             let level = session.prCount > 0 ? 2 : 1
             levels[day] = max(levels[day] ?? 0, level)
+        }
+        for activity in activities {
+            let day = calendar.startOfDay(for: activity.date)
+            levels[day] = max(levels[day] ?? 0, 1)
+        }
+        for walk in walks where walk.distanceMiles >= XPEngine.streakWalkMinimumMiles {
+            let day = calendar.startOfDay(for: walk.date)
+            levels[day] = max(levels[day] ?? 0, 1)
         }
         let dayActivity: [Int] = (0..<historyDays).reversed().map { offset in
             let day = calendar.date(byAdding: .day, value: -offset, to: today)!
@@ -52,7 +63,7 @@ final class WidgetSnapshotter {
 
         let snapshot = WidgetSnapshot(
             dayActivity: dayActivity,
-            streakDays: NarrativeEngine.currentStreak(context: context),
+            streakDays: XPEngine.currentStreak(sessions: sessions, walks: walks, activities: activities),
             weeklyVolume: sessions.filter { $0.startDate >= weekAgo }.reduce(0) { $0 + $1.totalVolume },
             weeklyPRs: records.filter { $0.dateAchieved >= weekAgo }.count,
             totalLimitBreaks: records.count,

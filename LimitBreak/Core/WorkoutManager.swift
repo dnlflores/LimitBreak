@@ -210,6 +210,16 @@ final class WorkoutManager {
         SessionSync.shared.broadcast(from: self)
     }
 
+    /// Switches a movement's display/entry unit (lb/kg). Stored weights are
+    /// canonical pounds, so this only changes how loads are typed and shown —
+    /// no history is rewritten.
+    func setWeightUnit(_ unit: WeightUnit, for exercise: Exercise) {
+        guard exercise.weightUnit != unit else { return }
+        exercise.weightUnit = unit
+        try? context.save()
+        SessionSync.shared.broadcast(from: self)
+    }
+
     /// Reverts an accidentally logged set: deletes it and replays the exercise's
     /// history so any PR it minted is withdrawn.
     func undoSet(_ set: ExerciseSet) {
@@ -424,12 +434,24 @@ final class WorkoutManager {
         context.insert(record)
 
         guard celebrating else { return nil }
+        // Records are stored canonically in pounds; show the celebration in the
+        // movement's own unit when it's a weight record.
+        let isPoundsRecord = candidate.unit == "lbs" || candidate.unit == "lbs added"
+        let convert = isPoundsRecord && exercise.usesWeightUnit
+        let displayUnit: String
+        if convert {
+            displayUnit = candidate.unit == "lbs added"
+                ? "\(exercise.weightUnit.abbreviation) added"
+                : exercise.weightUnit.abbreviation
+        } else {
+            displayUnit = candidate.unit
+        }
         return LimitBreakEvent(
             exerciseName: exercise.name,
             recordType: candidate.type,
-            newValue: candidate.value,
-            previousValue: ceiling,
-            unit: candidate.unit
+            newValue: convert ? exercise.weightUnit.fromPounds(candidate.value) : candidate.value,
+            previousValue: convert ? exercise.weightUnit.fromPounds(ceiling) : ceiling,
+            unit: displayUnit
         )
     }
 

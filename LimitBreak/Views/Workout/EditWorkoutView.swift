@@ -41,7 +41,7 @@ struct EditWorkoutView: View {
                 exercise: group.exercise,
                 sets: group.sets.map { set in
                     SetDraft(
-                        weight: set.weight != 0 ? set.weight.cleanWeight : "",
+                        weight: set.weight != 0 ? group.exercise.displayWeightString(fromPounds: set.weight) : "",
                         reps: set.reps > 0 ? "\(set.reps)" : "",
                         isWarmup: set.isWarmup,
                         durationSeconds: set.durationSeconds,
@@ -140,8 +140,11 @@ struct EditWorkoutView: View {
                 }
             }
 
+            let unitLabel = entry.wrappedValue.exercise.usesWeightUnit
+                ? entry.wrappedValue.exercise.weightUnit.abbreviation
+                : "lbs"
             ForEach(entry.sets) { $set in
-                setRow($set, index: entry.wrappedValue.sets.firstIndex { $0.id == set.id } ?? 0) {
+                setRow($set, index: entry.wrappedValue.sets.firstIndex { $0.id == set.id } ?? 0, unit: unitLabel) {
                     entry.wrappedValue.sets.removeAll { $0.id == set.id }
                 }
             }
@@ -166,14 +169,14 @@ struct EditWorkoutView: View {
         .cardStyle()
     }
 
-    private func setRow(_ set: Binding<SetDraft>, index: Int, onDelete: @escaping () -> Void) -> some View {
+    private func setRow(_ set: Binding<SetDraft>, index: Int, unit: String, onDelete: @escaping () -> Void) -> some View {
         HStack(spacing: 8) {
             Text("\(index + 1)")
                 .font(.caption.weight(.bold))
                 .frame(width: 20)
                 .foregroundStyle(Theme.textDim)
 
-            TextField("lbs", text: set.weight)
+            TextField(unit, text: set.weight)
                 .keyboardType(.numbersAndPunctuation)
                 .multilineTextAlignment(.center)
                 .padding(8)
@@ -217,7 +220,8 @@ struct EditWorkoutView: View {
     private func save() {
         let payload: [(exercise: Exercise, sets: [PastSetEntry])] = entries.compactMap { entry in
             let sets = entry.sets.compactMap { draft -> PastSetEntry? in
-                let weight = Double(draft.weight) ?? 0
+                let enteredWeight = Double(draft.weight) ?? 0
+                let weight = entry.exercise.weightUnit.toPounds(enteredWeight)
                 let reps = Int(draft.reps) ?? 0
                 let hasCarriedData = (draft.durationSeconds ?? 0) > 0 || (draft.distanceMeters ?? 0) > 0
                 guard weight != 0 || reps > 0 || hasCarriedData else { return nil }

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 /// Asks the user what to focus on and how much to do, then generates a
 /// tappable workout on-device and hands it back to start a session.
@@ -18,6 +19,8 @@ struct AIWorkoutSheet: View {
     @State private var isGenerating = false
     @State private var didSaveRoutine = false
     @State private var inspectedExercise: PlannedExerciseDetail?
+    @State private var manualReplaceTarget: ReplaceTarget?
+    @State private var swappingIndex: Int?
 
     /// Sheet payload for one tapped plan row: the matched catalog movement
     /// plus how many sets the plan calls for.
@@ -25,6 +28,12 @@ struct AIWorkoutSheet: View {
         let exercise: Exercise
         let sets: Int
         var id: UUID { exercise.id }
+    }
+
+    /// Which plan slot the manual exercise picker is replacing.
+    struct ReplaceTarget: Identifiable {
+        let index: Int
+        var id: Int { index }
     }
 
     var body: some View {
@@ -39,6 +48,7 @@ struct AIWorkoutSheet: View {
                 }
                 .padding()
             }
+            .background(SwipeBackDisabler())
             .obsidianBackground()
             .navigationTitle("AI Workout")
             .navigationBarTitleDisplayMode(.inline)
@@ -50,6 +60,11 @@ struct AIWorkoutSheet: View {
             .safeAreaInset(edge: .bottom) { actionBar }
             .sheet(item: $inspectedExercise) { detail in
                 PlannedExerciseSheet(exercise: detail.exercise, plannedSets: detail.sets)
+            }
+            .sheet(item: $manualReplaceTarget) { target in
+                ExercisePickerSheet { picked in
+                    replaceManually(at: target.index, with: picked)
+                }
             }
         }
     }
@@ -160,48 +175,108 @@ struct AIWorkoutSheet: View {
                     .foregroundStyle(Theme.limitBreakGradient)
             }
 
-            ForEach(Array(plan.exercises.enumerated()), id: \.element.id) { index, planned in
-                Button {
-                    guard let exercise = catalogExercise(for: planned.name) else { return }
-                    Haptics.shared.tick()
-                    inspectedExercise = PlannedExerciseDetail(exercise: exercise, sets: planned.sets)
-                } label: {
-                    HStack(spacing: 14) {
-                        Text("\(index + 1)")
-                            .font(.system(.headline, design: .rounded, weight: .bold))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.emerald)
-                            .frame(width: 28)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(planned.name)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .multilineTextAlignment(.leading)
-                            if let muscle = muscleGroup(for: planned.name) {
-                                Text(muscle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+            VStack(spacing: 10) {
+                ForEach(Array(plan.exercises.enumerated()), id: \.element.id) { index, planned in
+                    SwipeablePlanRow(
+                        isEnabled: !isGenerating && swappingIndex == nil,
+                        onReplaceAI: { Task { await swapWithAI(at: index) } },
+                        onReplaceManual: {
+                            Haptics.shared.tick()
+                            manualReplaceTarget = ReplaceTarget(index: index)
                         }
-                        Spacer()
-                        Text("\(planned.sets) sets")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Theme.textDim)
-                        Image(systemName: "info.circle")
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.emerald)
+                    ) {
+                        planRowContent(index: index, planned: planned)
                     }
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
             }
-            .cardStyle()
 
-            Text("Tap a movement to see how to perform it and the load to aim for.")
+            Text("Tap a movement for how to perform it. Swipe right to replace with AI, left to pick manually \u{2014} or tap \u{22EF}.")
                 .font(.caption2)
                 .foregroundStyle(Theme.textDim)
                 .frame(maxWidth: .infinity, alignment: .center)
+        }
+    }
+
+    /// One plan row's visible content: number, tappable movement, set count and
+    /// the swap menu. Lives inside a `SwipeablePlanRow` that adds swipe-to-replace.
+    private func planRowContent(index: Int, planned: PlannedExercise) -> some View {
+        HStack(spacing: 12) {
+            Text("\(index + 1)")
+                .font(.system(.headline, design: .rounded, weight: .bold))
+                .monospacedDigit()
+                .foregroundStyle(Theme.emerald)
+                .frame(width: 26)
+
+            Button {
+                guard let exercise = catalogExercise(for: planned.name) else { return }
+                Haptics.shared.tick()
+                inspectedExercise = PlannedExerciseDetail(exercise: exercise, sets: planned.sets)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(planned.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                    if let muscle = muscleGroup(for: planned.name) {
+                        Text(muscle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Text("\(planned.sets) sets")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.textDim)
+
+            swapControl(index: index, planned: planned)
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Trailing per-row control: a spinner while an AI swap is in flight,
+    /// otherwise a menu to swap this one movement (AI or manual) or view details.
+    @ViewBuilder
+    private func swapControl(index: Int, planned: PlannedExercise) -> some View {
+        if swappingIndex == index {
+            ProgressView()
+                .tint(Theme.emerald)
+                .frame(width: 30, height: 30)
+        } else {
+            Menu {
+                Button {
+                    Task { await swapWithAI(at: index) }
+                } label: {
+                    Label("Swap with AI", systemImage: "sparkles")
+                }
+                Button {
+                    Haptics.shared.tick()
+                    manualReplaceTarget = ReplaceTarget(index: index)
+                } label: {
+                    Label("Choose Manually", systemImage: "hand.tap")
+                }
+                if catalogExercise(for: planned.name) != nil {
+                    Divider()
+                    Button {
+                        guard let exercise = catalogExercise(for: planned.name) else { return }
+                        inspectedExercise = PlannedExerciseDetail(exercise: exercise, sets: planned.sets)
+                    } label: {
+                        Label("View Details", systemImage: "info.circle")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .foregroundStyle(Theme.emerald)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .disabled(isGenerating || swappingIndex != nil)
         }
     }
 
@@ -310,6 +385,46 @@ struct AIWorkoutSheet: View {
         isGenerating = false
         withAnimation(.spring(duration: 0.35)) { plan = result }
         Haptics.shared.success()
+    }
+
+    /// Asks the AI for a single replacement movement for one slot, keeping the
+    /// rest of the plan intact and avoiding anything already in the list.
+    private func swapWithAI(at index: Int) async {
+        guard let current = plan, current.exercises.indices.contains(index) else { return }
+        let outgoing = current.exercises[index]
+        swappingIndex = index
+        Haptics.shared.tick()
+        let catalog = exercises.map {
+            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType)
+        }
+        let existing = Set(current.exercises.map { $0.name.lowercased() })
+        let replacement = await WorkoutAI.replaceExercise(
+            focusLabel: focus.label,
+            targetMuscleGroups: focus.targetMuscleGroups,
+            replacing: outgoing.name,
+            excluding: existing,
+            catalog: catalog
+        )
+        swappingIndex = nil
+        guard let replacement,
+              var updated = plan,
+              updated.exercises.indices.contains(index) else { return }
+        // Keep the same row id so the swiped row stays put and animates in place
+        // instead of being torn down and reinserted (which kills the slide).
+        updated.exercises[index] = PlannedExercise(id: outgoing.id, name: replacement, sets: outgoing.sets)
+        didSaveRoutine = false
+        withAnimation(.spring(duration: 0.3)) { plan = updated }
+        Haptics.shared.success()
+    }
+
+    /// Swaps in a movement the user hand-picked, preserving the slot's set count.
+    private func replaceManually(at index: Int, with exercise: Exercise) {
+        guard var updated = plan, updated.exercises.indices.contains(index) else { return }
+        let outgoing = updated.exercises[index]
+        // Preserve the row id (see swapWithAI) so the update animates in place.
+        updated.exercises[index] = PlannedExercise(id: outgoing.id, name: exercise.name, sets: outgoing.sets)
+        didSaveRoutine = false
+        withAnimation(.spring(duration: 0.3)) { plan = updated }
     }
 
     private func startWorkout() {
@@ -509,5 +624,159 @@ struct PlannedExerciseSheet: View {
             return "About 75% of your recorded ceiling \u{2014} room to push."
         }
         return "No history yet \u{2014} start light and find your groove."
+    }
+}
+
+// MARK: - Swipeable plan row
+
+/// A single AI-plan row that slides horizontally to reveal a replace action:
+/// swipe right for "Replace with AI", swipe left for "Replace Manually". Taps
+/// and the row's own buttons still work; vertical drags pass through to scroll.
+private struct SwipeablePlanRow<Content: View>: View {
+    let isEnabled: Bool
+    let onReplaceAI: () -> Void
+    let onReplaceManual: () -> Void
+    @ViewBuilder var content: Content
+
+    /// How far the finger must travel before a release fires the action.
+    private let triggerDistance: CGFloat = 96
+    /// Where the slide starts rubber-banding, so it never runs off the card.
+    private let maxReveal: CGFloat = 150
+
+    @State private var offset: CGFloat = 0
+    @State private var armed = false
+
+    var body: some View {
+        ZStack {
+            actionsLayer
+            content
+                // Opaque surface so the reveal panel behind it never bleeds
+                // through the row while it's resting.
+                .background(Theme.surface)
+                .contentShape(Rectangle())
+                .offset(x: offset)
+                // simultaneousGesture (not .gesture) so the swipe is recognized
+                // alongside the row's own tap Button/Menu and the ScrollView's
+                // vertical pan, instead of being swallowed by them.
+                .simultaneousGesture(swipeGesture, including: isEnabled ? .all : .subviews)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.glassBorder, lineWidth: 1))
+        .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
+    }
+
+    // MARK: Reveal
+
+    private var swipingRight: Bool { offset > 0 }
+    private var progress: CGFloat { min(1, abs(offset) / triggerDistance) }
+
+    private var actionsLayer: some View {
+        // Accent gradient panel that deepens as you pull further, so the reveal
+        // reads clearly against the obsidian background. Violet→gold = AI (swipe
+        // right), teal→emerald = manual (swipe left); each flows toward the edge
+        // it reveals.
+        return ZStack {
+            revealGradient
+                .opacity(0.55 + 0.45 * progress)
+
+            HStack {
+                if swipingRight {
+                    actionLabel("Replace with AI", systemImage: "sparkles")
+                    Spacer()
+                } else {
+                    Spacer()
+                    actionLabel("Replace Manually", systemImage: "hand.tap")
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+        .opacity(offset == 0 ? 0 : 1)
+    }
+
+    /// Direction-aware accent gradient: brightest at the edge being revealed,
+    /// fading toward the row's center.
+    private var revealGradient: LinearGradient {
+        LinearGradient(
+            colors: swipingRight
+                ? [Theme.violet, Theme.gold]
+                : [Theme.emerald, Theme.teal],
+            startPoint: swipingRight ? .leading : .trailing,
+            endPoint: swipingRight ? .trailing : .leading
+        )
+    }
+
+    private func actionLabel(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(.white)
+            .opacity(0.6 + 0.4 * progress)
+            .scaleEffect(armed ? 1.08 : 1)
+            .animation(.snappy(duration: 0.2), value: armed)
+    }
+
+    // MARK: Gesture
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 14)
+            .onChanged { value in
+                // Let mostly-vertical drags scroll the list instead.
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                offset = rubberBanded(value.translation.width)
+                let nowArmed = abs(offset) >= triggerDistance
+                if nowArmed != armed {
+                    armed = nowArmed
+                    Haptics.shared.tick()
+                }
+            }
+            .onEnded { value in
+                let horizontal = abs(value.translation.width) > abs(value.translation.height)
+                let fired = horizontal && abs(value.translation.width) >= triggerDistance
+                let goRight = value.translation.width > 0
+                armed = false
+                withAnimation(.spring(duration: 0.35)) { offset = 0 }
+                if fired {
+                    Haptics.shared.logSet()
+                    if goRight { onReplaceAI() } else { onReplaceManual() }
+                }
+            }
+    }
+
+    /// Eases resistance past `maxReveal` so the row can't be dragged off the card.
+    private func rubberBanded(_ x: CGFloat) -> CGFloat {
+        guard abs(x) > maxReveal else { return x }
+        let sign: CGFloat = x < 0 ? -1 : 1
+        return sign * (maxReveal + (abs(x) - maxReveal) * 0.25)
+    }
+}
+
+// MARK: - Swipe-back disabler
+
+/// Disables the enclosing navigation controller's left-edge back-swipe so that
+/// custom rightward swipe gestures (swipe-right-to-replace) aren't swallowed by
+/// the system before our `DragGesture` can see them.
+private struct SwipeBackDisabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        controller.disableSwipeBack()
+    }
+
+    final class Controller: UIViewController {
+        override func didMove(toParent parent: UIViewController?) {
+            super.didMove(toParent: parent)
+            disableSwipeBack()
+        }
+
+        func disableSwipeBack() {
+            // Walk up to the nearest navigation controller and switch off its
+            // interactive pop recognizer.
+            var responder: UIViewController? = navigationController ?? parent
+            while let current = responder {
+                if let nav = current as? UINavigationController {
+                    nav.interactivePopGestureRecognizer?.isEnabled = false
+                    return
+                }
+                responder = current.parent ?? current.navigationController
+            }
+        }
     }
 }

@@ -255,8 +255,8 @@ extension ExerciseSet {
         case .weightAndReps, .bodyweightAndReps:
             break
         }
-        if weight > 0 { return "\(weight.cleanWeight) lbs \u{00D7} \(reps)" }
-        if weight < 0 { return "BW\(weight.cleanWeight) \u{00D7} \(reps)" }
+        if weight > 0 { return "\(exercise.displayWeightString(fromPounds: weight)) \(exercise.weightUnit.abbreviation) \u{00D7} \(reps)" }
+        if weight < 0 { return "BW\(exercise.displayWeightString(fromPounds: weight)) \u{00D7} \(reps)" }
         return "\(reps) reps"
     }
 }

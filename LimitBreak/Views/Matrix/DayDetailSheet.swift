@@ -198,7 +198,7 @@ struct DayDetailSheet: View {
             break
         }
         return set.weight > 0
-            ? "\(set.weight.cleanWeight) lbs × \(set.reps)"
+            ? "\(exercise.displayWeightString(fromPounds: set.weight)) \(exercise.weightUnit.abbreviation) × \(set.reps)"
             : "\(set.reps) reps"
     }
 

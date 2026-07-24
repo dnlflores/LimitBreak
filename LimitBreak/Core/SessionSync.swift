@@ -51,11 +51,11 @@ final class SessionSync {
             ?? exercise.sets.max(by: { $0.timestamp < $1.timestamp })
         switch exercise.trackingType {
         case .weightAndReps:
-            return "\((template?.weight ?? 45).cleanWeight) lbs × \(template?.reps ?? 8)"
+            return "\(exercise.displayWeightString(fromPounds: template?.weight ?? 45)) \(exercise.weightUnit.abbreviation) × \(template?.reps ?? 8)"
         case .bodyweightAndReps:
             let added = template?.weight ?? 0
-            if added > 0 { return "BW+\(added.cleanWeight) × \(template?.reps ?? 8)" }
-            if added < 0 { return "BW\(added.cleanWeight) × \(template?.reps ?? 8)" }
+            if added > 0 { return "BW+\(exercise.displayWeightString(fromPounds: added)) × \(template?.reps ?? 8)" }
+            if added < 0 { return "BW\(exercise.displayWeightString(fromPounds: added)) × \(template?.reps ?? 8)" }
             return "BW × \(template?.reps ?? 8)"
         case .durationAndReps:
             return "\((template?.durationSeconds ?? 30).clockString) × \(template?.reps ?? 8)"

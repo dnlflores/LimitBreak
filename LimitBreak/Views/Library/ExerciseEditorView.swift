@@ -19,6 +19,7 @@ struct ExerciseEditorView: View {
     @State private var increment = 5.0
     @State private var restSeconds = 90
     @State private var formula: OneRMFormula = .epley
+    @State private var weightUnit: WeightUnit = .pounds
     @State private var customUnit = ""
     @State private var isAssisted = false
     @State private var guideDescription = ""
@@ -39,6 +40,7 @@ struct ExerciseEditorView: View {
         _increment = State(initialValue: exercise.defaultIncrement)
         _restSeconds = State(initialValue: exercise.defaultRestSeconds)
         _formula = State(initialValue: exercise.formula)
+        _weightUnit = State(initialValue: exercise.weightUnit)
         _customUnit = State(initialValue: exercise.customMetricUnit ?? "")
         _isAssisted = State(initialValue: exercise.isAssisted)
         _guideDescription = State(initialValue: exercise.exerciseDescription ?? "")
@@ -304,6 +306,24 @@ struct ExerciseEditorView: View {
 
     private var tuningCard: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if trackingType == .weightAndReps || trackingType == .bodyweightAndReps {
+                VStack(alignment: .leading, spacing: 8) {
+                    fieldLabel("Weight unit")
+                    HStack(spacing: 8) {
+                        ForEach(WeightUnit.allCases) { unit in
+                            chip(
+                                unit.abbreviation,
+                                isSelected: weightUnit == unit,
+                                tint: Theme.emerald,
+                                fillWidth: true
+                            ) {
+                                weightUnit = unit
+                            }
+                        }
+                    }
+                }
+            }
+
             VStack(alignment: .leading, spacing: 8) {
                 fieldLabel("Weight increment")
                 HStack(spacing: 8) {
@@ -528,6 +548,7 @@ struct ExerciseEditorView: View {
             exercise.defaultRestSeconds = restSeconds
             exercise.formulaRaw = formula.rawValue
             exercise.customMetricUnit = unit
+            exercise.weightUnit = weightUnit
             exercise.isAssisted = isAssisted
             target = exercise
         } else {
@@ -541,6 +562,7 @@ struct ExerciseEditorView: View {
                 defaultRestSeconds: restSeconds,
                 formula: formula,
                 customMetricUnit: unit,
+                weightUnit: weightUnit,
                 isCustom: true,
                 isAssisted: isAssisted
             )

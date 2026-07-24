@@ -92,15 +92,18 @@ struct ExerciseLogCard: View {
     private var showsOneRM: Bool {
         guard let next = nextPending else { return false }
         switch exercise.trackingType {
-        case .weightAndReps: return next.primary + (bodyWeight ?? 0) > 0
+        case .weightAndReps: return exercise.weightUnit.toPounds(next.primary) + (bodyWeight ?? 0) > 0
         case .bodyweightAndReps: return next.primary > 0 || bodyWeight != nil
         default: return false
         }
     }
 
+    /// Live estimated 1RM in canonical pounds (the draft's added weight is in
+    /// the exercise's unit, so convert before combining with body weight).
     private var liveOneRepMax: Double {
         guard let next = nextPending else { return 0 }
-        return exercise.formula.estimate(weight: next.primary + (bodyWeight ?? 0), reps: next.reps)
+        let addedPounds = exercise.usesWeightUnit ? exercise.weightUnit.toPounds(next.primary) : next.primary
+        return exercise.formula.estimate(weight: addedPounds + (bodyWeight ?? 0), reps: next.reps)
     }
 
     /// Live preview: would checking off the next set shatter the ceiling?
@@ -133,10 +136,10 @@ struct ExerciseLogCard: View {
                 Spacer()
                 if isExpanded && showsOneRM {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("e1RM")
+                        Text("e1RM · \(exercise.weightUnit.abbreviation)")
                             .font(.caption)
                             .foregroundStyle(Theme.textDim)
-                        Text(liveOneRepMax.cleanWeight)
+                        Text(exercise.displayWeightString(fromPounds: liveOneRepMax))
                             .font(.title3.weight(.bold))
                             .monospacedDigit()
                             .foregroundStyle(wouldLimitBreak ? Theme.gold : .primary)
@@ -280,10 +283,10 @@ struct ExerciseLogCard: View {
     private func setSummary(_ set: ExerciseSet) -> String {
         switch exercise.trackingType {
         case .weightAndReps:
-            return "\(set.weight.cleanWeight) lbs × \(set.reps)"
+            return "\(exercise.displayWeightString(fromPounds: set.weight)) \(exercise.weightUnit.abbreviation) × \(set.reps)"
         case .bodyweightAndReps:
-            if set.weight > 0 { return "BW+\(set.weight.cleanWeight) × \(set.reps)" }
-            if set.weight < 0 { return "BW\(set.weight.cleanWeight) × \(set.reps)" }
+            if set.weight > 0 { return "BW+\(exercise.displayWeightString(fromPounds: set.weight)) × \(set.reps)" }
+            if set.weight < 0 { return "BW\(exercise.displayWeightString(fromPounds: set.weight)) × \(set.reps)" }
             return "BW × \(set.reps)"
         case .durationAndReps:
             return "\((set.durationSeconds ?? 0).clockString) × \(set.reps)"
@@ -303,14 +306,27 @@ struct ExerciseLogCard: View {
             HStack(spacing: 12) {
                 switch exercise.trackingType {
                 case .weightAndReps, .bodyweightAndReps, .customMetric:
-                    BigValueField(
-                        value: $drafts[index].primary,
-                        step: exercise.defaultIncrement,
-                        allowsNegative: exercise.isAssisted
-                    )
+                    VStack(spacing: 6) {
+                        BigValueField(
+                            value: $drafts[index].primary,
+                            step: exercise.defaultIncrement,
+                            allowsNegative: exercise.isAssisted
+                        )
+                        if exercise.usesWeightUnit {
+                            unitToggle
+                        }
+                    }
                     separator("x")
-                    BigValueField(value: repsBinding(index), step: 1, allowsNegative: false, minimum: 1)
-                        .frame(maxWidth: 110)
+                    VStack(spacing: 6) {
+                        BigValueField(value: repsBinding(index), step: 1, allowsNegative: false, minimum: 1)
+                        if exercise.usesWeightUnit {
+                            Text("reps")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Theme.textDim)
+                                .frame(height: 24)
+                        }
+                    }
+                    .frame(maxWidth: 110)
                 case .durationAndReps:
                     BigValueField(value: $drafts[index].primary, step: 5, allowsNegative: false)
                     separator("x")
@@ -336,6 +352,46 @@ struct ExerciseLogCard: View {
             get: { Double(drafts[index].reps) },
             set: { drafts[index].reps = max(1, Int($0)) }
         )
+    }
+
+    /// Compact lb/kg switch sitting beneath the weight field. Switching preserves
+    /// the physical load of any pending sets by re-expressing them in the new unit.
+    private var unitToggle: some View {
+        HStack(spacing: 0) {
+            ForEach(WeightUnit.allCases) { unit in
+                let selected = exercise.weightUnit == unit
+                Button {
+                    setUnit(unit)
+                } label: {
+                    Text(unit.tag)
+                        .font(.caption2.weight(.bold))
+                        .kerning(0.5)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .foregroundStyle(selected ? .black : Theme.textDim)
+                        .background(
+                            selected ? AnyShapeStyle(Theme.emerald) : AnyShapeStyle(Color.clear),
+                            in: RoundedRectangle(cornerRadius: 7)
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .frame(height: 24)
+        .background(Theme.surfaceRaised.opacity(0.5), in: RoundedRectangle(cornerRadius: 9))
+    }
+
+    private func setUnit(_ unit: WeightUnit) {
+        let old = exercise.weightUnit
+        guard old != unit else { return }
+        // Keep pending inputs at the same physical load across the switch.
+        for i in drafts.indices where !drafts[i].isLogged {
+            drafts[i].primary = unit.fromPounds(old.toPounds(drafts[i].primary))
+        }
+        workout.setWeightUnit(unit, for: exercise)
+        Haptics.shared.tick()
     }
 
     private var addSetButton: some View {
@@ -458,7 +514,10 @@ struct ExerciseLogCard: View {
         let draft = drafts[index]
 
         switch exercise.trackingType {
-        case .weightAndReps, .bodyweightAndReps, .customMetric:
+        case .weightAndReps, .bodyweightAndReps:
+            // Draft weight is in the exercise's unit; store canonical pounds.
+            workout.logSet(exercise: exercise, weight: exercise.weightUnit.toPounds(draft.primary), reps: draft.reps, isWarmup: isWarmup)
+        case .customMetric:
             workout.logSet(exercise: exercise, weight: draft.primary, reps: draft.reps, isWarmup: isWarmup)
         case .durationAndReps:
             workout.logSet(exercise: exercise, weight: 0, reps: draft.reps, durationSeconds: draft.primary, isWarmup: isWarmup)
@@ -481,7 +540,7 @@ struct ExerciseLogCard: View {
 
     private var initialPrimary: Double {
         switch exercise.trackingType {
-        case .weightAndReps: return exercise.isAssisted ? 0 : 45
+        case .weightAndReps: return exercise.isAssisted ? 0 : exercise.weightUnit.fromPounds(45)
         case .durationAndReps: return 30
         case .timeAndDistance: return 300
         default: return 0
@@ -539,7 +598,8 @@ struct ExerciseLogCard: View {
     private func primaryValue(from set: ExerciseSet) -> Double {
         switch exercise.trackingType {
         case .durationAndReps, .timeAndDistance: return set.durationSeconds ?? 0
-        default: return set.weight
+        case .weightAndReps, .bodyweightAndReps: return exercise.weightUnit.fromPounds(set.weight)
+        case .customMetric: return set.weight
         }
     }
 }

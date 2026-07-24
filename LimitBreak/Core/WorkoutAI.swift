@@ -13,15 +13,21 @@ struct ExerciseBrief {
 
 /// One exercise the AI (or fallback) chose for a generated workout.
 struct PlannedExercise: Identifiable {
-    let id = UUID()
+    let id: UUID
     let name: String
     let sets: Int
+
+    init(id: UUID = UUID(), name: String, sets: Int) {
+        self.id = id
+        self.name = name
+        self.sets = sets
+    }
 }
 
 /// A generated workout: a fun title plus an ordered list of exercises to run.
 struct WorkoutPlan {
     let title: String
-    let exercises: [PlannedExercise]
+    var exercises: [PlannedExercise]
 }
 
 /// On-device workout intelligence — session names and full workout plans.
@@ -110,6 +116,107 @@ enum WorkoutAI {
         #endif
         return fallbackPlan(focusLabel: focusLabel, targetMuscleGroups: targetMuscleGroups, exerciseCount: count, catalog: catalog)
     }
+
+    // MARK: - Single-exercise replacement
+
+    /// Picks one replacement movement for a single slot in an existing plan.
+    /// Prefers something that trains muscles similar to the outgoing exercise
+    /// while avoiding anything already in the plan. Returns the catalog name to
+    /// swap in, or `nil` if nothing suitable is available.
+    static func replaceExercise(
+        focusLabel: String,
+        targetMuscleGroups: [String],
+        replacing currentName: String,
+        excluding: Set<String>,
+        catalog: [ExerciseBrief]
+    ) async -> String? {
+        // Everything already in the plan (including the outgoing name) is off-limits.
+        let available = catalog.filter { !excluding.contains($0.name.lowercased()) }
+        guard !available.isEmpty else { return nil }
+
+        // Muscles the outgoing movement trained — the swap should stay in that lane.
+        let currentMuscles = Set(
+            (catalog.first { $0.name.lowercased() == currentName.lowercased() }?.muscleGroups ?? [])
+                .map { $0.lowercased() }
+        )
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *), SystemLanguageModel.default.availability == .available {
+            do {
+                let picked = try await replaceExerciseWithModel(
+                    focusLabel: focusLabel,
+                    replacing: currentName,
+                    catalog: focusedCatalog(available, targetMuscleGroups: Array(currentMuscles.isEmpty ? Set(targetMuscleGroups.map { $0.lowercased() }) : currentMuscles))
+                )
+                return picked ?? fallbackReplacement(currentMuscles: currentMuscles, targetMuscleGroups: targetMuscleGroups, available: available)
+            } catch {
+                return fallbackReplacement(currentMuscles: currentMuscles, targetMuscleGroups: targetMuscleGroups, available: available)
+            }
+        }
+        #endif
+        return fallbackReplacement(currentMuscles: currentMuscles, targetMuscleGroups: targetMuscleGroups, available: available)
+    }
+
+    /// Deterministic single swap: favor a movement sharing the outgoing exercise's
+    /// muscles (or the focus muscles when unknown), else anything still available.
+    private static func fallbackReplacement(
+        currentMuscles: Set<String>,
+        targetMuscleGroups: [String],
+        available: [ExerciseBrief]
+    ) -> String? {
+        let targets = currentMuscles.isEmpty
+            ? Set(targetMuscleGroups.map { $0.lowercased() })
+            : currentMuscles
+        let matches = available.filter { brief in
+            brief.muscleGroups.contains { targets.contains($0.lowercased()) }
+        }
+        let pool = matches.isEmpty ? available : matches
+        return pool.shuffled().first?.name
+    }
+
+    #if canImport(FoundationModels)
+    /// Guided-generation shape for a single replacement pick. The returned name is
+    /// matched back to the real catalog, so a hallucinated name yields `nil`.
+    @available(iOS 26.0, *)
+    @Generable
+    struct GeneratedReplacement {
+        @Guide(description: "The exact exercise name, copied verbatim from the provided catalog list")
+        var name: String
+    }
+
+    @available(iOS 26.0, *)
+    private static func replaceExerciseWithModel(
+        focusLabel: String,
+        replacing currentName: String,
+        catalog: [ExerciseBrief]
+    ) async throws -> String? {
+        guard !catalog.isEmpty else { return nil }
+        let session = LanguageModelSession(instructions: """
+            You are a strength coach for LimitBreak, an RPG-styled workout tracker. \
+            Pick ONE replacement exercise from a fixed catalog to swap in for another movement. \
+            Only ever use an exercise name that appears verbatim in the catalog — never invent names. \
+            Prefer a movement that trains similar muscles to the one being replaced, but is a different exercise.
+            """)
+
+        let catalogList = catalog
+            .map { "- \($0.name) (\($0.muscleGroups.joined(separator: ", ")); \($0.equipment))" }
+            .joined(separator: "\n")
+
+        let prompt = """
+            Focus: \(focusLabel)
+            Replace this exercise: \(currentName)
+            Pick a single different exercise from the catalog that trains similar muscles.
+
+            Catalog:
+            \(catalogList)
+            """
+
+        let response = try await session.respond(to: prompt, generating: GeneratedReplacement.self)
+        let byName = Dictionary(catalog.map { ($0.name.lowercased(), $0.name) }) { first, _ in first }
+        let key = response.content.name.lowercased().trimmingCharacters(in: .whitespaces)
+        return byName[key]
+    }
+    #endif
 
     /// Trims the library to what the on-device model actually needs: movements
     /// hitting the focus muscles first, a shuffled handful of accessories after,

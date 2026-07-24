@@ -103,6 +103,53 @@ enum XPEngine {
         1 + max(0, streakDay) / 7
     }
 
+    /// A walk must cover at least this far to keep a streak alive. Shorter walks
+    /// still earn their XP, they just don't sustain the streak.
+    static let streakWalkMinimumMiles = 1.0
+
+    /// The set of days that keep a streak alive: any finished session, any logged
+    /// activity, or a walk of at least a mile. This is the single definition of
+    /// an "active day" shared by the XP multiplier and the widget streak tile.
+    static func qualifyingStreakDays(
+        sessions: [WorkoutSession],
+        walks: [Walk],
+        activities: [Activity],
+        calendar: Calendar = .current
+    ) -> Set<Date> {
+        var days: Set<Date> = []
+        for session in sessions { days.insert(calendar.startOfDay(for: session.startDate)) }
+        for activity in activities { days.insert(calendar.startOfDay(for: activity.date)) }
+        for walk in walks where walk.distanceMiles >= streakWalkMinimumMiles {
+            days.insert(calendar.startOfDay(for: walk.date))
+        }
+        return days
+    }
+
+    /// The current active streak: consecutive qualifying days ending today, or
+    /// yesterday when today hasn't been earned yet (a streak survives one quiet
+    /// day). Counts any activity — sessions, sports, and walks over a mile.
+    static func currentStreak(
+        sessions: [WorkoutSession],
+        walks: [Walk],
+        activities: [Activity],
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Int {
+        let days = qualifyingStreakDays(sessions: sessions, walks: walks, activities: activities, calendar: calendar)
+        guard !days.isEmpty else { return 0 }
+
+        var streak = 0
+        var day = calendar.startOfDay(for: now)
+        if !days.contains(day) {
+            day = calendar.date(byAdding: .day, value: -1, to: day)!
+        }
+        while days.contains(day) {
+            streak += 1
+            day = calendar.date(byAdding: .day, value: -1, to: day)!
+        }
+        return streak
+    }
+
     /// One day in the replayed XP ledger.
     struct LedgerDay {
         let day: Date
@@ -147,6 +194,11 @@ enum XPEngine {
         let byDay = Dictionary(grouping: rewards) { calendar.startOfDay(for: $0.date) }
         guard let firstDay = byDay.keys.min(), firstDay <= today else { return .empty }
 
+        // Days that actually sustain a streak (sessions, activities, walks ≥ 1 mi).
+        let qualifyingDays = qualifyingStreakDays(
+            sessions: sessions, walks: walks, activities: activities, calendar: calendar
+        )
+
         var ledger: [LedgerDay] = []
         var multipliers: [Date: Int] = [:]
         var total = 0
@@ -157,7 +209,7 @@ enum XPEngine {
         var day = firstDay
         while day <= today {
             let base = (byDay[day] ?? []).reduce(0) { $0 + $1.xp }
-            if base > 0 {
+            if qualifyingDays.contains(day) {
                 streak += 1
                 lastActiveStreak = streak
                 idleRun = 0
@@ -165,6 +217,14 @@ enum XPEngine {
                 multipliers[day] = mult
                 total += base * mult
                 ledger.append(LedgerDay(day: day, baseXP: base, multiplier: mult, penalty: 0, streakLength: streak))
+            } else if base > 0 {
+                // An earning that doesn't sustain a streak (a sub-mile walk):
+                // still pays, but flat, and breaks the daily chain.
+                idleRun += 1
+                streak = 0
+                multipliers[day] = 1
+                total += base
+                ledger.append(LedgerDay(day: day, baseXP: base, multiplier: 1, penalty: 0, streakLength: 0))
             } else {
                 idleRun += 1
                 streak = 0

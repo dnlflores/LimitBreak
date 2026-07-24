@@ -146,6 +146,44 @@ struct XPEngineTests {
     }
 }
 
+struct CatalogGuideTests {
+
+    @Test @MainActor func seedIncludesGuides() throws {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self, Walk.self, Activity.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        ExerciseCatalog.seedIfNeeded(context: container.mainContext)
+
+        let exercises = try container.mainContext.fetch(FetchDescriptor<Exercise>())
+        #expect(!exercises.isEmpty)
+        #expect(exercises.allSatisfy { $0.exerciseDescription != nil && !$0.instructionSteps.isEmpty })
+    }
+
+    /// Catalogs seeded before guides existed get them filled in on next launch.
+    @Test @MainActor func backfillFillsLegacyDefaults() throws {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self, Walk.self, Activity.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        // Simulate a legacy install: a default movement with no guide, plus a
+        // custom movement that must stay untouched.
+        let legacy = Exercise(name: "Deadlift", muscleGroup: "Lats")
+        let custom = Exercise(name: "My Weird Lift", muscleGroup: "Core", isCustom: true)
+        container.mainContext.insert(legacy)
+        container.mainContext.insert(custom)
+        try container.mainContext.save()
+
+        ExerciseCatalog.seedIfNeeded(context: container.mainContext)
+
+        #expect(legacy.exerciseDescription != nil)
+        #expect(!legacy.instructionSteps.isEmpty)
+        #expect(custom.exerciseDescription == nil)
+    }
+}
+
 struct MuscleRecoveryTests {
 
     /// Training a few muscles today must not zero out overall readiness —

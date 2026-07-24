@@ -8,6 +8,9 @@ struct ExerciseLibraryView: View {
     @State private var muscleFilter: MuscleGroup?
     // Debug/UI-test hook: launch with "-open-forge" to present the creator sheet.
     @State private var showCreator = ProcessInfo.processInfo.arguments.contains("-open-forge")
+    // Debug/UI-test hook: launch with "-open-first-exercise" to push the first
+    // movement's detail page.
+    @State private var debugOpenFirst = ProcessInfo.processInfo.arguments.contains("-open-first-exercise")
 
     private var filtered: [Exercise] {
         exercises.filter { exercise in
@@ -55,6 +58,11 @@ struct ExerciseLibraryView: View {
             .scrollDismissesKeyboard(.interactively)
             .sheet(isPresented: $showCreator) {
                 ExerciseEditorView()
+            }
+            .navigationDestination(isPresented: $debugOpenFirst) {
+                if let first = exercises.first {
+                    ExerciseDetailView(exercise: first)
+                }
             }
         }
     }
@@ -235,6 +243,8 @@ struct ExerciseDetailView: View {
             VStack(alignment: .leading, spacing: 14) {
                 detailHeader
 
+                guideSection
+
                 configCard
 
                 sectionLabel("RECORD LEDGER")
@@ -340,6 +350,65 @@ struct ExerciseDetailView: View {
             .kerning(1.5)
             .foregroundStyle(Theme.textDim)
             .padding(.top, 6)
+    }
+
+    // MARK: Guide
+
+    /// Description and how-to steps; movements without one get a nudge to
+    /// write it (the editor's Guide section is always available later).
+    @ViewBuilder
+    private var guideSection: some View {
+        if let about = exercise.exerciseDescription, !about.isEmpty {
+            sectionLabel("ABOUT")
+            Text(about)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .cardStyle()
+        }
+
+        let steps = exercise.instructionSteps
+        if !steps.isEmpty {
+            sectionLabel("HOW TO PERFORM")
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .top, spacing: 12) {
+                        Text("\(index + 1)")
+                            .font(.system(.caption, design: .rounded, weight: .black))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.emerald)
+                            .frame(width: 22, height: 22)
+                            .background(Theme.emerald.opacity(0.12), in: Circle())
+                        Text(step)
+                            .font(.subheadline)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cardStyle()
+        }
+
+        if exercise.exerciseDescription == nil && steps.isEmpty {
+            Button {
+                showEditor = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "text.badge.plus")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.emerald)
+                    Text("No guide yet \u{2014} add a description and how-to for this movement.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textDim)
+                        .multilineTextAlignment(.leading)
+                    Spacer()
+                }
+                .padding(12)
+                .glassControl(cornerRadius: 14)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     // MARK: Configuration

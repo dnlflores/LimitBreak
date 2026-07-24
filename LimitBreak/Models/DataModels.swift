@@ -65,6 +65,10 @@ final class Exercise {
     /// Assisted movements (e.g. assisted pull-ups) accept negative weight:
     /// the value is assistance provided, so more negative = easier.
     var isAssisted: Bool = false
+    /// Optional guide: what this movement is for.
+    var exerciseDescription: String? = nil
+    /// Optional how-to, one step per line.
+    var instructions: String? = nil
     var createdAt: Date
 
     @Relationship(deleteRule: .cascade, inverse: \ExerciseSet.exercise)
@@ -126,6 +130,14 @@ final class Exercise {
     /// Historical best value for the given record type (the LimitBreak "ceiling").
     func ceiling(for recordType: String) -> Double {
         prRecords.filter { $0.recordType == recordType }.map(\.numericValue).max() ?? 0
+    }
+
+    /// The how-to split into displayable steps (one per non-empty line).
+    var instructionSteps: [String] {
+        (instructions ?? "")
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 }
 

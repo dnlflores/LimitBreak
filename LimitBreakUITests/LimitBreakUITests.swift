@@ -79,6 +79,35 @@ final class LimitBreakUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [gone], timeout: 5), .completed)
     }
 
+    /// An AI plan can be kept as a routine without starting a session: it
+    /// lands on the Train launcher's routine shelf, no active session begins.
+    @MainActor
+    func testAIWorkoutSavesAsRoutineWithoutStarting() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-skip-splash", "-in-memory-store", "-open-tab", "1"]
+        app.launch()
+
+        let aiCard = app.staticTexts["AI Workout"]
+        XCTAssertTrue(aiCard.waitForExistence(timeout: 5))
+        aiCard.tap()
+
+        let generateButton = app.buttons["GENERATE WORKOUT"]
+        XCTAssertTrue(generateButton.waitForExistence(timeout: 5))
+        generateButton.tap()
+
+        let saveButton = app.buttons["Save Routine"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 10))
+        saveButton.tap()
+
+        XCTAssertTrue(app.buttons["Saved"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+
+        // Back on the launcher: still no active session, and the routine
+        // shelf now has a card (its empty-state hint is gone).
+        XCTAssertTrue(app.buttons["START SESSION"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Save a routine to quick-start it here."].exists)
+    }
+
     /// Forge sheet: every section renders, and creating a movement lands it
     /// in the Library. Captures a screenshot of the scrolled sheet for review.
     @MainActor

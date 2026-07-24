@@ -21,6 +21,8 @@ struct ExerciseEditorView: View {
     @State private var formula: OneRMFormula = .epley
     @State private var customUnit = ""
     @State private var isAssisted = false
+    @State private var guideDescription = ""
+    @State private var guideInstructions = ""
 
     private let incrementOptions = [1.0, 2.5, 5.0, 10.0, 25.0]
     private let restOptions = [0, 30, 45, 60, 90, 120, 180, 240, 300]
@@ -39,6 +41,8 @@ struct ExerciseEditorView: View {
         _formula = State(initialValue: exercise.formula)
         _customUnit = State(initialValue: exercise.customMetricUnit ?? "")
         _isAssisted = State(initialValue: exercise.isAssisted)
+        _guideDescription = State(initialValue: exercise.exerciseDescription ?? "")
+        _guideInstructions = State(initialValue: exercise.instructions ?? "")
     }
 
     private var isEditing: Bool { exercise != nil }
@@ -65,6 +69,9 @@ struct ExerciseEditorView: View {
 
                 sectionLabel("FINE-TUNING")
                 tuningCard
+
+                sectionLabel("GUIDE \u{2014} OPTIONAL")
+                guideCard
 
                 forgeButton
                     .padding(.top, 8)
@@ -400,6 +407,37 @@ struct ExerciseEditorView: View {
         .cardStyle()
     }
 
+    // MARK: - Guide
+
+    /// Optional description and how-to. Skippable while forging; editable
+    /// any time later from the exercise's detail page.
+    private var guideCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                fieldLabel("What is this movement for?")
+                TextField("e.g. A unilateral press for shoulder stability\u{2026}", text: $guideDescription, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(2...5)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.glassBorder, lineWidth: 1))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                fieldLabel("How to perform it \u{2014} one step per line")
+                TextField("Set up\u{2026}\nExecute\u{2026}\nReset\u{2026}", text: $guideInstructions, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(3...8)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.glassBorder, lineWidth: 1))
+            }
+        }
+        .cardStyle()
+    }
+
     // MARK: - Shared controls
 
     private func fieldLabel(_ text: String) -> some View {
@@ -476,6 +514,8 @@ struct ExerciseEditorView: View {
 
     private func save() {
         let unit = trackingType == .customMetric && !customUnit.isEmpty ? customUnit : nil
+        let trimmedDescription = guideDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedInstructions = guideInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
         let target: Exercise
         if let exercise {
             // Update the existing movement in place, preserving its records and history.
@@ -506,6 +546,8 @@ struct ExerciseEditorView: View {
             )
             modelContext.insert(target)
         }
+        target.exerciseDescription = trimmedDescription.isEmpty ? nil : trimmedDescription
+        target.instructions = trimmedInstructions.isEmpty ? nil : trimmedInstructions
         try? modelContext.save()
         Haptics.shared.success()
         onCreate?(target)

@@ -7,9 +7,19 @@ struct ActivityLogView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    @State private var sport: SportType = .basketball
-    @State private var minutes: Double = 60
-    @State private var date = Date()
+    /// The activity being corrected, or nil when logging a fresh one.
+    private let editing: Activity?
+
+    @State private var sport: SportType
+    @State private var minutes: Double
+    @State private var date: Date
+
+    init(activity: Activity? = nil) {
+        self.editing = activity
+        _sport = State(initialValue: activity?.sport ?? .basketball)
+        _minutes = State(initialValue: Double(activity?.durationMinutes ?? 60))
+        _date = State(initialValue: activity?.date ?? Date())
+    }
 
     private var earnedXP: Int {
         XPEngine.xpForActivity(minutes: Int(minutes))
@@ -45,9 +55,11 @@ struct ActivityLogView: View {
     private var header: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Log Activity")
+                Text(editing == nil ? "Log Activity" : "Edit Activity")
                     .font(.title.bold())
-                Text("Cross-training earns XP too.")
+                Text(editing == nil
+                     ? "Cross-training earns XP too."
+                     : "Fix the sport, the time played, or when it happened.")
                     .font(.caption)
                     .foregroundStyle(Theme.textDim)
             }
@@ -182,7 +194,7 @@ struct ActivityLogView: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: sport.icon)
-                Text("LOG ACTIVITY")
+                Text(editing == nil ? "LOG ACTIVITY" : "SAVE CHANGES")
                     .kerning(1.5)
             }
             .font(.headline)
@@ -197,8 +209,13 @@ struct ActivityLogView: View {
     }
 
     private func log() {
-        let activity = Activity(sport: sport, date: date, durationMinutes: Int(minutes))
-        modelContext.insert(activity)
+        if let editing {
+            editing.sportRaw = sport.rawValue
+            editing.date = date
+            editing.durationMinutes = Int(minutes)
+        } else {
+            modelContext.insert(Activity(sport: sport, date: date, durationMinutes: Int(minutes)))
+        }
         try? modelContext.save()
         Haptics.shared.success()
         WidgetSnapshotter.shared.refresh()

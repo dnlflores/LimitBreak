@@ -11,6 +11,7 @@ struct WorkoutHistoryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \WorkoutSession.startDate, order: .reverse) private var allSessions: [WorkoutSession]
     @Query(sort: \Walk.date, order: .reverse) private var allWalks: [Walk]
+    @Query(sort: \Activity.date, order: .reverse) private var allActivities: [Activity]
 
     @State private var searchText = ""
     @State private var sessionToEdit: WorkoutSession?
@@ -18,6 +19,8 @@ struct WorkoutHistoryView: View {
     @State private var sessionToSaveAsRoutine: WorkoutSession?
     @State private var walkToEdit: Walk?
     @State private var walkToDelete: Walk?
+    @State private var activityToEdit: Activity?
+    @State private var activityToDelete: Activity?
     // Debug/UI-test hook: launch with "-open-first-workout" to push the newest
     // workout's detail view.
     @State private var debugOpenFirst = ProcessInfo.processInfo.arguments.contains("-open-first-workout")
@@ -29,11 +32,13 @@ struct WorkoutHistoryView: View {
     private enum TimelineItem: Identifiable {
         case session(WorkoutSession)
         case walk(Walk)
+        case activity(Activity)
 
         var id: String {
             switch self {
             case .session(let session): return "session-\(session.id)"
             case .walk(let walk): return "walk-\(walk.id)"
+            case .activity(let activity): return "activity-\(activity.id)"
             }
         }
 
@@ -41,24 +46,29 @@ struct WorkoutHistoryView: View {
             switch self {
             case .session(let session): return session.startDate
             case .walk(let walk): return walk.date
+            case .activity(let activity): return activity.date
             }
         }
     }
 
     // MARK: - Derived data
 
-    private var isEmpty: Bool { allSessions.isEmpty && allWalks.isEmpty }
+    private var isEmpty: Bool { allSessions.isEmpty && allWalks.isEmpty && allActivities.isEmpty }
 
-    /// Sessions and walks, filtered by the search term and sorted newest first.
-    /// Walks match only the term "walk" since they have no name or exercises.
+    /// Sessions, walks and activities, filtered by the search term and sorted
+    /// newest first. Walks match only the term "walk" since they have no name or
+    /// exercises; activities match their sport ("basketball") or the catch-all
+    /// "activity".
     private var filteredItems: [TimelineItem] {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
         let sessionItems: [TimelineItem]
         let walkItems: [TimelineItem]
+        let activityItems: [TimelineItem]
 
         if trimmed.isEmpty {
             sessionItems = allSessions.map(TimelineItem.session)
             walkItems = allWalks.map(TimelineItem.walk)
+            activityItems = allActivities.map(TimelineItem.activity)
         } else {
             sessionItems = allSessions.filter { session in
                 session.name.localizedCaseInsensitiveContains(trimmed)
@@ -69,9 +79,13 @@ struct WorkoutHistoryView: View {
             walkItems = "walk".localizedCaseInsensitiveContains(trimmed)
                 ? allWalks.map(TimelineItem.walk)
                 : []
+            let matchesAll = "activity".localizedCaseInsensitiveContains(trimmed)
+            activityItems = allActivities.filter { activity in
+                matchesAll || activity.sport.rawValue.localizedCaseInsensitiveContains(trimmed)
+            }.map(TimelineItem.activity)
         }
 
-        return (sessionItems + walkItems).sorted { $0.date > $1.date }
+        return (sessionItems + walkItems + activityItems).sorted { $0.date > $1.date }
     }
 
     /// Timeline items bucketed into month sections, newest month first.
@@ -150,6 +164,19 @@ struct WorkoutHistoryView: View {
             .sheet(item: $walkToEdit) { walk in
                 EditWalkSheet(walk: walk)
             }
+            .sheet(item: $activityToEdit) { activity in
+                ActivityLogView(activity: activity)
+            }
+            .alert("Delete Activity?", isPresented: deleteActivityAlertBinding, presenting: activityToDelete) { activity in
+                Button("Delete", role: .destructive) {
+                    modelContext.delete(activity)
+                    try? modelContext.save()
+                    WidgetSnapshotter.shared.refresh()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { activity in
+                Text("This \(activity.durationMinutes)-minute \(activity.sport.rawValue.lowercased()) session will be permanently removed, along with the XP it earned.")
+            }
             .alert("Delete Walk?", isPresented: deleteWalkAlertBinding, presenting: walkToDelete) { walk in
                 Button("Delete", role: .destructive) {
                     modelContext.delete(walk)
@@ -180,6 +207,14 @@ struct WorkoutHistoryView: View {
         Binding(
             get: { walkToDelete != nil },
             set: { if !$0 { walkToDelete = nil } }
+        )
+    }
+
+    /// Bridges the `presenting:` alert to the optional activity state.
+    private var deleteActivityAlertBinding: Binding<Bool> {
+        Binding(
+            get: { activityToDelete != nil },
+            set: { if !$0 { activityToDelete = nil } }
         )
     }
 
@@ -270,6 +305,62 @@ struct WorkoutHistoryView: View {
         switch item {
         case .session(let session): sessionCard(session)
         case .walk(let walk): walkCard(walk)
+        case .activity(let activity): activityCard(activity)
+        }
+    }
+
+    // MARK: - Activity card
+
+    /// A logged cross-training session — pickup basketball, a volleyball night.
+    /// There's no detail screen behind these (an activity is just a sport, a
+    /// duration and a date), so the row carries its own edit/delete actions.
+    private func activityCard(_ activity: Activity) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: activity.sport.icon)
+                .font(.title3)
+                .foregroundStyle(Theme.coral)
+                .frame(width: 40, height: 40)
+                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(activity.sport.rawValue)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Text(activity.date.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(Theme.textDim)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(activity.durationMinutes) min")
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.coral)
+                Text("+\(XPEngine.xp(for: activity)) XP")
+                    .font(.caption2.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.gold)
+            }
+        }
+        .cardStyle()
+        .contentShape(RoundedRectangle(cornerRadius: 20))
+        .onTapGesture {
+            Haptics.shared.tick()
+            activityToEdit = activity
+        }
+        .contextMenu {
+            Button {
+                activityToEdit = activity
+            } label: {
+                Label("Edit Activity", systemImage: "pencil")
+            }
+            Button(role: .destructive) {
+                activityToDelete = activity
+            } label: {
+                Label("Delete Activity", systemImage: "trash")
+            }
         }
     }
 
@@ -281,10 +372,13 @@ struct WorkoutHistoryView: View {
         } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(session.name)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
+                    HStack(spacing: 6) {
+                        Text(session.name)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                        PartnerBadge(trainedWithPartner: session.trainedWithPartner, compact: true)
+                    }
                     Text("\(session.startDate.formatted(date: .abbreviated, time: .shortened)) \u{00B7} \(session.duration.clockString)")
                         .font(.caption)
                         .foregroundStyle(Theme.textDim)

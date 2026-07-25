@@ -157,7 +157,7 @@ struct RoutineEditorView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.wrappedValue.exercise.name)
                     .font(.subheadline.weight(.semibold))
-                Text(item.wrappedValue.exercise.muscleGroupRaw)
+                Text(item.wrappedValue.exercise.muscleGroupDisplay)
                     .font(.caption)
                     .foregroundStyle(Theme.textDim)
             }

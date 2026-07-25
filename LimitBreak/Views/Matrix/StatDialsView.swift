@@ -170,7 +170,7 @@ struct StatDialsView: View {
                     .fill(state.color)
                     .frame(width: 10, height: 10)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(group.rawValue)
+                    Text(group.displayName)
                         .font(.subheadline.weight(.semibold))
                     if let last = status.lastTrained {
                         Text("Last trained \(last.formatted(.relative(presentation: .named))) · \(status.weeklySets) sets this week")

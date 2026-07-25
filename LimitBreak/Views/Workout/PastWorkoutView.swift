@@ -9,6 +9,7 @@ struct PastWorkoutView: View {
 
     @State private var date = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
     @State private var sessionName = ""
+    @State private var withPartner = false
     @State private var entries: [EntryDraft] = []
     @State private var showExercisePicker = false
 
@@ -94,6 +95,8 @@ struct PastWorkoutView: View {
                 .textFieldStyle(.plain)
                 .padding(12)
                 .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+
+            PartnerToggle(isOn: $withPartner)
         }
         .cardStyle()
     }
@@ -201,7 +204,7 @@ struct PastWorkoutView: View {
             return sets.isEmpty ? nil : (entry.exercise, sets)
         }
         guard !payload.isEmpty else { return }
-        workout.logPastSession(name: sessionName, date: date, entries: payload)
+        workout.logPastSession(name: sessionName, date: date, withPartner: withPartner, entries: payload)
         dismiss()
     }
 }

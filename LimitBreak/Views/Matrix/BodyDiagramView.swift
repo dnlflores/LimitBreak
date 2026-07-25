@@ -215,7 +215,7 @@ private struct MuscleDetailSheet: View {
                 .padding()
             }
             .obsidianBackground()
-            .navigationTitle(group.rawValue)
+            .navigationTitle(group.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

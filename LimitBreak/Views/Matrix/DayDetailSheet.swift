@@ -2,17 +2,21 @@ import SwiftUI
 import SwiftData
 import MapKit
 
-/// The full battle report for one day: every session, every set, every walk.
+/// The full battle report for one day: every session, every set, every sport
+/// played, every walk.
 struct DayDetailSheet: View {
     let day: Date
 
     @Environment(\.dismiss) private var dismiss
     @Environment(WorkoutManager.self) private var workout
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \WorkoutSession.startDate) private var allSessions: [WorkoutSession]
     @Query(sort: \Walk.date) private var allWalks: [Walk]
+    @Query(sort: \Activity.date) private var allActivities: [Activity]
 
     @State private var sessionToEdit: WorkoutSession?
     @State private var sessionToDelete: WorkoutSession?
+    @State private var activityToEdit: Activity?
 
     private var dayInterval: DateInterval {
         Calendar.current.dateInterval(of: .day, for: day)!
@@ -26,6 +30,10 @@ struct DayDetailSheet: View {
         allWalks.filter { dayInterval.contains($0.date) }
     }
 
+    private var activities: [Activity] {
+        allActivities.filter { dayInterval.contains($0.date) }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -36,11 +44,15 @@ struct DayDetailSheet: View {
                         sessionCard(session)
                     }
 
+                    ForEach(activities, id: \.id) { activity in
+                        activityCard(activity)
+                    }
+
                     ForEach(walks, id: \.id) { walk in
                         walkCard(walk)
                     }
 
-                    if sessions.isEmpty && walks.isEmpty {
+                    if sessions.isEmpty && walks.isEmpty && activities.isEmpty {
                         Text("Nothing logged this day.")
                             .font(.subheadline)
                             .foregroundStyle(Theme.textDim)
@@ -60,6 +72,9 @@ struct DayDetailSheet: View {
             }
             .sheet(item: $sessionToEdit) { session in
                 EditWorkoutView(session: session)
+            }
+            .sheet(item: $activityToEdit) { activity in
+                ActivityLogView(activity: activity)
             }
             .alert("Delete Workout?", isPresented: deleteAlertBinding, presenting: sessionToDelete) { session in
                 Button("Delete", role: .destructive) {
@@ -87,15 +102,23 @@ struct DayDetailSheet: View {
         let volume = sessions.reduce(0) { $0 + $1.totalVolume }
         let prCount = sessions.reduce(0) { $0 + $1.prCount }
         let walkMiles = walks.reduce(0) { $0 + $1.distanceMiles }
+        let playedMinutes = activities.reduce(0) { $0 + $1.durationMinutes }
+
+        // The third tile reports whatever actually happened: sport time first
+        // (a basketball-only day would otherwise read as an empty zero), then
+        // distance walked, then the plain session count.
+        let third: (value: String, label: String, color: Color) = if playedMinutes > 0 {
+            ("\(playedMinutes)", "min played", Theme.coral)
+        } else if walkMiles > 0 {
+            (String(format: "%.1f mi", walkMiles), "walked", Theme.teal)
+        } else {
+            ("\(sessions.count)", "sessions", Theme.teal)
+        }
 
         return HStack(spacing: 12) {
             summaryTile(value: Int(volume).formatted(.number.notation(.compactName)), label: "lbs shifted", color: Theme.emerald)
             summaryTile(value: "\(prCount)", label: "LimitBreaks", color: Theme.gold)
-            summaryTile(
-                value: walkMiles > 0 ? String(format: "%.1f mi", walkMiles) : "\(sessions.count)",
-                label: walkMiles > 0 ? "walked" : "sessions",
-                color: Theme.teal
-            )
+            summaryTile(value: third.value, label: third.label, color: third.color)
         }
     }
 
@@ -200,6 +223,59 @@ struct DayDetailSheet: View {
         return set.weight > 0
             ? "\(exercise.displayWeightString(fromPounds: set.weight)) \(exercise.weightUnit.abbreviation) × \(set.reps)"
             : "\(set.reps) reps"
+    }
+
+    // MARK: - Activity card
+
+    private func activityCard(_ activity: Activity) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: activity.sport.icon)
+                .font(.title3)
+                .foregroundStyle(Theme.coral)
+                .frame(width: 40, height: 40)
+                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(activity.sport.rawValue)
+                    .font(.headline)
+                Text(activity.date.formatted(date: .omitted, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(Theme.textDim)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(activity.durationMinutes) min")
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.coral)
+                Text("+\(XPEngine.xp(for: activity)) XP")
+                    .font(.caption2.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.gold)
+            }
+
+            Menu {
+                Button {
+                    activityToEdit = activity
+                } label: {
+                    Label("Edit Activity", systemImage: "pencil")
+                }
+                Button(role: .destructive) {
+                    modelContext.delete(activity)
+                    try? modelContext.save()
+                    WidgetSnapshotter.shared.refresh()
+                } label: {
+                    Label("Delete Activity", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textDim)
+            }
+        }
+        .cardStyle()
     }
 
     // MARK: - Walk card

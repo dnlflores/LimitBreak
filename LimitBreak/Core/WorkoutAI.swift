@@ -96,6 +96,7 @@ enum WorkoutAI {
         targetMuscleGroups: [String],
         exerciseCount: Int,
         durationMinutes: Int?,
+        withPartner: Bool = false,
         catalog: [ExerciseBrief]
     ) async -> WorkoutPlan {
         let count = max(1, min(exerciseCount, catalog.count))
@@ -107,6 +108,7 @@ enum WorkoutAI {
                     focusLabel: focusLabel,
                     exerciseCount: count,
                     durationMinutes: durationMinutes,
+                    withPartner: withPartner,
                     catalog: focusedCatalog(catalog, targetMuscleGroups: targetMuscleGroups)
                 )
             } catch {
@@ -273,15 +275,25 @@ enum WorkoutAI {
         focusLabel: String,
         exerciseCount: Int,
         durationMinutes: Int?,
+        withPartner: Bool,
         catalog: [ExerciseBrief]
     ) async throws -> WorkoutPlan {
-        let session = LanguageModelSession(instructions: """
+        var instructions = """
             You are a strength coach for LimitBreak, an RPG-styled workout tracker. \
             Design a focused workout by selecting exercises from a fixed catalog. \
             Only ever use exercise names that appear verbatim in the catalog — never invent names. \
             Order the exercises sensibly, leading with the biggest compound movements. \
             Give the workout a short, fun, video-game-themed title.
-            """)
+            """
+        if withPartner {
+            instructions += """
+                \nThe lifter is training with a partner who can spot them, so heavy \
+                free-weight work is safe to program. Favor barbell and dumbbell \
+                pressing and squatting movements — the lifts where a spotter lets \
+                someone push closer to failure — over machine and cable versions.
+                """
+        }
+        let session = LanguageModelSession(instructions: instructions)
 
         let catalogList = catalog
             .map { "- \($0.name) (\($0.muscleGroups.joined(separator: ", ")); \($0.equipment))" }
@@ -293,6 +305,9 @@ enum WorkoutAI {
             """
         if let durationMinutes {
             prompt += "\nTarget workout length: about \(durationMinutes) minutes."
+        }
+        if withPartner {
+            prompt += "\nA spotter is available — lean into spottable free-weight lifts."
         }
         prompt += "\n\nCatalog:\n\(catalogList)"
 
@@ -357,44 +372,55 @@ enum WorkoutAI {
 /// A training focus the AI generator can target. Shared by the AI workout sheet
 /// and the routine editor.
 enum WorkoutFocus: String, CaseIterable, Identifiable {
-    case fullBody, push, pull, legs, upper, core, arms
+    case fullBody, push, pull, legs, upper, back, shoulders, chest, core, arms
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .fullBody: return "Full Body"
-        case .push:     return "Push"
-        case .pull:     return "Pull"
-        case .legs:     return "Legs"
-        case .upper:    return "Upper Body"
-        case .core:     return "Core"
-        case .arms:     return "Arms"
+        case .fullBody:  return "Full Body"
+        case .push:      return "Push"
+        case .pull:      return "Pull"
+        case .legs:      return "Legs"
+        case .upper:     return "Upper Body"
+        case .back:      return "Back"
+        case .shoulders: return "Shoulders"
+        case .chest:     return "Chest"
+        case .core:      return "Core"
+        case .arms:      return "Arms"
         }
     }
 
     var icon: String {
         switch self {
-        case .fullBody: return "figure.mixed.cardio"
-        case .push:     return "figure.strengthtraining.traditional"
-        case .pull:     return "figure.rower"
-        case .legs:     return "figure.run"
-        case .upper:    return "figure.arms.open"
-        case .core:     return "figure.core.training"
-        case .arms:     return "dumbbell.fill"
+        case .fullBody:  return "figure.mixed.cardio"
+        case .push:      return "figure.strengthtraining.traditional"
+        case .pull:      return "figure.rower"
+        case .legs:      return "figure.run"
+        case .upper:     return "figure.arms.open"
+        case .back:      return "figure.rower"
+        case .shoulders: return "figure.arms.open"
+        case .chest:     return "figure.strengthtraining.traditional"
+        case .core:      return "figure.core.training"
+        case .arms:      return "dumbbell.fill"
         }
     }
 
-    /// Muscle group raw values this focus targets. Empty means "everything".
+    /// Muscle group raw values this focus targets — these are stored raw values,
+    /// not display names (see `MuscleGroup.displayName`). Empty means
+    /// "everything".
     var targetMuscleGroups: [String] {
         switch self {
-        case .fullBody: return []
-        case .push:     return ["Chest", "Deltoids", "Triceps"]
-        case .pull:     return ["Lats", "Biceps", "Forearms"]
-        case .legs:     return ["Quads", "Hamstrings", "Glutes", "Calves"]
-        case .upper:    return ["Chest", "Lats", "Deltoids", "Biceps", "Triceps"]
-        case .core:     return ["Core"]
-        case .arms:     return ["Biceps", "Triceps", "Forearms"]
+        case .fullBody:  return []
+        case .push:      return ["Chest", "Deltoids", "Triceps"]
+        case .pull:      return ["Lats", "Biceps", "Forearms"]
+        case .legs:      return ["Quads", "Hamstrings", "Glutes", "Calves"]
+        case .upper:     return ["Chest", "Lats", "Deltoids", "Biceps", "Triceps"]
+        case .back:      return ["Lats"]
+        case .shoulders: return ["Deltoids"]
+        case .chest:     return ["Chest"]
+        case .core:      return ["Core"]
+        case .arms:      return ["Biceps", "Triceps", "Forearms"]
         }
     }
 }

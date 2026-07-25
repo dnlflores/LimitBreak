@@ -129,7 +129,7 @@ struct ExerciseLogCard: View {
                             .foregroundStyle(Theme.textDim)
                             .rotationEffect(.degrees(isExpanded ? 0 : -90))
                     }
-                    Text(exercise.muscleGroupRaw)
+                    Text(exercise.muscleGroupDisplay)
                         .font(.caption)
                         .foregroundStyle(Theme.textDim)
                 }
@@ -634,6 +634,15 @@ private struct BigValueField: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 8)
                     .onChanged { gesture in
+                        // Mostly-vertical drags belong to the scroll view, which
+                        // owns interactive keyboard dismissal — without this the
+                        // swipe that puts the keyboard away also nudges the value.
+                        guard abs(gesture.translation.width) > abs(gesture.translation.height) else {
+                            // Re-baseline so a drag that turns horizontal later
+                            // doesn't cash in the width it covered while vertical.
+                            dragAccumulator = gesture.translation.width
+                            return
+                        }
                         let delta = gesture.translation.width - dragAccumulator
                         if abs(delta) >= 9 {
                             adjust(by: delta > 0 ? step : -step)

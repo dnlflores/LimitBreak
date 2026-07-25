@@ -26,7 +26,7 @@ final class SessionSync {
             WatchExerciseSnapshot(
                 id: exercise.id,
                 name: exercise.name,
-                muscle: exercise.muscleGroupRaw,
+                muscle: exercise.muscleGroupDisplay,
                 done: manager.sets(for: exercise).count,
                 target: manager.targetSets(for: exercise),
                 nextLabel: nextLabel(for: exercise, manager: manager),

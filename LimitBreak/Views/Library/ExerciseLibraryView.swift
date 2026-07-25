@@ -132,7 +132,7 @@ struct ExerciseLibraryView: View {
 
     private func filterChip(_ muscle: MuscleGroup?) -> some View {
         let isSelected = muscleFilter == muscle
-        return Button(muscle?.rawValue ?? "All") {
+        return Button(muscle?.displayName ?? "All") {
             muscleFilter = muscle
             Haptics.shared.tick()
         }
@@ -195,7 +195,7 @@ struct ExerciseLibraryView: View {
                             .foregroundStyle(Theme.violet)
                     }
                 }
-                Text("\(exercise.muscleGroupRaw) · \(exercise.equipmentType)")
+                Text("\(exercise.muscleGroupDisplay) · \(exercise.equipmentType)")
                     .font(.caption)
                     .foregroundStyle(Theme.textDim)
             }
@@ -314,7 +314,7 @@ struct ExerciseDetailView: View {
                             .foregroundStyle(Theme.violet)
                     }
                 }
-                Text("\(exercise.muscleGroupRaw) · \(exercise.equipmentType)")
+                Text("\(exercise.muscleGroupDisplay) · \(exercise.equipmentType)")
                     .font(.caption)
                     .foregroundStyle(Theme.textDim)
             }
@@ -415,10 +415,10 @@ struct ExerciseDetailView: View {
 
     private var configCard: some View {
         VStack(spacing: 0) {
-            configRow("Primary", exercise.muscleGroupRaw)
+            configRow("Primary", exercise.muscleGroupDisplay)
             if !exercise.secondaryMuscles.isEmpty {
                 divider
-                configRow("Secondary", exercise.secondaryMuscles.joined(separator: ", "))
+                configRow("Secondary", exercise.secondaryMuscleDisplayNames.joined(separator: ", "))
             }
             divider
             configRow("Tracking", exercise.trackingType.rawValue)

@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-/// The bundled movement library (Resources/ExerciseCatalog.json): ~175
+/// The bundled movement library (Resources/ExerciseCatalog.json): ~250
 /// exercises with muscle mappings, tracking setup, and guides. Seeds the whole
 /// catalog on first launch; on later launches it merges movements added in app
 /// updates and backfills guides onto defaults from older versions. Custom

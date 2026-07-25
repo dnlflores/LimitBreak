@@ -61,6 +61,7 @@ struct SkillMatrixView: View {
         var duration: TimeInterval = 0
         var sessionCount: Int = 0
         var walkCount: Int = 0
+        var activityCount: Int = 0
     }
 
     private var statsByDay: [Date: DayStats] {
@@ -79,6 +80,15 @@ struct SkillMatrixView: View {
             let day = calendar.startOfDay(for: walk.date)
             var stats = result[day] ?? DayStats()
             stats.walkCount += 1
+            result[day] = stats
+        }
+        // Cross-training lights a node too — a basketball night is a trained day,
+        // and it already sustains the streak, so the grid must agree.
+        for activity in activities {
+            let day = calendar.startOfDay(for: activity.date)
+            var stats = result[day] ?? DayStats()
+            stats.activityCount += 1
+            stats.duration += TimeInterval(activity.durationMinutes * 60)
             result[day] = stats
         }
         return result
@@ -273,6 +283,7 @@ struct SkillMatrixView: View {
             HStack(spacing: 14) {
                 legendDot(color: Theme.cobalt.opacity(0.35), label: "Dormant")
                 legendDot(color: Theme.emerald, label: "Active")
+                legendDot(color: Theme.coral, label: "Sport")
                 legendDot(color: Theme.teal, label: "Walk")
                 legendDot(color: Theme.gold, label: "LimitBreak")
                 Spacer()
@@ -390,6 +401,8 @@ private struct MatrixGrid: View {
     private func nodeView(for day: Date) -> some View {
         let stats = statsByDay[day]
         let isFuture = day > Date()
+        // Most notable thing that happened that day wins the node's colour:
+        // a record, then a lift, then a sport, then a walk.
         let state: MatrixNode.NodeState = if isFuture {
             .future
         } else if let stats {
@@ -397,6 +410,8 @@ private struct MatrixGrid: View {
                 .limitBreak
             } else if stats.sessionCount > 0 {
                 .active
+            } else if stats.activityCount > 0 {
+                .activity
             } else {
                 .walk
             }
@@ -414,7 +429,7 @@ private struct MatrixGrid: View {
 }
 
 private struct MatrixNode: View {
-    enum NodeState { case future, dormant, active, walk, limitBreak }
+    enum NodeState { case future, dormant, active, activity, walk, limitBreak }
     let state: NodeState
 
     @State private var pulsing = false
@@ -439,6 +454,10 @@ private struct MatrixNode: View {
                 RoundedRectangle(cornerRadius: 4)
                     .strokeBorder(Theme.emerald.opacity(0.6), lineWidth: 1)
                     .frame(width: 16, height: 16)
+            } else if state == .activity {
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Theme.coral.opacity(0.6), lineWidth: 1)
+                    .frame(width: 16, height: 16)
             } else if state == .walk {
                 RoundedRectangle(cornerRadius: 4)
                     .strokeBorder(Theme.teal.opacity(0.6), lineWidth: 1)
@@ -452,6 +471,7 @@ private struct MatrixNode: View {
         case .future: .clear
         case .dormant: Theme.cobalt.opacity(0.22)
         case .active: Theme.emerald.opacity(0.85)
+        case .activity: Theme.coral.opacity(0.75)
         case .walk: Theme.teal.opacity(0.75)
         case .limitBreak: Theme.gold.opacity(0.75)
         }

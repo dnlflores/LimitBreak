@@ -228,7 +228,7 @@ struct ExerciseEditorView: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
             ForEach(muscles) { muscle in
                 chip(
-                    muscle.rawValue,
+                    muscle.displayName,
                     isSelected: isSelected(muscle),
                     tint: tint,
                     fillWidth: true

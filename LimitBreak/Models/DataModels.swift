@@ -37,6 +37,18 @@ enum MuscleGroup: String, Codable, CaseIterable, Identifiable {
     case calves = "Calves", glutes = "Glutes", forearms = "Forearms"
 
     var id: String { rawValue }
+
+    /// What the app calls this muscle everywhere the user can see it. Raw values
+    /// are the stored identity (SwiftData, the bundled catalog JSON, the watch
+    /// payload) and must never change — so the two groups whose anatomical names
+    /// read as jargon get gym names here instead of a data migration.
+    var displayName: String {
+        switch self {
+        case .lats: return "Back"
+        case .deltoids: return "Shoulders"
+        default: return rawValue
+        }
+    }
 }
 
 enum EquipmentType: String, Codable, CaseIterable, Identifiable {
@@ -166,9 +178,42 @@ final class Exercise {
         trackingType == .weightAndReps || trackingType == .bodyweightAndReps
     }
 
+    /// Whether having a spotter meaningfully changes how heavy this movement can
+    /// be run. A spot only buys confidence on free-weight lifts where the load
+    /// can pin you — pressing, squatting, overhead work. Machines, cables and
+    /// bodyweight movements have their own bail-outs, so a partner doesn't
+    /// license more weight there.
+    var benefitsFromSpotter: Bool {
+        guard trackingType == .weightAndReps else { return false }
+        switch EquipmentType(rawValue: equipmentType) {
+        case .barbell, .dumbbell, .specialtyBar: return true
+        default: return false
+        }
+    }
+
+    /// The load to suggest when a partner is spotting: `pounds` nudged up by 5%
+    /// and snapped to this movement's increment, but never by less than one
+    /// increment (so a light lift still moves). Movements a spot doesn't help
+    /// come back unchanged.
+    func spottedLoad(fromPounds pounds: Double) -> Double {
+        guard benefitsFromSpotter, pounds > 0 else { return pounds }
+        let increment = defaultIncrement > 0 ? defaultIncrement : 5
+        let bumped = (pounds * 1.05 / increment).rounded() * increment
+        return max(bumped, pounds + increment)
+    }
+
     /// Format a canonical pounds value in this movement's unit, e.g. "84".
     func displayWeightString(fromPounds pounds: Double) -> String {
         weightUnit.fromPounds(pounds).cleanWeight
+    }
+
+    /// The primary muscle's UI name — use this anywhere a muscle is shown,
+    /// never `muscleGroupRaw` (see `MuscleGroup.displayName`).
+    var muscleGroupDisplay: String { muscleGroup.displayName }
+
+    /// Secondary muscles under their UI names, in stored order.
+    var secondaryMuscleDisplayNames: [String] {
+        secondaryMuscles.compactMap { MuscleGroup(rawValue: $0)?.displayName }
     }
 
     /// All muscle groups this exercise hits: primary first, then secondaries.
@@ -206,13 +251,18 @@ final class WorkoutSession {
     var endDate: Date?
     var notes: String?
 
+    /// Whether this session was trained alongside a partner. Defaults to false
+    /// so every session logged before this existed reads as solo.
+    var trainedWithPartner: Bool = false
+
     @Relationship(deleteRule: .cascade, inverse: \ExerciseSet.session)
     var sets: [ExerciseSet]
 
-    init(name: String, startDate: Date = Date()) {
+    init(name: String, startDate: Date = Date(), trainedWithPartner: Bool = false) {
         self.id = UUID()
         self.name = name
         self.startDate = startDate
+        self.trainedWithPartner = trainedWithPartner
         self.sets = []
     }
 

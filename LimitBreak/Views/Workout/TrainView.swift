@@ -31,6 +31,9 @@ private struct SessionLauncherView: View {
     @State private var showWalkDraw = false
     @State private var showAIWorkout = false
     @State private var showRoutineLibrary = false
+    /// Answered before the session starts and carried into it — routines, AI
+    /// plans and plain sessions all launch with whatever is selected here.
+    @State private var withPartner = false
     // Debug/UI-test hook: launch with "-open-activity" to present the logger.
     @State private var showActivityLog = ProcessInfo.processInfo.arguments.contains("-open-activity")
     @FocusState private var nameFieldFocused: Bool
@@ -62,8 +65,8 @@ private struct SessionLauncherView: View {
             WalkDrawView()
         }
         .sheet(isPresented: $showAIWorkout) {
-            AIWorkoutSheet { title, exercises in
-                workout.startSession(named: title, exercises: exercises)
+            AIWorkoutSheet { title, exercises, partnered in
+                workout.startSession(named: title, exercises: exercises, withPartner: partnered)
             }
         }
         .sheet(isPresented: $showRoutineLibrary) {
@@ -129,6 +132,10 @@ private struct SessionLauncherView: View {
                 }
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
+
+            // Asked right where the session begins, so it's answered before the
+            // first set rather than reconstructed afterward.
+            PartnerToggle(isOn: $withPartner)
 
             HStack(spacing: 12) {
                 Button {
@@ -276,7 +283,7 @@ private struct SessionLauncherView: View {
     private func routineCard(_ routine: Routine) -> some View {
         Button {
             Haptics.shared.tick()
-            workout.startSession(from: routine)
+            workout.startSession(from: routine, withPartner: withPartner)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .top) {
@@ -351,9 +358,9 @@ private struct SessionLauncherView: View {
             isNaming = true
             let name = await WorkoutAI.generateSessionName()
             isNaming = false
-            workout.startSession(named: name)
+            workout.startSession(named: name, withPartner: withPartner)
         } else {
-            workout.startSession(named: trimmed)
+            workout.startSession(named: trimmed, withPartner: withPartner)
         }
         sessionName = ""
     }
@@ -496,26 +503,62 @@ private struct ActiveSessionView: View {
     }
 
     private var sessionHeader: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("ELAPSED")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Theme.textDim)
-                    .kerning(1)
-                ElapsedTimeLabel(startDate: workout.activeSession?.startDate)
+        VStack(spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ELAPSED")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Theme.textDim)
+                        .kerning(1)
+                    ElapsedTimeLabel(startDate: workout.activeSession?.startDate)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("VOLUME")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Theme.textDim)
+                        .kerning(1)
+                    Text("\(Int(workout.activeSession?.totalVolume ?? 0).formatted()) lbs")
+                        .statNumberStyle()
+                        .foregroundStyle(Theme.emerald)
+                }
             }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("VOLUME")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Theme.textDim)
-                    .kerning(1)
-                Text("\(Int(workout.activeSession?.totalVolume ?? 0).formatted()) lbs")
-                    .statNumberStyle()
-                    .foregroundStyle(Theme.emerald)
-            }
+
+            partnerRow
         }
         .cardStyle()
+    }
+
+    /// Mid-session correction for the partner question — someone showing up on
+    /// set three shouldn't leave the session logged as solo.
+    private var partnerRow: some View {
+        Button {
+            workout.setTrainingWithPartner(!workout.isTrainingWithPartner)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: workout.isTrainingWithPartner ? "person.2.fill" : "person.fill")
+                    .font(.caption)
+                Text(workout.isTrainingWithPartner ? "Training with a partner" : "Training solo")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text("CHANGE")
+                    .font(.caption2.weight(.bold))
+                    .kerning(1)
+                    .foregroundStyle(Theme.textDim)
+            }
+            .foregroundStyle(workout.isTrainingWithPartner ? Theme.teal : Theme.textDim)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                workout.isTrainingWithPartner
+                    ? AnyShapeStyle(Theme.teal.opacity(0.12))
+                    : AnyShapeStyle(Color.white.opacity(0.03)),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(workout.isTrainingWithPartner ? "Training with a partner. Tap to switch to solo." : "Training solo. Tap to switch to with a partner.")
     }
 }
 
@@ -728,7 +771,7 @@ struct ExercisePickerSheet: View {
 
     private func filterChip(_ muscle: MuscleGroup?) -> some View {
         let isSelected = muscleFilter == muscle
-        return Button(muscle?.rawValue ?? "All") {
+        return Button(muscle?.displayName ?? "All") {
             muscleFilter = muscle
             Haptics.shared.tick()
         }
@@ -810,7 +853,7 @@ struct ExercisePickerSheet: View {
                                 .foregroundStyle(Theme.violet)
                         }
                     }
-                    Text("\(exercise.muscleGroupRaw) · \(exercise.equipmentType)")
+                    Text("\(exercise.muscleGroupDisplay) · \(exercise.equipmentType)")
                         .font(.caption)
                         .foregroundStyle(Theme.textDim)
                 }

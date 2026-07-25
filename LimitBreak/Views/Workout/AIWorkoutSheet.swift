@@ -9,12 +9,14 @@ struct AIWorkoutSheet: View {
     @Environment(WorkoutManager.self) private var workout
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
 
-    /// Called with the generated session title and the ordered exercises to load.
-    let onStart: (String, [Exercise]) -> Void
+    /// Called with the generated session title, the ordered exercises to load,
+    /// and whether the session is being trained with a partner.
+    let onStart: (String, [Exercise], Bool) -> Void
 
     @State private var focus: WorkoutFocus = .fullBody
     @State private var exerciseCount = 5
     @State private var duration: WorkoutLength = .any
+    @State private var withPartner = false
     @State private var plan: WorkoutPlan?
     @State private var isGenerating = false
     @State private var didSaveRoutine = false
@@ -59,7 +61,11 @@ struct AIWorkoutSheet: View {
             }
             .safeAreaInset(edge: .bottom) { actionBar }
             .sheet(item: $inspectedExercise) { detail in
-                PlannedExerciseSheet(exercise: detail.exercise, plannedSets: detail.sets)
+                PlannedExerciseSheet(
+                    exercise: detail.exercise,
+                    plannedSets: detail.sets,
+                    withPartner: withPartner
+                )
             }
             .sheet(item: $manualReplaceTarget) { target in
                 ExercisePickerSheet { picked in
@@ -109,6 +115,15 @@ struct AIWorkoutSheet: View {
                     }
                 }
                 .pickerStyle(.segmented)
+            }
+
+            section("TRAINING WITH A PARTNER?") {
+                PartnerToggle(isOn: $withPartner)
+                Text(withPartner
+                     ? "Got a spotter \u{2014} I\u{2019}ll favor free-weight lifts and push the loads up."
+                     : "Flying solo \u{2014} I\u{2019}ll keep the loads to what you can rack on your own.")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textDim)
             }
         }
     }
@@ -174,6 +189,11 @@ struct AIWorkoutSheet: View {
                     .font(.title2.weight(.bold))
                     .foregroundStyle(Theme.limitBreakGradient)
             }
+
+            // Still flippable after generating: the answer drives the load each
+            // movement's detail sheet recommends, so a partner turning up late
+            // shouldn't mean regenerating the whole plan.
+            PartnerToggle(isOn: $withPartner)
 
             VStack(spacing: 10) {
                 ForEach(Array(plan.exercises.enumerated()), id: \.element.id) { index, planned in
@@ -380,6 +400,7 @@ struct AIWorkoutSheet: View {
             targetMuscleGroups: focus.targetMuscleGroups,
             exerciseCount: exerciseCount,
             durationMinutes: duration.minutes,
+            withPartner: withPartner,
             catalog: catalog
         )
         isGenerating = false
@@ -432,7 +453,7 @@ struct AIWorkoutSheet: View {
         let byName = Dictionary(exercises.map { ($0.name.lowercased(), $0) }) { first, _ in first }
         let matched = plan.exercises.compactMap { byName[$0.name.lowercased()] }
         guard !matched.isEmpty else { return }
-        onStart(plan.title, matched)
+        onStart(plan.title, matched, withPartner)
         dismiss()
     }
 
@@ -456,7 +477,7 @@ struct AIWorkoutSheet: View {
     }
 
     private func muscleGroup(for name: String) -> String? {
-        catalogExercise(for: name)?.muscleGroupRaw
+        catalogExercise(for: name)?.muscleGroupDisplay
     }
 
     private func catalogExercise(for name: String) -> Exercise? {
@@ -473,6 +494,9 @@ struct PlannedExerciseSheet: View {
 
     let exercise: Exercise
     let plannedSets: Int
+    /// Whether a spotter is on hand — licenses a heavier prescription on the
+    /// free-weight lifts where a spot actually changes what's safe to attempt.
+    var withPartner = false
 
     var body: some View {
         ScrollView {
@@ -529,7 +553,7 @@ struct PlannedExerciseSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(exercise.name)
                     .font(.title3.bold())
-                Text("\(exercise.muscleGroupRaw) \u{00B7} \(exercise.equipmentType)")
+                Text("\(exercise.muscleGroupDisplay) \u{00B7} \(exercise.equipmentType)")
                     .font(.caption)
                     .foregroundStyle(Theme.textDim)
             }
@@ -596,15 +620,24 @@ struct PlannedExerciseSheet: View {
             .max(by: { $0.timestamp < $1.timestamp })
     }
 
+    /// Whether the spotter bump is actually in play here: a partner was declared
+    /// AND this is a movement a spot changes the math on.
+    private var spotterApplies: Bool {
+        withPartner && exercise.benefitsFromSpotter
+    }
+
     private var recommendationText: String {
         switch exercise.trackingType {
         case .weightAndReps, .bodyweightAndReps, .customMetric:
             if let last = lastWorkingSet, last.weight != 0 {
-                return "\(plannedSets) sets \u{00D7} \(last.weight.cleanWeight) lbs \u{00D7} \(last.reps)"
+                let load = spotterApplies ? exercise.spottedLoad(fromPounds: last.weight) : last.weight
+                return "\(plannedSets) sets \u{00D7} \(load.cleanWeight) lbs \u{00D7} \(last.reps)"
             }
             let ceiling = exercise.ceiling(for: "1RM")
             if ceiling > 0 {
-                let suggested = (ceiling * 0.75 / exercise.defaultIncrement).rounded() * exercise.defaultIncrement
+                // A spotter buys a working set closer to the ceiling: 82% vs 75%.
+                let fraction = spotterApplies ? 0.82 : 0.75
+                let suggested = (ceiling * fraction / exercise.defaultIncrement).rounded() * exercise.defaultIncrement
                 return "\(plannedSets) sets \u{00D7} \(suggested.cleanWeight) lbs \u{00D7} 8"
             }
             return "\(plannedSets) sets \u{00D7} 8 reps"
@@ -617,6 +650,17 @@ struct PlannedExerciseSheet: View {
     }
 
     private var recommendationHint: String {
+        if spotterApplies {
+            if let last = lastWorkingSet, last.weight != 0 {
+                return "Bumped above your last working set \u{2014} your partner\u{2019}s spotting, so chase the extra plate."
+            }
+            if exercise.ceiling(for: "1RM") > 0 {
+                return "About 82% of your ceiling \u{2014} heavier than solo, because you\u{2019}ve got a spotter."
+            }
+        }
+        if withPartner && !exercise.benefitsFromSpotter {
+            return "A spot doesn\u{2019}t change this one \u{2014} same load as solo."
+        }
         if let last = lastWorkingSet, last.weight != 0 {
             return "Matched to your last working set \u{2014} beat it and the ceiling moves."
         }

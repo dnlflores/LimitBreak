@@ -12,6 +12,7 @@ struct EditWorkoutView: View {
 
     @State private var date: Date
     @State private var sessionName: String
+    @State private var withPartner: Bool
     @State private var entries: [EntryDraft]
     @State private var showExercisePicker = false
 
@@ -36,6 +37,7 @@ struct EditWorkoutView: View {
         self.session = session
         _date = State(initialValue: session.startDate)
         _sessionName = State(initialValue: session.name)
+        _withPartner = State(initialValue: session.trainedWithPartner)
         _entries = State(initialValue: session.setsByExercise.map { group in
             EntryDraft(
                 exercise: group.exercise,
@@ -121,6 +123,8 @@ struct EditWorkoutView: View {
                 .textFieldStyle(.plain)
                 .padding(12)
                 .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+
+            PartnerToggle(isOn: $withPartner)
         }
         .cardStyle()
     }
@@ -236,7 +240,7 @@ struct EditWorkoutView: View {
             return sets.isEmpty ? nil : (entry.exercise, sets)
         }
         guard !payload.isEmpty else { return }
-        workout.updateSession(session, name: sessionName, date: date, entries: payload)
+        workout.updateSession(session, name: sessionName, date: date, withPartner: withPartner, entries: payload)
         dismiss()
     }
 }

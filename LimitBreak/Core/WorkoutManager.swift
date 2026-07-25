@@ -77,8 +77,16 @@ final class WorkoutManager {
 
     // MARK: - Session lifecycle
 
-    func startSession(named name: String, exercises: [Exercise] = [], targets: [UUID: Int]? = nil) {
-        let session = WorkoutSession(name: name.isEmpty ? "Training Session" : name)
+    func startSession(
+        named name: String,
+        exercises: [Exercise] = [],
+        targets: [UUID: Int]? = nil,
+        withPartner: Bool = false
+    ) {
+        let session = WorkoutSession(
+            name: name.isEmpty ? "Training Session" : name,
+            trainedWithPartner: withPartner
+        )
         context.insert(session)
         activeSession = session
         sessionExercises = exercises
@@ -121,6 +129,18 @@ final class WorkoutManager {
         stopRest()
         Haptics.shared.logSet()
         SessionSync.shared.broadcast(from: self)
+    }
+
+    /// Whether the live session is being trained with a partner.
+    var isTrainingWithPartner: Bool { activeSession?.trainedWithPartner ?? false }
+
+    /// Flips the live session's partner flag — for when a partner turns up (or
+    /// bails) after the session already started.
+    func setTrainingWithPartner(_ withPartner: Bool) {
+        guard let session = activeSession, session.trainedWithPartner != withPartner else { return }
+        session.trainedWithPartner = withPartner
+        try? context.save()
+        Haptics.shared.tick()
     }
 
     func addExercise(_ exercise: Exercise) {
@@ -287,11 +307,13 @@ final class WorkoutManager {
     func logPastSession(
         name: String,
         date: Date,
+        withPartner: Bool = false,
         entries: [(exercise: Exercise, sets: [PastSetEntry])]
     ) {
         let session = WorkoutSession(
             name: name.isEmpty ? "Training Session" : name,
-            startDate: date
+            startDate: date,
+            trainedWithPartner: withPartner
         )
         context.insert(session)
 
@@ -330,6 +352,7 @@ final class WorkoutManager {
         _ session: WorkoutSession,
         name: String,
         date: Date,
+        withPartner: Bool,
         entries: [(exercise: Exercise, sets: [PastSetEntry])]
     ) {
         var affected = Set(session.sets.compactMap(\.exercise))
@@ -341,6 +364,7 @@ final class WorkoutManager {
 
         session.name = name.isEmpty ? "Training Session" : name
         session.startDate = date
+        session.trainedWithPartner = withPartner
 
         var offset: TimeInterval = 0
         for entry in entries {
@@ -609,13 +633,18 @@ final class WorkoutManager {
 
     /// Starts a live session pre-loaded with a routine's exercises, in order,
     /// carrying each slot's target set count into the session plan.
-    func startSession(from routine: Routine) {
+    func startSession(from routine: Routine, withPartner: Bool = false) {
         var targets: [UUID: Int] = [:]
         for item in routine.orderedItems {
             if let exercise = item.exercise {
                 targets[exercise.id] = max(1, item.targetSets)
             }
         }
-        startSession(named: routine.name, exercises: routine.exercises, targets: targets)
+        startSession(
+            named: routine.name,
+            exercises: routine.exercises,
+            targets: targets,
+            withPartner: withPartner
+        )
     }
 }

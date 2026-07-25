@@ -83,13 +83,14 @@ struct WorkoutDetailView: View {
             }
             .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(session.name)
                     .font(.title2.bold())
                     .lineLimit(2)
                 Text("\(session.startDate.formatted(date: .abbreviated, time: .shortened)) \u{00B7} \(session.duration.clockString)")
                     .font(.caption)
                     .foregroundStyle(Theme.textDim)
+                PartnerBadge(trainedWithPartner: session.trainedWithPartner)
             }
 
             Spacer()
@@ -182,7 +183,7 @@ struct WorkoutDetailView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exercise.name)
                         .font(.subheadline.weight(.semibold))
-                    Text("\(exercise.muscleGroupRaw) \u{00B7} \(exercise.equipmentType)")
+                    Text("\(exercise.muscleGroupDisplay) \u{00B7} \(exercise.equipmentType)")
                         .font(.caption)
                         .foregroundStyle(Theme.textDim)
                 }

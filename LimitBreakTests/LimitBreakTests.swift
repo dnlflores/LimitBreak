@@ -146,6 +146,232 @@ struct XPEngineTests {
     }
 }
 
+struct MuscleNamingTests {
+
+    /// Back and Shoulders are what the user sees; Lats and Deltoids stay the
+    /// stored identity so no history or catalog data has to migrate.
+    @Test func gymNamesShowWithoutChangingStoredValues() {
+        #expect(MuscleGroup.lats.displayName == "Back")
+        #expect(MuscleGroup.deltoids.displayName == "Shoulders")
+        #expect(MuscleGroup.lats.rawValue == "Lats")
+        #expect(MuscleGroup.deltoids.rawValue == "Deltoids")
+
+        // Every other group is unchanged.
+        for group in MuscleGroup.allCases where group != .lats && group != .deltoids {
+            #expect(group.displayName == group.rawValue)
+        }
+    }
+
+    /// An exercise surfaces the display name while still filtering on the raw one.
+    @Test func exerciseExposesDisplayNames() {
+        let row = Exercise(
+            name: "Barbell Row",
+            muscleGroup: "Lats",
+            secondaryMuscles: ["Biceps", "Deltoids"]
+        )
+        #expect(row.muscleGroupDisplay == "Back")
+        #expect(row.muscleGroupRaw == "Lats")
+        #expect(row.secondaryMuscleDisplayNames == ["Biceps", "Shoulders"])
+    }
+
+    /// The AI focus presets still target stored raw values — a display name
+    /// here would silently match nothing in the catalog.
+    @Test func focusPresetsTargetRawValues() {
+        let valid = Set(MuscleGroup.allCases.map(\.rawValue))
+        for focus in WorkoutFocus.allCases {
+            for target in focus.targetMuscleGroups {
+                #expect(valid.contains(target), "\(focus.label) targets unknown group \(target)")
+            }
+        }
+        #expect(WorkoutFocus.back.targetMuscleGroups == ["Lats"])
+        #expect(WorkoutFocus.shoulders.targetMuscleGroups == ["Deltoids"])
+    }
+}
+
+struct ActivityStreakTests {
+
+    /// A sport-only day is a trained day: it sustains the streak with no
+    /// session and no walk involved.
+    @Test func activitiesAloneSustainAStreak() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let activities = (0..<4).map { offset in
+            Activity(
+                sport: .basketball,
+                date: calendar.date(byAdding: .day, value: -offset, to: today)!.addingTimeInterval(3600),
+                durationMinutes: 60
+            )
+        }
+
+        let streak = XPEngine.currentStreak(sessions: [], walks: [], activities: activities)
+        #expect(streak == 4)
+    }
+
+    /// Sports, lifts and walks chain into one another — the streak doesn't care
+    /// which kind of day it was.
+    @Test func mixedDayTypesChainIntoOneStreak() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        func day(_ offset: Int) -> Date {
+            calendar.date(byAdding: .day, value: -offset, to: today)!.addingTimeInterval(3600)
+        }
+
+        let session = WorkoutSession(name: "Lift", startDate: day(0))
+        let activity = Activity(sport: .volleyball, date: day(1), durationMinutes: 90)
+        let walk = Walk(date: day(2), durationSeconds: 1800, distanceMeters: 3200) // ~2 mi
+
+        let streak = XPEngine.currentStreak(sessions: [session], walks: [walk], activities: [activity])
+        #expect(streak == 3)
+    }
+
+    /// Activity XP lands in the replayed ledger and earns the streak multiplier
+    /// like anything else.
+    @Test func activityXPFlowsThroughProgress() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let activity = Activity(
+            sport: .basketball,
+            date: calendar.date(byAdding: .day, value: -1, to: today)!.addingTimeInterval(3600),
+            durationMinutes: 60
+        )
+
+        let progress = XPEngine.progress(sessions: [], walks: [], activities: [activity])
+        #expect(progress.totalXP == XPEngine.xpForActivity(minutes: 60))
+        #expect(progress.currentStreak == 1)
+
+        // And it shows up as its own reward, not folded into something else.
+        let rewards = XPEngine.allRewards(sessions: [], records: [], walks: [], activities: [activity])
+        #expect(rewards.count == 1)
+        #expect(rewards.first?.title == "Basketball")
+    }
+}
+
+struct TrainingPartnerTests {
+
+    /// A spot only buys you weight on free-weight lifts that can pin you.
+    @Test func onlyFreeWeightLiftsBenefitFromASpotter() {
+        let bench = Exercise(name: "Bench Press", muscleGroup: "Chest", equipmentType: "Barbell")
+        let dbPress = Exercise(name: "DB Press", muscleGroup: "Chest", equipmentType: "Dumbbell")
+        let safetyBar = Exercise(name: "SSB Squat", muscleGroup: "Quads", equipmentType: "Specialty Bar")
+        #expect(bench.benefitsFromSpotter)
+        #expect(dbPress.benefitsFromSpotter)
+        #expect(safetyBar.benefitsFromSpotter)
+
+        // Machines, cables and bands have their own bail-out — a partner changes nothing.
+        let machine = Exercise(name: "Leg Press", muscleGroup: "Quads", equipmentType: "Machine")
+        let cable = Exercise(name: "Cable Fly", muscleGroup: "Chest", equipmentType: "Cable")
+        let band = Exercise(name: "Band Pull", muscleGroup: "Lats", equipmentType: "Resistance Band")
+        #expect(!machine.benefitsFromSpotter)
+        #expect(!cable.benefitsFromSpotter)
+        #expect(!band.benefitsFromSpotter)
+    }
+
+    /// Bodyweight and duration work never qualify, even on a barbell rack.
+    @Test func nonWeightTrackingNeverQualifies() {
+        let pullup = Exercise(
+            name: "Pull-Up",
+            muscleGroup: "Lats",
+            trackingType: .bodyweightAndReps,
+            equipmentType: "Barbell"
+        )
+        let plank = Exercise(
+            name: "Plank",
+            muscleGroup: "Core",
+            trackingType: .durationAndReps,
+            equipmentType: "Barbell"
+        )
+        #expect(!pullup.benefitsFromSpotter)
+        #expect(!plank.benefitsFromSpotter)
+    }
+
+    /// The spotted load rounds to the movement's own increment and always
+    /// clears the starting weight by at least one increment.
+    @Test func spottedLoadBumpsAndSnapsToIncrement() {
+        let bench = Exercise(name: "Bench Press", muscleGroup: "Chest", equipmentType: "Barbell", defaultIncrement: 5)
+        // 225 * 1.05 = 236.25 → snaps to 235, which clears 225 by more than one increment.
+        #expect(bench.spottedLoad(fromPounds: 225) == 235)
+
+        // 100 * 1.05 = 105 → exactly one increment up.
+        #expect(bench.spottedLoad(fromPounds: 100) == 105)
+
+        // Light loads: 5% rounds to nothing, so the floor of +1 increment applies.
+        #expect(bench.spottedLoad(fromPounds: 45) == 50)
+    }
+
+    /// Movements a spot doesn't help — and non-positive loads — pass through.
+    @Test func spottedLoadLeavesUnspottableMovementsAlone() {
+        let machine = Exercise(name: "Leg Press", muscleGroup: "Quads", equipmentType: "Machine", defaultIncrement: 10)
+        #expect(machine.spottedLoad(fromPounds: 300) == 300)
+
+        let bench = Exercise(name: "Bench Press", muscleGroup: "Chest", equipmentType: "Barbell")
+        #expect(bench.spottedLoad(fromPounds: 0) == 0)
+    }
+
+    /// Sessions default to solo, and the flag survives a round trip through the store.
+    @Test @MainActor func sessionsRecordPartnerStatus() throws {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self, Walk.self, Activity.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        let manager = WorkoutManager(context: container.mainContext)
+
+        manager.startSession(named: "Solo Run")
+        #expect(manager.isTrainingWithPartner == false)
+
+        // A partner turning up mid-session is recorded on the live session.
+        manager.setTrainingWithPartner(true)
+        #expect(manager.isTrainingWithPartner)
+        #expect(manager.activeSession?.trainedWithPartner == true)
+        manager.endSession()
+
+        manager.startSession(named: "Spotted Run", withPartner: true)
+        #expect(manager.activeSession?.trainedWithPartner == true)
+        manager.endSession()
+
+        let sessions = try container.mainContext.fetch(FetchDescriptor<WorkoutSession>())
+        #expect(sessions.count == 2)
+        #expect(sessions.allSatisfy { $0.trainedWithPartner })
+    }
+
+    /// Retroactive logging and edits carry the flag too.
+    @Test @MainActor func pastSessionsAndEditsCarryPartnerStatus() throws {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self, Walk.self, Activity.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        let manager = WorkoutManager(context: container.mainContext)
+        let bench = Exercise(name: "Bench", muscleGroup: "Chest")
+        container.mainContext.insert(bench)
+
+        let entries: [(exercise: Exercise, sets: [PastSetEntry])] = [
+            (bench, [PastSetEntry(weight: 185, reps: 5)])
+        ]
+        manager.logPastSession(
+            name: "Spotted",
+            date: Date().addingTimeInterval(-86_400),
+            withPartner: true,
+            entries: entries
+        )
+
+        let session = try #require(
+            try container.mainContext.fetch(FetchDescriptor<WorkoutSession>()).first
+        )
+        #expect(session.trainedWithPartner)
+
+        // Editing it back to solo sticks.
+        manager.updateSession(
+            session,
+            name: session.name,
+            date: session.startDate,
+            withPartner: false,
+            entries: entries
+        )
+        #expect(session.trainedWithPartner == false)
+    }
+}
+
 struct CatalogGuideTests {
 
     /// The bundled library is big, unique, and enum-valid.
@@ -156,11 +382,48 @@ struct CatalogGuideTests {
         let names = entries.map(\.name)
         #expect(Set(names).count == names.count)
 
+        // Seeding matches on lowercased name, so a case-only collision would
+        // silently drop a movement instead of adding it.
+        #expect(Set(names.map { $0.lowercased() }).count == names.count)
+
         for entry in entries {
             #expect(MuscleGroup(rawValue: entry.muscle) != nil)
             #expect(entry.tracking.map { TrackingType(rawValue: $0) != nil } ?? true)
             #expect(entry.formula.map { OneRMFormula(rawValue: $0) != nil } ?? true)
+            #expect(entry.equipment.map { EquipmentType(rawValue: $0) != nil } ?? true)
+            #expect(entry.secondary?.allSatisfy { MuscleGroup(rawValue: $0) != nil } ?? true)
             #expect(!entry.desc.isEmpty && entry.steps.count >= 3)
+        }
+    }
+
+    /// The press patterns a lifter expects to find under every implement —
+    /// incline and decline shouldn't be barbell-and-dumbbell only.
+    @Test func pressPatternsCoverEachImplement() {
+        let byName = Dictionary(
+            ExerciseCatalog.entries.map { ($0.name.lowercased(), $0.equipment ?? "Barbell") }
+        ) { first, _ in first }
+
+        func equipment(_ name: String) -> String? { byName[name.lowercased()] }
+
+        #expect(equipment("Incline Barbell Press") == "Barbell")
+        #expect(equipment("Incline Dumbbell Press") == "Dumbbell")
+        #expect(equipment("Incline Machine Press") == "Machine")
+
+        #expect(equipment("Decline Barbell Press") == "Barbell")
+        #expect(equipment("Decline Dumbbell Press") == "Dumbbell")
+        #expect(equipment("Decline Machine Press") == "Machine")
+    }
+
+    /// Every muscle group can be trained with real variety, and no group is a
+    /// single-implement dead end.
+    @Test func everyMuscleHasVariedEquipmentOptions() {
+        let entries = ExerciseCatalog.entries
+        for group in MuscleGroup.allCases {
+            let matching = entries.filter { $0.muscle == group.rawValue }
+            #expect(matching.count >= 10, "\(group.displayName) has only \(matching.count) movements")
+
+            let implements = Set(matching.map { $0.equipment ?? "Barbell" })
+            #expect(implements.count >= 3, "\(group.displayName) only offers \(implements)")
         }
     }
 

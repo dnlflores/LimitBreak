@@ -116,6 +116,7 @@ extension MuscleGroup {
         switch self {
         case .chest: "figure.arms.open"
         case .lats: "figure.rower"
+        case .traps: "figure.strengthtraining.traditional"
         case .quads, .hamstrings: "figure.strengthtraining.functional"
         case .deltoids: "figure.arms.open"
         case .triceps, .biceps, .forearms: "dumbbell.fill"

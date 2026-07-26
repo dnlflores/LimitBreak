@@ -380,8 +380,8 @@ private struct ActiveSessionView: View {
             VStack(spacing: 14) {
                 sessionHeader
 
-                ForEach(workout.sessionExercises, id: \.id) { exercise in
-                    ExerciseLogCard(exercise: exercise)
+                ReorderableVStack(sessionExercisesBinding, spacing: 14) { $exercise, grip in
+                    ExerciseLogCard(exercise: exercise, grip: grip)
                 }
 
                 Button {
@@ -479,6 +479,15 @@ private struct ActiveSessionView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// Routes reordering back through the manager so the watch and Live Activity
+    /// see the new running order too.
+    private var sessionExercisesBinding: Binding<[Exercise]> {
+        Binding(
+            get: { workout.sessionExercises },
+            set: { workout.reorderExercises(to: $0) }
+        )
     }
 
     /// Reserve room at the bottom of the scroll content so the last card is never

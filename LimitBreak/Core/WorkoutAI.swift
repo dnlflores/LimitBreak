@@ -413,10 +413,10 @@ enum WorkoutFocus: String, CaseIterable, Identifiable {
         switch self {
         case .fullBody:  return []
         case .push:      return ["Chest", "Deltoids", "Triceps"]
-        case .pull:      return ["Lats", "Biceps", "Forearms"]
+        case .pull:      return ["Lats", "Traps", "Biceps", "Forearms"]
         case .legs:      return ["Quads", "Hamstrings", "Glutes", "Calves"]
-        case .upper:     return ["Chest", "Lats", "Deltoids", "Biceps", "Triceps"]
-        case .back:      return ["Lats"]
+        case .upper:     return ["Chest", "Lats", "Traps", "Deltoids", "Biceps", "Triceps"]
+        case .back:      return ["Lats", "Traps"]
         case .shoulders: return ["Deltoids"]
         case .chest:     return ["Chest"]
         case .core:      return ["Core"]

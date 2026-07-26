@@ -10,6 +10,9 @@ import SwiftUI
 struct ExerciseLogCard: View {
     @Environment(WorkoutManager.self) private var workout
     let exercise: Exercise
+    /// Drag handle for reordering the session's exercises, supplied by the
+    /// enclosing `ReorderableVStack`.
+    var grip: ReorderGrip?
 
     @State private var drafts: [SetDraft] = []
     @State private var isWarmup = false
@@ -114,6 +117,14 @@ struct ExerciseLogCard: View {
     // MARK: - Header
 
     private var header: some View {
+        // The grip sits outside the button so dragging it never toggles the card.
+        HStack(alignment: .top, spacing: 4) {
+            if let grip { grip }
+            expandButton
+        }
+    }
+
+    private var expandButton: some View {
         Button {
             withAnimation(.snappy) { isExpanded.toggle() }
             Haptics.shared.tick()

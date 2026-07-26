@@ -146,6 +146,83 @@ struct XPEngineTests {
     }
 }
 
+struct ExerciseReorderTests {
+
+    /// Runs `body` against a fresh in-memory store. The container is held for the
+    /// duration of the call — handing back a bare `ModelContext` would let the
+    /// container deallocate and leave the context dangling.
+    @MainActor
+    private func withManager(_ body: (WorkoutManager, ModelContext) throws -> Void) throws {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self, Walk.self, Activity.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        let manager = WorkoutManager(context: container.mainContext)
+        try body(manager, container.mainContext)
+        // No rest timer may outlive the store it would write back into.
+        manager.stopRest()
+        withExtendedLifetime(container) {}
+    }
+
+    /// Reordering rewrites the running order without disturbing logged sets,
+    /// per-exercise targets, or which exercise is up next.
+    @Test @MainActor func reorderKeepsSetsAndTargetsWithTheirExercise() throws {
+        try withManager { manager, context in
+            let bench = Exercise(name: "Bench", muscleGroup: "Chest", defaultRestSeconds: 0)
+            let row = Exercise(name: "Row", muscleGroup: "Lats", defaultRestSeconds: 0)
+            let curl = Exercise(name: "Curl", muscleGroup: "Biceps", defaultRestSeconds: 0)
+            [bench, row, curl].forEach(context.insert)
+
+            manager.startSession(named: "Order Test", exercises: [bench, row, curl],
+                                 targets: [bench.id: 2, row.id: 4, curl.id: 3])
+            manager.logSet(exercise: row, weight: 135, reps: 8)
+
+            manager.reorderExercises(to: [curl, row, bench])
+
+            #expect(manager.sessionExercises.map(\.name) == ["Curl", "Row", "Bench"])
+            // The logged set and the target follow the movement, not the slot.
+            #expect(manager.sets(for: row).count == 1)
+            #expect(manager.targetSets(for: row) == 4)
+            #expect(manager.targetSets(for: bench) == 2)
+            // Curl is now first with nothing logged, so it's what LOG SET works on.
+            #expect(manager.currentExercise?.name == "Curl")
+        }
+    }
+
+    /// A reorder that doesn't account for every exercise is refused rather than
+    /// silently dropping one from the session.
+    @Test @MainActor func reorderRejectsMismatchedCounts() throws {
+        try withManager { manager, context in
+            let bench = Exercise(name: "Bench", muscleGroup: "Chest", defaultRestSeconds: 0)
+            let row = Exercise(name: "Row", muscleGroup: "Lats", defaultRestSeconds: 0)
+            [bench, row].forEach(context.insert)
+
+            manager.startSession(named: "Order Test", exercises: [bench, row])
+            manager.reorderExercises(to: [row])
+
+            #expect(manager.sessionExercises.map(\.name) == ["Bench", "Row"])
+        }
+    }
+
+    /// Skips are tracked per exercise, so they survive a reorder too.
+    @Test @MainActor func reorderPreservesSkips() throws {
+        try withManager { manager, context in
+            let bench = Exercise(name: "Bench", muscleGroup: "Chest", defaultRestSeconds: 0)
+            let row = Exercise(name: "Row", muscleGroup: "Lats", defaultRestSeconds: 0)
+            [bench, row].forEach(context.insert)
+
+            manager.startSession(named: "Order Test", exercises: [bench, row])
+            manager.advanceToNextExercise() // skips Bench
+            #expect(manager.currentExercise?.name == "Row")
+
+            manager.reorderExercises(to: [row, bench])
+            #expect(manager.skippedExercises.contains(bench.id))
+            #expect(manager.currentExercise?.name == "Row")
+        }
+    }
+}
+
 struct MuscleNamingTests {
 
     /// Back and Shoulders are what the user sees; Lats and Deltoids stay the
@@ -160,6 +237,25 @@ struct MuscleNamingTests {
         for group in MuscleGroup.allCases where group != .lats && group != .deltoids {
             #expect(group.displayName == group.rawValue)
         }
+    }
+
+    /// Traps is its own group, named the same in storage and on screen.
+    @Test func trapsIsAFirstClassGroup() {
+        let traps = MuscleGroup(rawValue: "Traps")
+        #expect(traps == .traps)
+        #expect(MuscleGroup.traps.displayName == "Traps")
+        #expect(MuscleGroup.allCases.contains(.traps))
+
+        // Separate from Back — a shrug shouldn't read as a lat movement.
+        #expect(MuscleGroup.traps != MuscleGroup.lats)
+    }
+
+    /// Back-ish focus presets reach traps, or shrugs would be unreachable
+    /// through the AI generator.
+    @Test func backFocusesIncludeTraps() {
+        #expect(WorkoutFocus.back.targetMuscleGroups.contains("Traps"))
+        #expect(WorkoutFocus.pull.targetMuscleGroups.contains("Traps"))
+        #expect(WorkoutFocus.upper.targetMuscleGroups.contains("Traps"))
     }
 
     /// An exercise surfaces the display name while still filtering on the raw one.
@@ -183,7 +279,7 @@ struct MuscleNamingTests {
                 #expect(valid.contains(target), "\(focus.label) targets unknown group \(target)")
             }
         }
-        #expect(WorkoutFocus.back.targetMuscleGroups == ["Lats"])
+        #expect(WorkoutFocus.back.targetMuscleGroups == ["Lats", "Traps"])
         #expect(WorkoutFocus.shoulders.targetMuscleGroups == ["Deltoids"])
     }
 }

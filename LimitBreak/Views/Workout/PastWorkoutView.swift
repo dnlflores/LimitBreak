@@ -38,8 +38,8 @@ struct PastWorkoutView: View {
                 VStack(spacing: 14) {
                     detailsCard
 
-                    ForEach($entries) { $entry in
-                        exerciseCard($entry)
+                    ReorderableVStack($entries, spacing: 14) { $entry, grip in
+                        exerciseCard($entry, grip: grip)
                     }
 
                     Button {
@@ -101,9 +101,10 @@ struct PastWorkoutView: View {
         .cardStyle()
     }
 
-    private func exerciseCard(_ entry: Binding<EntryDraft>) -> some View {
+    private func exerciseCard(_ entry: Binding<EntryDraft>, grip: ReorderGrip) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
+                grip
                 Text(entry.wrappedValue.exercise.name)
                     .font(.headline)
                 Spacer()

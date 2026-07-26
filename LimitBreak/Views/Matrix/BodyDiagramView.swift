@@ -117,6 +117,9 @@ private struct BodySegment: Identifiable {
 
 private enum BodyFigure {
     static let front: [BodySegment] = [
+        // Upper traps read as the slope from neck to shoulder from the front.
+        BodySegment("trap-fl", .traps, x: 48, y: 37, w: 11, h: 9, r: 4, rotation: -12),
+        BodySegment("trap-fr", .traps, x: 62, y: 37, w: 11, h: 9, r: 4, rotation: 12),
         BodySegment("delt-fl", .deltoids, x: 33, y: 40, w: 16, h: 13, r: 6),
         BodySegment("delt-fr", .deltoids, x: 77, y: 40, w: 16, h: 13, r: 6),
         BodySegment("chest-l", .chest, x: 45.5, y: 54, w: 19, h: 17, r: 6),
@@ -135,6 +138,9 @@ private enum BodyFigure {
     static let back: [BodySegment] = [
         BodySegment("delt-bl", .deltoids, x: 33, y: 40, w: 16, h: 13, r: 6),
         BodySegment("delt-br", .deltoids, x: 77, y: 40, w: 16, h: 13, r: 6),
+        // Traps fill the yoke between the delts, sitting above the lats.
+        BodySegment("trap-l", .traps, x: 49, y: 40, w: 12, h: 15, r: 5, rotation: -10),
+        BodySegment("trap-r", .traps, x: 61, y: 40, w: 12, h: 15, r: 5, rotation: 10),
         BodySegment("lat-l", .lats, x: 44, y: 62, w: 15, h: 32, r: 7, rotation: -6),
         BodySegment("lat-r", .lats, x: 66, y: 62, w: 15, h: 32, r: 7, rotation: 6),
         BodySegment("tricep-l", .triceps, x: 25, y: 68, w: 11, h: 24, r: 5.5, rotation: -7),

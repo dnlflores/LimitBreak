@@ -195,37 +195,54 @@ struct AIWorkoutSheet: View {
             // shouldn't mean regenerating the whole plan.
             PartnerToggle(isOn: $withPartner)
 
-            VStack(spacing: 10) {
-                ForEach(Array(plan.exercises.enumerated()), id: \.element.id) { index, planned in
-                    SwipeablePlanRow(
-                        isEnabled: !isGenerating && swappingIndex == nil,
-                        onReplaceAI: { Task { await swapWithAI(at: index) } },
-                        onReplaceManual: {
-                            Haptics.shared.tick()
-                            manualReplaceTarget = ReplaceTarget(index: index)
-                        }
-                    ) {
-                        planRowContent(index: index, planned: planned)
+            ReorderableVStack(plannedExercisesBinding, spacing: 10) { $planned, grip in
+                let index = plan.exercises.firstIndex { $0.id == planned.id } ?? 0
+                SwipeablePlanRow(
+                    isEnabled: !isGenerating && swappingIndex == nil,
+                    onReplaceAI: { Task { await swapWithAI(at: index) } },
+                    onReplaceManual: {
+                        Haptics.shared.tick()
+                        manualReplaceTarget = ReplaceTarget(index: index)
                     }
+                ) {
+                    planRowContent(index: index, planned: planned, grip: grip)
                 }
             }
 
-            Text("Tap a movement for how to perform it. Swipe right to replace with AI, left to pick manually \u{2014} or tap \u{22EF}.")
+            Text("Drag \u{2261} to reorder. Tap a movement for how to perform it. Swipe right to replace with AI, left to pick manually \u{2014} or tap \u{22EF}.")
                 .font(.caption2)
                 .foregroundStyle(Theme.textDim)
                 .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
-    /// One plan row's visible content: number, tappable movement, set count and
-    /// the swap menu. Lives inside a `SwipeablePlanRow` that adds swipe-to-replace.
-    private func planRowContent(index: Int, planned: PlannedExercise) -> some View {
-        HStack(spacing: 12) {
+    /// Binding into the generated plan's exercise list, so the reorder stack can
+    /// rewrite the order without the sheet handing out its whole `plan` state.
+    private var plannedExercisesBinding: Binding<[PlannedExercise]> {
+        Binding(
+            get: { plan?.exercises ?? [] },
+            set: { reordered in
+                guard var updated = plan else { return }
+                updated.exercises = reordered
+                plan = updated
+                // The saved routine would no longer match what's on screen.
+                didSaveRoutine = false
+            }
+        )
+    }
+
+    /// One plan row's visible content: grip, number, tappable movement, set count
+    /// and the swap menu. Lives inside a `SwipeablePlanRow` that adds
+    /// swipe-to-replace.
+    private func planRowContent(index: Int, planned: PlannedExercise, grip: ReorderGrip) -> some View {
+        HStack(spacing: 8) {
+            grip
+
             Text("\(index + 1)")
                 .font(.system(.headline, design: .rounded, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(Theme.emerald)
-                .frame(width: 26)
+                .frame(width: 20)
 
             Button {
                 guard let exercise = catalogExercise(for: planned.name) else { return }

@@ -215,6 +215,15 @@ final class WorkoutManager {
         SessionSync.shared.broadcast(from: self)
     }
 
+    /// Rewrites the session's exercise order (drag-to-reorder in the log). Only
+    /// the running order changes — logged sets, targets and skips all key off
+    /// the exercise, so they follow their movement to its new slot.
+    func reorderExercises(to ordered: [Exercise]) {
+        guard ordered.count == sessionExercises.count else { return }
+        sessionExercises = ordered
+        SessionSync.shared.broadcast(from: self)
+    }
+
     /// Swaps one exercise slot for another (machine taken, equipment change).
     /// Sets already logged on the old movement stay in the session history.
     func replaceExercise(_ old: Exercise, with new: Exercise) {

@@ -32,9 +32,10 @@ enum OneRMFormula: String, Codable, CaseIterable, Identifiable {
 }
 
 enum MuscleGroup: String, Codable, CaseIterable, Identifiable {
-    case chest = "Chest", lats = "Lats", quads = "Quads", hamstrings = "Hamstrings"
-    case deltoids = "Deltoids", triceps = "Triceps", biceps = "Biceps", core = "Core"
-    case calves = "Calves", glutes = "Glutes", forearms = "Forearms"
+    case chest = "Chest", lats = "Lats", traps = "Traps", quads = "Quads"
+    case hamstrings = "Hamstrings", deltoids = "Deltoids", triceps = "Triceps"
+    case biceps = "Biceps", core = "Core", calves = "Calves", glutes = "Glutes"
+    case forearms = "Forearms"
 
     var id: String { rawValue }
 

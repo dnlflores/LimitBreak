@@ -2958,7 +2958,7 @@
  },
  {
   "name": "Barbell Shrug",
-  "muscle": "Lats",
+  "muscle": "Traps",
   "secondary": [
    "Forearms"
   ],
@@ -2973,7 +2973,7 @@
  },
  {
   "name": "Dumbbell Shrug",
-  "muscle": "Lats",
+  "muscle": "Traps",
   "secondary": [
    "Forearms"
   ],
@@ -2988,7 +2988,7 @@
  },
  {
   "name": "Machine Shrug",
-  "muscle": "Lats",
+  "muscle": "Traps",
   "secondary": [
    "Forearms"
   ],
@@ -3003,7 +3003,7 @@
  },
  {
   "name": "Cable Shrug",
-  "muscle": "Lats",
+  "muscle": "Traps",
   "secondary": [
    "Forearms"
   ],
@@ -3598,6 +3598,169 @@
    "Pick up a heavy kettlebell in each hand and stand tall.",
    "Walk with controlled steps, ribs down and shoulders back.",
    "Set them down under control at the end of the distance."
+  ]
+ },
+ {
+  "name": "Trap Bar Shrug",
+  "muscle": "Traps",
+  "secondary": [
+   "Forearms"
+  ],
+  "equipment": "Specialty Bar",
+  "rest": 60,
+  "desc": "A shrug with the load centred through your body — the heaviest you'll go.",
+  "steps": [
+   "Stand inside a loaded trap bar and grip the handles.",
+   "Shrug straight up toward your ears without rolling the shoulders.",
+   "Lower under control to a full stretch."
+  ]
+ },
+ {
+  "name": "Smith Machine Shrug",
+  "muscle": "Traps",
+  "secondary": [
+   "Forearms"
+  ],
+  "equipment": "Machine",
+  "rest": 60,
+  "desc": "A shrug on rails, so all the effort goes into the traps not the balance.",
+  "steps": [
+   "Set the bar at hip height and take an overhand grip.",
+   "Shrug straight up along the rails.",
+   "Lower slowly to a full stretch."
+  ]
+ },
+ {
+  "name": "Behind-the-Back Shrug",
+  "muscle": "Traps",
+  "secondary": [
+   "Forearms"
+  ],
+  "equipment": "Barbell",
+  "rest": 60,
+  "desc": "A shrug with the bar behind you, keeping the chest open and traps loaded.",
+  "steps": [
+   "Stand with a barbell behind your thighs, palms facing back.",
+   "Shrug straight up, keeping the bar against your glutes.",
+   "Lower under control to a full stretch."
+  ]
+ },
+ {
+  "name": "Incline Dumbbell Shrug",
+  "muscle": "Traps",
+  "equipment": "Dumbbell",
+  "rest": 60,
+  "desc": "A chest-supported shrug that biases the mid and lower traps.",
+  "steps": [
+   "Lie chest-down on a 45-degree incline bench with dumbbells hanging.",
+   "Shrug the shoulder blades up and back toward your spine.",
+   "Lower slowly to a full stretch."
+  ]
+ },
+ {
+  "name": "Kettlebell Shrug",
+  "muscle": "Traps",
+  "secondary": [
+   "Forearms"
+  ],
+  "equipment": "Kettlebell",
+  "rest": 60,
+  "desc": "A shrug with kettlebells hanging at your sides — brutal on the grip too.",
+  "steps": [
+   "Hold a kettlebell in each hand at your sides.",
+   "Shrug straight up and pause at the top.",
+   "Lower under control to a full stretch."
+  ]
+ },
+ {
+  "name": "Overhead Shrug",
+  "muscle": "Traps",
+  "secondary": [
+   "Deltoids"
+  ],
+  "equipment": "Barbell",
+  "rest": 60,
+  "desc": "A shrug with the bar locked out overhead, hitting the upper traps hard.",
+  "steps": [
+   "Press or unrack a barbell to full lockout overhead.",
+   "Shrug the shoulders up toward your ears without bending the elbows.",
+   "Lower the shoulders under control, keeping the arms straight."
+  ]
+ },
+ {
+  "name": "Snatch-Grip Shrug",
+  "muscle": "Traps",
+  "secondary": [
+   "Forearms"
+  ],
+  "equipment": "Barbell",
+  "rest": 60,
+  "desc": "A wide-grip shrug that pulls the mid traps and upper back into it.",
+  "steps": [
+   "Take a barbell with a very wide snatch grip at arm's length.",
+   "Shrug straight up, letting the bar travel close to your body.",
+   "Lower slowly to a full stretch."
+  ]
+ },
+ {
+  "name": "Power Shrug",
+  "muscle": "Traps",
+  "secondary": [
+   "Forearms",
+   "Glutes"
+  ],
+  "equipment": "Barbell",
+  "rest": 90,
+  "desc": "An explosive shrug using a little hip drive to move heavier loads.",
+  "steps": [
+   "Hold a heavy barbell at arm's length in front of your thighs.",
+   "Dip slightly and drive the hips to launch the bar up, shrugging hard.",
+   "Control the bar back down and reset before the next rep."
+  ]
+ },
+ {
+  "name": "Y-Raise",
+  "muscle": "Traps",
+  "secondary": [
+   "Deltoids"
+  ],
+  "equipment": "Dumbbell",
+  "rest": 60,
+  "desc": "A raise into a Y overhead that targets the often-neglected lower traps.",
+  "steps": [
+   "Lie chest-down on an incline bench with light dumbbells hanging.",
+   "Raise your arms overhead into a Y with thumbs up.",
+   "Lower slowly without shrugging the shoulders up."
+  ]
+ },
+ {
+  "name": "Cable Y-Raise",
+  "muscle": "Traps",
+  "secondary": [
+   "Deltoids"
+  ],
+  "equipment": "Cable",
+  "rest": 60,
+  "desc": "A standing Y-raise on cables, with tension right through the top.",
+  "steps": [
+   "Take a handle in each hand from crossed low pulleys.",
+   "Sweep your arms up and out into a Y overhead.",
+   "Return under control, resisting the whole way."
+  ]
+ },
+ {
+  "name": "Prone Trap Raise",
+  "muscle": "Traps",
+  "secondary": [
+   "Deltoids"
+  ],
+  "equipment": "Dumbbell",
+  "rest": 60,
+  "desc": "A chest-supported raise straight out to the sides for the mid traps.",
+  "steps": [
+   "Lie chest-down on an incline bench with light dumbbells hanging.",
+   "Raise your arms straight out to the sides to shoulder height.",
+   "Squeeze the shoulder blades together, then lower slowly."
   ]
  }
 ]

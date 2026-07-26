@@ -15,8 +15,8 @@ struct ProgressChartView: View {
 
         init(group: MuscleGroup) {
             switch group {
-            case .chest, .deltoids, .triceps: self = .push
-            case .lats, .biceps, .forearms:   self = .pull
+            case .chest, .deltoids, .triceps:        self = .push
+            case .lats, .traps, .biceps, .forearms:  self = .pull
             case .quads, .hamstrings, .glutes, .calves: self = .legs
             case .core: self = .core
             }

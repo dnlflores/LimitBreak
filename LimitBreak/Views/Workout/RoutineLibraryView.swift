@@ -109,6 +109,12 @@ struct RoutineLibraryView: View {
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
+
+                if routine.hasPrescriptions {
+                    Label("Rep & load targets saved", systemImage: "sparkles")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.violet)
+                }
             }
             .cardStyle()
             .contentShape(Rectangle())

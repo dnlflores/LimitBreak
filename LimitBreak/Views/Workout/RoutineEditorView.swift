@@ -14,6 +14,10 @@ struct RoutineEditorView: View {
         let id = UUID()
         var exercise: Exercise
         var targetSets: Int
+        /// Resolved rep target carried over from a coached plan, when present.
+        var targetReps: Int? = nil
+        /// Suggested working weight in canonical pounds, when present.
+        var targetWeight: Double? = nil
     }
 
     /// The routine being edited, or `nil` when creating a new one.
@@ -44,7 +48,14 @@ struct RoutineEditorView: View {
         _name = State(initialValue: routine.name)
         _notes = State(initialValue: routine.notes ?? "")
         _items = State(initialValue: routine.orderedItems.compactMap { item in
-            item.exercise.map { DraftItem(exercise: $0, targetSets: item.targetSets) }
+            item.exercise.map {
+                DraftItem(
+                    exercise: $0,
+                    targetSets: item.targetSets,
+                    targetReps: item.targetReps,
+                    targetWeight: item.targetWeight
+                )
+            }
         })
         _isAIGenerated = State(initialValue: routine.isAIGenerated)
         _focusLabel = State(initialValue: routine.focusLabel)
@@ -160,6 +171,11 @@ struct RoutineEditorView: View {
                 Text(item.wrappedValue.exercise.muscleGroupDisplay)
                     .font(.caption)
                     .foregroundStyle(Theme.textDim)
+                if let target = prescriptionLabel(item.wrappedValue) {
+                    Label(target, systemImage: "sparkles")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(Theme.violet)
+                }
             }
             Spacer()
             Stepper(
@@ -177,6 +193,15 @@ struct RoutineEditorView: View {
         .listRowBackground(Theme.surfaceRaised)
     }
 
+    /// A compact "8 reps · 185 lb" summary of a slot's coached targets, or nil
+    /// when the slot only tracks a set count.
+    private func prescriptionLabel(_ item: DraftItem) -> String? {
+        var parts: [String] = []
+        if let reps = item.targetReps { parts.append("\(reps) reps") }
+        if let weight = item.targetWeight, weight > 0 { parts.append("\(weight.cleanWeight) lb") }
+        return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
+    }
+
     // MARK: - Mutations
 
     private func addExercise(_ exercise: Exercise) {
@@ -190,7 +215,16 @@ struct RoutineEditorView: View {
         let byName = Dictionary(allExercises.map { ($0.name.lowercased(), $0) }) { first, _ in first }
         let mapped = generated.compactMap { planned -> DraftItem? in
             guard let exercise = byName[planned.name.lowercased()] else { return nil }
-            return DraftItem(exercise: exercise, targetSets: planned.sets)
+            let weight: Double? = {
+                guard let load = planned.prescription?.targetLoadPounds, load > 0 else { return nil }
+                return load
+            }()
+            return DraftItem(
+                exercise: exercise,
+                targetSets: planned.sets,
+                targetReps: planned.targetReps,
+                targetWeight: weight
+            )
         }
         guard !mapped.isEmpty else { return }
         withAnimation(.spring(duration: 0.3)) {
@@ -203,7 +237,9 @@ struct RoutineEditorView: View {
     }
 
     private func save() {
-        let pairs = items.map { (exercise: $0.exercise, targetSets: $0.targetSets) }
+        let pairs = items.map {
+            (exercise: $0.exercise, targetSets: $0.targetSets, targetReps: $0.targetReps, targetWeight: $0.targetWeight)
+        }
         if let existing {
             workout.updateRoutine(existing, name: name, notes: notes, items: pairs)
         } else {

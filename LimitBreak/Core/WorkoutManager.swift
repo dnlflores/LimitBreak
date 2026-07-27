@@ -44,6 +44,13 @@ final class WorkoutManager {
     /// Planned working-set counts per exercise (routine targets or default 3) —
     /// drives ordered logging from the watch and Live Activity.
     var sessionTargets: [UUID: Int] = [:]
+    /// Planned rep target per exercise, carried from a coached routine so the
+    /// log card and one-tap logging open on the prescribed reps instead of a
+    /// generic default. Empty for ad-hoc sessions and history-built routines.
+    var sessionRepTargets: [UUID: Int] = [:]
+    /// Planned working weight (canonical pounds) per exercise from a coached
+    /// routine, prefilled the same way as `sessionRepTargets`.
+    var sessionWeightTargets: [UUID: Double] = [:]
     /// Exercises the user skipped ahead of (watch "next exercise").
     var skippedExercises: Set<UUID> = []
 
@@ -81,6 +88,8 @@ final class WorkoutManager {
         named name: String,
         exercises: [Exercise] = [],
         targets: [UUID: Int]? = nil,
+        repTargets: [UUID: Int] = [:],
+        weightTargets: [UUID: Double] = [:],
         withPartner: Bool = false
     ) {
         let session = WorkoutSession(
@@ -91,6 +100,8 @@ final class WorkoutManager {
         activeSession = session
         sessionExercises = exercises
         sessionTargets = targets ?? Dictionary(uniqueKeysWithValues: exercises.map { ($0.id, 3) })
+        sessionRepTargets = repTargets
+        sessionWeightTargets = weightTargets
         skippedExercises = []
         try? context.save()
         Haptics.shared.success()
@@ -106,6 +117,8 @@ final class WorkoutManager {
         activeSession = nil
         sessionExercises = []
         sessionTargets = [:]
+        sessionRepTargets = [:]
+        sessionWeightTargets = [:]
         skippedExercises = []
         stopRest()
         SessionSync.shared.broadcast(from: self)
@@ -125,6 +138,8 @@ final class WorkoutManager {
         activeSession = nil
         sessionExercises = []
         sessionTargets = [:]
+        sessionRepTargets = [:]
+        sessionWeightTargets = [:]
         skippedExercises = []
         stopRest()
         Haptics.shared.logSet()
@@ -172,14 +187,18 @@ final class WorkoutManager {
         guard activeSession != nil, let exercise = currentExercise else { return nil }
         let template = lastSet(for: exercise)
             ?? exercise.sets.max(by: { $0.timestamp < $1.timestamp })
+        // A coached routine's prescription wins over history and the generic
+        // fallback, so one-tap logging matches what the plan asked for.
+        let reps = plannedReps(for: exercise) ?? template?.reps ?? 8
+        let plannedLoad = plannedWeight(for: exercise)
 
         switch exercise.trackingType {
         case .weightAndReps:
-            return logSet(exercise: exercise, weight: template?.weight ?? 45, reps: template?.reps ?? 8)
+            return logSet(exercise: exercise, weight: plannedLoad ?? template?.weight ?? 45, reps: reps)
         case .bodyweightAndReps, .customMetric:
-            return logSet(exercise: exercise, weight: template?.weight ?? 0, reps: template?.reps ?? 8)
+            return logSet(exercise: exercise, weight: plannedLoad ?? template?.weight ?? 0, reps: reps)
         case .durationAndReps:
-            return logSet(exercise: exercise, weight: 0, reps: template?.reps ?? 8,
+            return logSet(exercise: exercise, weight: 0, reps: reps,
                           durationSeconds: template?.durationSeconds ?? 30)
         case .timeAndDistance:
             return logSet(exercise: exercise, weight: 0, reps: 1,
@@ -570,15 +589,24 @@ final class WorkoutManager {
 
     // MARK: - Routines (saved curations)
 
-    /// Creates and persists a new routine from an ordered list of
-    /// (exercise, targetSets) pairs.
+    /// One ordered slot handed to `createRoutine`/`updateRoutine`: an exercise,
+    /// its target set count, and — when it came from a coached plan — the
+    /// resolved rep target and suggested working weight.
+    typealias RoutineDraftItem = (
+        exercise: Exercise,
+        targetSets: Int,
+        targetReps: Int?,
+        targetWeight: Double?
+    )
+
+    /// Creates and persists a new routine from an ordered list of draft items.
     @discardableResult
     func createRoutine(
         name: String,
         notes: String? = nil,
         isAIGenerated: Bool = false,
         focusLabel: String? = nil,
-        items: [(exercise: Exercise, targetSets: Int)]
+        items: [RoutineDraftItem]
     ) -> Routine {
         let routine = Routine(
             name: name.isEmpty ? "Routine" : name,
@@ -598,7 +626,7 @@ final class WorkoutManager {
         _ routine: Routine,
         name: String,
         notes: String? = nil,
-        items: [(exercise: Exercise, targetSets: Int)]
+        items: [RoutineDraftItem]
     ) {
         for item in routine.items {
             context.delete(item)
@@ -612,13 +640,19 @@ final class WorkoutManager {
         Haptics.shared.success()
     }
 
-    /// Inserts ordered `RoutineItem`s for the given pairs and links them.
+    /// Inserts ordered `RoutineItem`s for the given draft items and links them.
     private func applyItems(
-        _ items: [(exercise: Exercise, targetSets: Int)],
+        _ items: [RoutineDraftItem],
         to routine: Routine
     ) {
         for (index, entry) in items.enumerated() {
-            let item = RoutineItem(order: index, targetSets: entry.targetSets, exercise: entry.exercise)
+            let item = RoutineItem(
+                order: index,
+                targetSets: entry.targetSets,
+                targetReps: entry.targetReps,
+                targetWeight: entry.targetWeight,
+                exercise: entry.exercise
+            )
             item.routine = routine
             context.insert(item)
         }
@@ -634,26 +668,45 @@ final class WorkoutManager {
     /// the target set count taken from how many working sets were logged.
     @discardableResult
     func saveRoutine(from session: WorkoutSession) -> Routine {
-        let items = session.setsByExercise.map { group in
-            (exercise: group.exercise, targetSets: max(1, group.sets.filter { !$0.isWarmup }.count))
+        let items = session.setsByExercise.map { group -> RoutineDraftItem in
+            (group.exercise, max(1, group.sets.filter { !$0.isWarmup }.count), nil, nil)
         }
         return createRoutine(name: session.name, items: items)
     }
 
     /// Starts a live session pre-loaded with a routine's exercises, in order,
-    /// carrying each slot's target set count into the session plan.
+    /// carrying each slot's target sets — plus any coached rep/weight targets —
+    /// into the session plan so logging opens on the prescribed numbers.
     func startSession(from routine: Routine, withPartner: Bool = false) {
         var targets: [UUID: Int] = [:]
+        var repTargets: [UUID: Int] = [:]
+        var weightTargets: [UUID: Double] = [:]
         for item in routine.orderedItems {
             if let exercise = item.exercise {
                 targets[exercise.id] = max(1, item.targetSets)
+                if let reps = item.targetReps { repTargets[exercise.id] = reps }
+                if let weight = item.targetWeight, weight > 0 { weightTargets[exercise.id] = weight }
             }
         }
         startSession(
             named: routine.name,
             exercises: routine.exercises,
             targets: targets,
+            repTargets: repTargets,
+            weightTargets: weightTargets,
             withPartner: withPartner
         )
+    }
+
+    /// The coached rep target for an exercise in the live session, if the
+    /// routine that started it prescribed one.
+    func plannedReps(for exercise: Exercise) -> Int? {
+        sessionRepTargets[exercise.id]
+    }
+
+    /// The coached working weight (canonical pounds) for an exercise in the
+    /// live session, if the routine that started it prescribed one.
+    func plannedWeight(for exercise: Exercise) -> Double? {
+        sessionWeightTargets[exercise.id]
     }
 }

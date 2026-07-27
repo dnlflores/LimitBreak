@@ -18,9 +18,16 @@ struct WalkDrawView: View {
     @State private var isDrawing = false
     @State private var date = Date()
     @State private var durationMinutes = ""
+    /// Measured height of the floating toolbar, used to inset the drawing
+    /// surface so it never sits under the toolbar's buttons.
+    @State private var toolbarHeight: CGFloat = 0
 
     /// New points closer than this to the previous one are dropped as jitter.
     private static let minPointSpacing: CLLocationDistance = 6
+
+    /// Named coordinate space for the map so drag points stay accurate even
+    /// though the drawing surface is inset from the top to clear the toolbar.
+    private static let mapSpace = "walkDrawCanvas"
 
     private var distanceMeters: CLLocationDistance {
         guard points.count >= 2 else { return 0 }
@@ -61,50 +68,69 @@ struct WalkDrawView: View {
     // MARK: - Map
 
     private var mapCanvas: some View {
-        MapReader { proxy in
-            Map(position: $camera, interactionModes: isDrawing ? [] : .all) {
-                UserAnnotation()
+        ZStack(alignment: .top) {
+            MapReader { proxy in
+                Map(position: $camera, interactionModes: isDrawing ? [] : .all) {
+                    UserAnnotation()
 
-                if points.count >= 2 {
-                    MapPolyline(coordinates: points)
-                        .stroke(Theme.emerald, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-                }
-                if let first = points.first {
-                    Annotation("", coordinate: first) {
-                        Circle()
-                            .fill(Theme.emerald)
-                            .stroke(.white, lineWidth: 2)
-                            .frame(width: 12, height: 12)
+                    if points.count >= 2 {
+                        MapPolyline(coordinates: points)
+                            .stroke(Theme.emerald, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                    }
+                    if let first = points.first {
+                        Annotation("", coordinate: first) {
+                            Circle()
+                                .fill(Theme.emerald)
+                                .stroke(.white, lineWidth: 2)
+                                .frame(width: 12, height: 12)
+                        }
+                    }
+                    if points.count > 1, let last = points.last {
+                        Annotation("", coordinate: last) {
+                            Circle()
+                                .fill(Theme.gold)
+                                .stroke(.white, lineWidth: 2)
+                                .frame(width: 12, height: 12)
+                        }
                     }
                 }
-                if points.count > 1, let last = points.last {
-                    Annotation("", coordinate: last) {
-                        Circle()
-                            .fill(Theme.gold)
-                            .stroke(.white, lineWidth: 2)
-                            .frame(width: 12, height: 12)
+                .mapStyle(.standard(elevation: .flat))
+                .coordinateSpace(.named(Self.mapSpace))
+                .overlay(alignment: .top) {
+                    // The drawing surface only covers the map below the toolbar
+                    // so finger drags never sit under the Undo/Clear buttons and
+                    // steal their taps. Reading the drag in the map's named space
+                    // keeps points accurate despite the inset.
+                    if isDrawing {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.mapSpace))
+                                    .onChanged { value in
+                                        addPoint(at: value.location, proxy: proxy)
+                                    }
+                                    .onEnded { _ in
+                                        strokeEnds.append(points.count)
+                                    }
+                            )
+                            .padding(.top, toolbarHeight)
                     }
                 }
             }
-            .mapStyle(.standard(elevation: .flat))
-            .overlay {
-                if isDrawing {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    addPoint(at: value.location, proxy: proxy)
-                                }
-                                .onEnded { _ in
-                                    strokeEnds.append(points.count)
-                                }
-                        )
-                }
-            }
-            .overlay(alignment: .top) {
-                mapToolbar
-            }
+
+            // Toolbar is a sibling layered above the map rather than a Map
+            // overlay, so its buttons win the hit-test against MapKit's own
+            // gesture recognizers and the drawing surface.
+            mapToolbar
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear { toolbarHeight = geo.size.height }
+                            .onChange(of: geo.size.height) { _, height in
+                                toolbarHeight = height
+                            }
+                    }
+                )
         }
     }
 
@@ -135,6 +161,7 @@ struct WalkDrawView: View {
                         .padding(10)
                         .foregroundStyle(Theme.teal)
                         .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
                 }
                 .buttonStyle(.plain)
 
@@ -148,6 +175,7 @@ struct WalkDrawView: View {
                         .padding(10)
                         .foregroundStyle(.white)
                         .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
                 }
                 .buttonStyle(.plain)
                 .disabled(points.isEmpty)
@@ -162,6 +190,7 @@ struct WalkDrawView: View {
                         .padding(10)
                         .foregroundStyle(Theme.coral)
                         .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
                 }
                 .buttonStyle(.plain)
                 .disabled(points.isEmpty)
@@ -179,7 +208,7 @@ struct WalkDrawView: View {
     }
 
     private func addPoint(at location: CGPoint, proxy: MapProxy) {
-        guard let coordinate = proxy.convert(location, from: .local) else { return }
+        guard let coordinate = proxy.convert(location, from: .named(Self.mapSpace)) else { return }
         if let last = points.last {
             let from = CLLocation(latitude: last.latitude, longitude: last.longitude)
             let to = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)

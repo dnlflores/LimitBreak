@@ -13,6 +13,7 @@ struct SkillMatrixView: View {
 
     @State private var selectedDay: Date?
     @State private var showHealthSheet = false
+    @State private var showSettings = false
     // Debug/UI-test hook: launch with "-open-timeline" to push the timeline.
     @State private var showTimeline = ProcessInfo.processInfo.arguments.contains("-open-timeline")
     // Debug/UI-test hook: launch with "-open-level" to present the hero sheet.
@@ -49,6 +50,9 @@ struct SkillMatrixView: View {
             }
             .sheet(isPresented: $showLevelSheet) {
                 LevelDetailSheet(info: levelInfo)
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
             }
         }
     }
@@ -115,6 +119,18 @@ struct SkillMatrixView: View {
                     .glassCircle()
             }
             .buttonStyle(.plain)
+
+            Button {
+                Haptics.shared.tick()
+                showSettings = true
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.title2)
+                    .foregroundStyle(Theme.textDim)
+                    .glassCircle()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Settings")
         }
         .padding(.bottom, 8)
     }

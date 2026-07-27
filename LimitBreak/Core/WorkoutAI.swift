@@ -11,16 +11,58 @@ struct ExerciseBrief {
     let equipment: String
 }
 
+/// The full prescription for one movement — only the cloud coach produces
+/// these; on-device and catalog plans leave it nil and fall back to showing
+/// the lifter's own history.
+struct Prescription {
+    let repRangeLow: Int
+    let repRangeHigh: Int
+    /// Suggested working weight in canonical pounds. Zero = bodyweight.
+    let targetLoadPounds: Double
+    let restSeconds: Int
+    let note: String
+
+    var repRangeText: String {
+        repRangeLow == repRangeHigh ? "\(repRangeLow)" : "\(repRangeLow)-\(repRangeHigh)"
+    }
+}
+
 /// One exercise the AI (or fallback) chose for a generated workout.
 struct PlannedExercise: Identifiable {
     let id: UUID
     let name: String
     let sets: Int
+    let prescription: Prescription?
+    /// The single rep target resolved from the prescription's range — the lifter
+    /// can slide it anywhere in `repRangeLow...repRangeHigh`; defaults to the top
+    /// of the range. Nil when there is no coached prescription to resolve.
+    var targetReps: Int?
 
-    init(id: UUID = UUID(), name: String, sets: Int) {
+    init(id: UUID = UUID(), name: String, sets: Int, prescription: Prescription? = nil) {
         self.id = id
         self.name = name
         self.sets = sets
+        self.prescription = prescription
+        self.targetReps = prescription?.repRangeHigh
+    }
+}
+
+/// Which tier actually produced a plan. Surfaced in the UI so the lifter is
+/// never told a plan is fatigue-aware when it came from the offline fallback.
+enum PlanSource {
+    case cloud
+    /// A self-hosted model on the lifter's own machine, via Odysseus.
+    case selfHosted
+    case onDevice
+    case catalog
+
+    var label: String {
+        switch self {
+        case .cloud:      return "Coached by Claude"
+        case .selfHosted: return "Coached by your server"
+        case .onDevice:   return "Generated on device"
+        case .catalog:    return "Picked from your library"
+        }
     }
 }
 
@@ -28,6 +70,11 @@ struct PlannedExercise: Identifiable {
 struct WorkoutPlan {
     let title: String
     var exercises: [PlannedExercise]
+    /// The coach's explanation of the session — cloud tier only.
+    var rationale: String? = nil
+    var source: PlanSource = .onDevice
+    /// Why the cloud tier was skipped or failed, when it was attempted.
+    var cloudError: String? = nil
 }
 
 /// On-device workout intelligence — session names and full workout plans.
@@ -97,9 +144,143 @@ enum WorkoutAI {
         exerciseCount: Int,
         durationMinutes: Int?,
         withPartner: Bool = false,
+        context: TrainingContext? = nil,
         catalog: [ExerciseBrief]
     ) async -> WorkoutPlan {
         let count = max(1, min(exerciseCount, catalog.count))
+
+        // Tier 1: the coached plan — the only tier that sees muscle fatigue, the
+        // lifter's goal, and their recorded ceilings. Which backend answers is
+        // the lifter's choice; both are handed identical prompts, and both
+        // degrade to the tiers below rather than failing the request.
+        var cloudError: String?
+        if let context, let backend = configuredBackend(for: context.provider) {
+            do {
+                let coached: CoachedPlan
+                switch backend {
+                case .claude:
+                    coached = try await CloudWorkoutAI.generatePlan(
+                        focusLabel: focusLabel,
+                        targetMuscleGroups: targetMuscleGroups,
+                        exerciseCount: count,
+                        durationMinutes: durationMinutes,
+                        context: context,
+                        catalog: catalog
+                    )
+                case .odysseus:
+                    coached = try await OdysseusWorkoutAI.generatePlan(
+                        focusLabel: focusLabel,
+                        targetMuscleGroups: targetMuscleGroups,
+                        exerciseCount: count,
+                        durationMinutes: durationMinutes,
+                        context: context,
+                        catalog: catalog
+                    )
+                }
+
+                let source: PlanSource = backend == .claude ? .cloud : .selfHosted
+                if let plan = matchToCatalog(coached, catalog: catalog, limit: count, source: source) {
+                    return plan
+                }
+                cloudError = "The coach returned movements that aren't in your library."
+            } catch {
+                // Every tier below still works offline, so a coaching failure
+                // degrades the plan rather than failing the request.
+                cloudError = coachingErrorMessage(error)
+            }
+        }
+
+        var plan = await onDevicePlan(
+            focusLabel: focusLabel,
+            targetMuscleGroups: targetMuscleGroups,
+            exerciseCount: count,
+            durationMinutes: durationMinutes,
+            withPartner: withPartner,
+            catalog: catalog
+        )
+        plan.cloudError = cloudError
+        return plan
+    }
+
+    /// `provider` if it is fully set up, otherwise nil.
+    ///
+    /// Returning nil is the normal path for a lifter who has turned coaching on
+    /// but not yet finished configuring it — generation quietly falls through to
+    /// the on-device tiers instead of erroring.
+    private static func configuredBackend(for provider: AIProvider) -> AIProvider? {
+        switch provider {
+        case .claude:   return CloudWorkoutAI.isConfigured ? .claude : nil
+        case .odysseus: return OdysseusWorkoutAI.isConfigured ? .odysseus : nil
+        }
+    }
+
+    /// The lifter-facing reason a coached plan couldn't be produced. Both
+    /// clients define their own error enum, and each writes better copy than
+    /// `localizedDescription` — particularly for a rejected credential, which
+    /// has to read as "your token is wrong", not "the request failed".
+    private static func coachingErrorMessage(_ error: Error) -> String {
+        if let error = error as? ClaudeClient.ClientError {
+            return error.errorDescription ?? error.localizedDescription
+        }
+        if let error = error as? OdysseusClient.OdysseusError {
+            return error.errorDescription ?? error.localizedDescription
+        }
+        return error.localizedDescription
+    }
+
+    /// Maps the coach's picks back onto real catalog entries, dropping anything
+    /// hallucinated or duplicated. Returns nil when nothing survives.
+    /// Internal rather than private so the clamping rules can be tested.
+    static func matchToCatalog(
+        _ coached: CoachedPlan,
+        catalog: [ExerciseBrief],
+        limit: Int,
+        source: PlanSource = .cloud
+    ) -> WorkoutPlan? {
+        let byName = Dictionary(catalog.map { ($0.name.lowercased(), $0.name) }) { first, _ in first }
+        var seen = Set<String>()
+        var matched: [PlannedExercise] = []
+
+        for entry in coached.exercises {
+            let key = entry.name.lowercased().trimmingCharacters(in: .whitespaces)
+            guard let realName = byName[key], !seen.contains(realName) else { continue }
+            seen.insert(realName)
+
+            let low = max(1, min(entry.repRangeLow, entry.repRangeHigh))
+            let high = max(low, max(entry.repRangeLow, entry.repRangeHigh))
+            matched.append(PlannedExercise(
+                name: realName,
+                sets: min(max(entry.sets, 1), 8),
+                prescription: Prescription(
+                    repRangeLow: low,
+                    repRangeHigh: high,
+                    targetLoadPounds: max(0, entry.targetLoadPounds),
+                    restSeconds: min(max(entry.restSeconds, 15), 600),
+                    note: entry.note
+                )
+            ))
+            if matched.count == limit { break }
+        }
+
+        guard !matched.isEmpty else { return nil }
+        return WorkoutPlan(
+            title: sanitizeName(coached.title),
+            exercises: matched,
+            rationale: coached.rationale,
+            source: source
+        )
+    }
+
+    /// Tiers 2 and 3: Apple's on-device model, then deterministic selection.
+    private static func onDevicePlan(
+        focusLabel: String,
+        targetMuscleGroups: [String],
+        exerciseCount: Int,
+        durationMinutes: Int?,
+        withPartner: Bool,
+        catalog: [ExerciseBrief]
+    ) async -> WorkoutPlan {
+        let count = exerciseCount
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *), SystemLanguageModel.default.availability == .available {
@@ -330,7 +511,7 @@ enum WorkoutAI {
         }
 
         let title = sanitizeName(plan.title)
-        return WorkoutPlan(title: title, exercises: matched)
+        return WorkoutPlan(title: title, exercises: matched, source: .onDevice)
     }
     #endif
 
@@ -363,7 +544,7 @@ enum WorkoutAI {
 
         let chosen = Array(primaryFirst.shuffled().prefix(exerciseCount))
         let exercises = chosen.map { PlannedExercise(name: $0.name, sets: 3) }
-        return WorkoutPlan(title: fallbackName(), exercises: exercises)
+        return WorkoutPlan(title: fallbackName(), exercises: exercises, source: .catalog)
     }
 }
 

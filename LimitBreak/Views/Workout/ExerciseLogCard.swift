@@ -568,8 +568,33 @@ struct ExerciseLogCard: View {
         isExpanded = loggedCount == 0
     }
 
-    /// Plan rows from the movement's most recent session, or a sensible default.
+    /// The routine's coached working weight for this movement, converted into
+    /// the card's display unit — nil when the session carries no such target.
+    private var plannedPrimary: Double? {
+        switch exercise.trackingType {
+        case .weightAndReps, .bodyweightAndReps:
+            guard let pounds = workout.plannedWeight(for: exercise) else { return nil }
+            return exercise.weightUnit.fromPounds(pounds)
+        case .customMetric:
+            return workout.plannedWeight(for: exercise)
+        case .durationAndReps, .timeAndDistance:
+            return nil
+        }
+    }
+
+    /// Plan rows from the coached routine that started this session, else the
+    /// movement's most recent session, else a sensible default.
     private func prefillFromHistory() {
+        // A coached routine's prescription wins over history: open every planned
+        // set on the reps and weight the plan asked for.
+        let plannedReps = workout.plannedReps(for: exercise)
+        if plannedReps != nil || plannedPrimary != nil {
+            let count = max(1, workout.targetSets(for: exercise))
+            drafts = (0..<count).map { _ in
+                SetDraft(primary: plannedPrimary ?? initialPrimary, reps: plannedReps ?? 8)
+            }
+            return
+        }
         guard let latest = exercise.sets.max(by: { $0.timestamp < $1.timestamp }),
               let lastSession = latest.session else {
             drafts = (0..<3).map { _ in SetDraft(primary: initialPrimary, reps: 8) }

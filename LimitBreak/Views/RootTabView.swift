@@ -5,7 +5,10 @@ struct RootTabView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(WorkoutManager.self) private var workout
 
+    @Query private var profiles: [TrainingProfile]
+
     @State private var selectedTab: Int
+    @State private var onboardingProfile: TrainingProfile?
 
     init() {
         // Debug/UI-test hook: launch with "-open-tab <index>" to land on a tab.
@@ -47,9 +50,23 @@ struct RootTabView: View {
                 }
             }
         }
+        .fullScreenCover(item: $onboardingProfile) { profile in
+            OnboardingView(profile: profile) { onboardingProfile = nil }
+        }
         .task {
             ExerciseCatalog.seedIfNeeded(context: modelContext)
             WidgetSnapshotter.shared.refresh()
+
+            // First launch: create the profile and ask what they're training
+            // for. Suppressed under "-skip-onboarding", and under
+            // "-in-memory-store" so every UI test doesn't have to dismiss it.
+            let arguments = ProcessInfo.processInfo.arguments
+            let suppressed = arguments.contains("-skip-onboarding")
+                || arguments.contains("-in-memory-store")
+            let profile = TrainingProfile.current(in: modelContext)
+            if !profile.hasCompletedOnboarding, !suppressed {
+                onboardingProfile = profile
+            }
             // Debug/UI-test hook: launch with "-auto-start-session" to begin a
             // session immediately (drives watch & Live Activity verification).
             if ProcessInfo.processInfo.arguments.contains("-auto-start-session"),

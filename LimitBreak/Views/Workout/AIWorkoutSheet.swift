@@ -8,6 +8,8 @@ struct AIWorkoutSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(WorkoutManager.self) private var workout
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
+    @Query(sort: \WorkoutSession.startDate, order: .reverse) private var sessions: [WorkoutSession]
+    @Query private var profiles: [TrainingProfile]
 
     /// Called with the generated session title, the ordered exercises to load,
     /// and whether the session is being trained with a partner.
@@ -24,12 +26,18 @@ struct AIWorkoutSheet: View {
     @State private var manualReplaceTarget: ReplaceTarget?
     @State private var swappingIndex: Int?
 
-    /// Sheet payload for one tapped plan row: the matched catalog movement
-    /// plus how many sets the plan calls for.
+    /// Sheet payload for one tapped plan row: the matched catalog movement, how
+    /// many sets the plan calls for, the coached prescription (when any), and the
+    /// slot's currently-resolved rep target so the detail slider opens in sync.
     struct PlannedExerciseDetail: Identifiable {
+        /// The `PlannedExercise.id` of the tapped slot, so a resolved rep target
+        /// can be written back to the right row.
+        let slotID: UUID
         let exercise: Exercise
         let sets: Int
-        var id: UUID { exercise.id }
+        let prescription: Prescription?
+        let selectedReps: Int?
+        var id: UUID { slotID }
     }
 
     /// Which plan slot the manual exercise picker is replacing.
@@ -64,7 +72,10 @@ struct AIWorkoutSheet: View {
                 PlannedExerciseSheet(
                     exercise: detail.exercise,
                     plannedSets: detail.sets,
-                    withPartner: withPartner
+                    prescription: detail.prescription,
+                    selectedReps: detail.selectedReps,
+                    withPartner: withPartner,
+                    onChooseReps: { reps in chooseReps(slotID: detail.slotID, reps: reps) }
                 )
             }
             .sheet(item: $manualReplaceTarget) { target in
@@ -190,6 +201,34 @@ struct AIWorkoutSheet: View {
                     .foregroundStyle(Theme.limitBreakGradient)
             }
 
+            sourceBadge(plan)
+
+            if let rationale = plan.rationale, !rationale.isEmpty {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "quote.opening")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.violet)
+                    Text(rationale)
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(12)
+                .background(Theme.violet.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+            }
+
+            if let cloudError = plan.cloudError {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                    Text("Coaching unavailable — built this on device instead. \(cloudError)")
+                        .font(.caption2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .foregroundStyle(Theme.coral)
+                .padding(10)
+                .background(Theme.coral.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+            }
+
             // Still flippable after generating: the answer drives the load each
             // movement's detail sheet recommends, so a partner turning up late
             // shouldn't mean regenerating the whole plan.
@@ -214,6 +253,20 @@ struct AIWorkoutSheet: View {
                 .foregroundStyle(Theme.textDim)
                 .frame(maxWidth: .infinity, alignment: .center)
         }
+    }
+
+    /// Which tier built this plan. Shown so a device-generated plan is never
+    /// mistaken for a fatigue-aware coached one.
+    private func sourceBadge(_ plan: WorkoutPlan) -> some View {
+        Label(plan.source.label, systemImage: plan.source == .cloud ? "sparkles" : "iphone")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(plan.source == .cloud ? Theme.violet : Theme.textDim)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                (plan.source == .cloud ? Theme.violet : Theme.textDim).opacity(0.12),
+                in: Capsule()
+            )
     }
 
     /// Binding into the generated plan's exercise list, so the reorder stack can
@@ -247,7 +300,7 @@ struct AIWorkoutSheet: View {
             Button {
                 guard let exercise = catalogExercise(for: planned.name) else { return }
                 Haptics.shared.tick()
-                inspectedExercise = PlannedExerciseDetail(exercise: exercise, sets: planned.sets)
+                inspectedExercise = detailPayload(for: planned, exercise: exercise)
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(planned.name)
@@ -259,15 +312,36 @@ struct AIWorkoutSheet: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    if let note = planned.prescription?.note, !note.isEmpty {
+                        Text(note)
+                            .font(.caption2)
+                            .foregroundStyle(Theme.textDim)
+                            .multilineTextAlignment(.leading)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
-            Text("\(planned.sets) sets")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.textDim)
+            VStack(alignment: .trailing, spacing: 2) {
+                if let rx = planned.prescription {
+                    Text("\(planned.sets) \u{00D7} \(planned.targetReps ?? rx.repRangeHigh)")
+                        .font(.caption.weight(.bold))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.emerald)
+                    if rx.targetLoadPounds > 0 {
+                        Text("\(rx.targetLoadPounds.cleanWeight) lbs")
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.textDim)
+                    }
+                } else {
+                    Text("\(planned.sets) sets")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textDim)
+                }
+            }
 
             swapControl(index: index, planned: planned)
         }
@@ -301,7 +375,7 @@ struct AIWorkoutSheet: View {
                     Divider()
                     Button {
                         guard let exercise = catalogExercise(for: planned.name) else { return }
-                        inspectedExercise = PlannedExerciseDetail(exercise: exercise, sets: planned.sets)
+                        inspectedExercise = detailPayload(for: planned, exercise: exercise)
                     } label: {
                         Label("View Details", systemImage: "info.circle")
                     }
@@ -412,12 +486,25 @@ struct AIWorkoutSheet: View {
         let catalog = exercises.map {
             ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType)
         }
+        // Only assemble the training context when the lifter has opted in —
+        // without it `generatePlan` never reaches for the network.
+        var context: TrainingContext?
+        if let profile = profiles.first, profile.cloudAIEnabled {
+            context = TrainingContext.build(
+                profile: profile,
+                sessions: sessions,
+                exercises: exercises,
+                withPartner: withPartner
+            )
+        }
+
         let result = await WorkoutAI.generatePlan(
             focusLabel: focus.label,
             targetMuscleGroups: focus.targetMuscleGroups,
             exerciseCount: exerciseCount,
             durationMinutes: duration.minutes,
             withPartner: withPartner,
+            context: context,
             catalog: catalog
         )
         isGenerating = false
@@ -479,9 +566,13 @@ struct AIWorkoutSheet: View {
     private func saveAsRoutine() {
         guard let plan, !didSaveRoutine else { return }
         let byName = Dictionary(exercises.map { ($0.name.lowercased(), $0) }) { first, _ in first }
-        let items = plan.exercises.compactMap { planned -> (exercise: Exercise, targetSets: Int)? in
+        let items = plan.exercises.compactMap { planned -> WorkoutManager.RoutineDraftItem? in
             guard let exercise = byName[planned.name.lowercased()] else { return nil }
-            return (exercise, max(1, planned.sets))
+            let weight: Double? = {
+                guard let load = planned.prescription?.targetLoadPounds, load > 0 else { return nil }
+                return load
+            }()
+            return (exercise, max(1, planned.sets), planned.targetReps, weight)
         }
         guard !items.isEmpty else { return }
         workout.createRoutine(
@@ -491,6 +582,30 @@ struct AIWorkoutSheet: View {
             items: items
         )
         withAnimation(.snappy) { didSaveRoutine = true }
+    }
+
+    /// Builds the detail-sheet payload for a plan slot, carrying its slot id,
+    /// coached prescription, and resolved rep target so the slider opens in sync.
+    private func detailPayload(for planned: PlannedExercise, exercise: Exercise) -> PlannedExerciseDetail {
+        PlannedExerciseDetail(
+            slotID: planned.id,
+            exercise: exercise,
+            sets: planned.sets,
+            prescription: planned.prescription,
+            selectedReps: planned.targetReps
+        )
+    }
+
+    /// Writes the rep target the lifter picked with the detail-sheet slider back
+    /// into the matching plan slot, so the preview and any saved routine agree.
+    private func chooseReps(slotID: UUID, reps: Int) {
+        guard var updated = plan,
+              let idx = updated.exercises.firstIndex(where: { $0.id == slotID }),
+              updated.exercises[idx].targetReps != reps else { return }
+        updated.exercises[idx].targetReps = reps
+        plan = updated
+        // A saved routine would no longer match the resolved target on screen.
+        didSaveRoutine = false
     }
 
     private func muscleGroup(for name: String) -> String? {
@@ -505,15 +620,41 @@ struct AIWorkoutSheet: View {
 // MARK: - Planned exercise detail
 
 /// What one plan entry actually asks of you: the movement's guide plus the
-/// load to aim for, drawn from your own history.
+/// load to aim for. When the coach handed down a prescription we show that
+/// exactly — with a slider to resolve its rep range — so this matches the plan
+/// row and the saved routine. Without one, we fall back to your own history.
 struct PlannedExerciseSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let exercise: Exercise
     let plannedSets: Int
+    /// The coach's prescription for this slot, or nil for on-device/library picks.
+    let prescription: Prescription?
     /// Whether a spotter is on hand — licenses a heavier prescription on the
     /// free-weight lifts where a spot actually changes what's safe to attempt.
     var withPartner = false
+    /// Called as the lifter drags the rep slider, so the plan row and any saved
+    /// routine can track the resolved target.
+    var onChooseReps: (Int) -> Void = { _ in }
+
+    /// The rep target the slider currently sits on, within the range.
+    @State private var chosenReps: Int
+
+    init(
+        exercise: Exercise,
+        plannedSets: Int,
+        prescription: Prescription? = nil,
+        selectedReps: Int? = nil,
+        withPartner: Bool = false,
+        onChooseReps: @escaping (Int) -> Void = { _ in }
+    ) {
+        self.exercise = exercise
+        self.plannedSets = plannedSets
+        self.prescription = prescription
+        self.withPartner = withPartner
+        self.onChooseReps = onChooseReps
+        _chosenReps = State(initialValue: selectedReps ?? prescription?.repRangeHigh ?? 0)
+    }
 
     var body: some View {
         ScrollView {
@@ -600,8 +741,9 @@ struct PlannedExerciseSheet: View {
 
     // MARK: Recommendation
 
-    /// The plan's prescription: sets, and a load drawn from what you actually
-    /// lifted last time (or a conservative fraction of your ceiling).
+    /// The plan's prescription. With a coached prescription we show its exact
+    /// sets/reps/load and let the lifter resolve the rep range on a slider;
+    /// otherwise we fall back to a load drawn from their own history.
     private var recommendationCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
@@ -613,13 +755,17 @@ struct PlannedExerciseSheet: View {
             }
             .foregroundStyle(Theme.violet)
 
-            Text(recommendationText)
-                .font(.system(.title3, design: .rounded, weight: .bold))
-                .monospacedDigit()
+            if let rx = prescription {
+                prescriptionContent(rx)
+            } else {
+                Text(recommendationText)
+                    .font(.system(.title3, design: .rounded, weight: .bold))
+                    .monospacedDigit()
 
-            Text(recommendationHint)
-                .font(.caption)
-                .foregroundStyle(Theme.textDim)
+                Text(recommendationHint)
+                    .font(.caption)
+                    .foregroundStyle(Theme.textDim)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardStyle()
@@ -628,6 +774,74 @@ struct PlannedExerciseSheet: View {
                 .strokeBorder(Theme.limitBreakGradient, lineWidth: 1)
                 .opacity(0.4)
         )
+    }
+
+    /// The coach's exact prescription, with a rep slider when the range spans
+    /// more than a single value.
+    @ViewBuilder
+    private func prescriptionContent(_ rx: Prescription) -> some View {
+        Text(prescriptionHeadline(rx))
+            .font(.system(.title3, design: .rounded, weight: .bold))
+            .monospacedDigit()
+
+        if rx.repRangeLow < rx.repRangeHigh {
+            repSlider(rx)
+        }
+
+        if !rx.note.isEmpty {
+            Text(rx.note)
+                .font(.caption)
+                .foregroundStyle(Theme.textDim)
+        }
+    }
+
+    /// "3 sets × 8 reps × 185 lbs" — the resolved target, load included when loaded.
+    private func prescriptionHeadline(_ rx: Prescription) -> String {
+        var text = "\(plannedSets) sets \u{00D7} \(chosenReps) rep\(chosenReps == 1 ? "" : "s")"
+        if rx.targetLoadPounds > 0 {
+            text += " \u{00D7} \(rx.targetLoadPounds.cleanWeight) lbs"
+        }
+        return text
+    }
+
+    /// Themed slider that resolves the coach's rep range to a single target.
+    private func repSlider(_ rx: Prescription) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("TARGET REPS")
+                    .font(.caption2.weight(.bold))
+                    .kerning(1)
+                    .foregroundStyle(Theme.textDim)
+                Spacer()
+                Text("\(chosenReps)")
+                    .font(.subheadline.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.emerald)
+            }
+            Slider(
+                value: Binding(
+                    get: { Double(chosenReps) },
+                    set: { newValue in
+                        let resolved = Int(newValue.rounded())
+                        guard resolved != chosenReps else { return }
+                        chosenReps = resolved
+                        Haptics.shared.tick()
+                        onChooseReps(resolved)
+                    }
+                ),
+                in: Double(rx.repRangeLow)...Double(rx.repRangeHigh),
+                step: 1
+            )
+            .tint(Theme.emerald)
+            HStack {
+                Text("\(rx.repRangeLow)")
+                Spacer()
+                Text("\(rx.repRangeHigh)")
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(Theme.textDim)
+        }
+        .padding(.top, 4)
     }
 
     /// Most recent non-warmup set, from any session.

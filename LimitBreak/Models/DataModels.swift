@@ -522,6 +522,12 @@ final class Routine {
     var exerciseCount: Int {
         items.reduce(0) { $0 + ($1.exercise == nil ? 0 : 1) }
     }
+
+    /// Whether any slot carries a coached rep or load target — used to surface a
+    /// hint that this routine remembers more than just its set counts.
+    var hasPrescriptions: Bool {
+        items.contains { $0.targetReps != nil || ($0.targetWeight ?? 0) > 0 }
+    }
 }
 
 /// One slot in a `Routine`: an exercise plus how many working sets to aim for.
@@ -530,14 +536,28 @@ final class RoutineItem {
     @Attribute(.unique) var id: UUID
     var order: Int
     var targetSets: Int
+    /// The single resolved rep target carried over from a coached plan. Nil for
+    /// hand-built routines that only track a set count.
+    var targetReps: Int?
+    /// Suggested working weight in canonical pounds from a coached plan. Nil when
+    /// unset or for bodyweight movements.
+    var targetWeight: Double?
 
     var exercise: Exercise?
     var routine: Routine?
 
-    init(order: Int, targetSets: Int = 3, exercise: Exercise? = nil) {
+    init(
+        order: Int,
+        targetSets: Int = 3,
+        targetReps: Int? = nil,
+        targetWeight: Double? = nil,
+        exercise: Exercise? = nil
+    ) {
         self.id = UUID()
         self.order = order
         self.targetSets = max(1, targetSets)
+        self.targetReps = targetReps
+        self.targetWeight = targetWeight
         self.exercise = exercise
     }
 }

@@ -34,7 +34,6 @@ struct OdysseusSettingsView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     serverSection
                     if canReachServer { modelSection }
-                    if OdysseusConfig.isConfigured { sessionSection }
                     disconnectSection
                 }
                 .padding()
@@ -207,7 +206,7 @@ struct OdysseusSettingsView: View {
                         Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
                             .font(.subheadline)
                             .foregroundStyle(isSelected ? Theme.emerald : Theme.textDim)
-                        Text(model)
+                        Text(modelName(model))
                             .font(.caption.monospaced())
                             .multilineTextAlignment(.leading)
                         Spacer(minLength: 4)
@@ -222,35 +221,6 @@ struct OdysseusSettingsView: View {
                 }
                 .buttonStyle(.plain)
             }
-        }
-    }
-
-    // MARK: - Session
-
-    private var sessionSection: some View {
-        section("CONVERSATION") {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(OdysseusConfig.sessionID == nil ? "No session yet" : "Session active")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    if OdysseusConfig.sessionID != nil {
-                        Button("Start fresh") {
-                            OdysseusConfig.clearSession()
-                            Haptics.shared.tick()
-                        }
-                        .font(.caption.weight(.semibold))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Theme.emerald)
-                    }
-                }
-                Text("Your server remembers previous plans in one long-running session, "
-                     + "so the coach builds on what it already programmed for you. Starting "
-                     + "fresh clears that history.")
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textDim)
-            }
-            .cardStyle()
         }
     }
 
@@ -340,6 +310,13 @@ struct OdysseusSettingsView: View {
         } catch {
             modelsError = message(for: error)
         }
+    }
+
+    /// Model identifiers come back as the server-side file path the weights are
+    /// served from. The lifter cares about the model, not where it lives on
+    /// disk, so show just the name.
+    private func modelName(_ model: String) -> String {
+        OdysseusConfig.displayName(forModel: model)
     }
 
     private func select(endpoint: OdysseusClient.Endpoint, model: String) {

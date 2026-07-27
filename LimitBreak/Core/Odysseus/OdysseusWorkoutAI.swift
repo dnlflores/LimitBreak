@@ -43,7 +43,7 @@ enum OdysseusWorkoutAI {
             catalog: catalog
         )
 
-        let reply = try await sendReusingSession(
+        let reply = try await sendFreshSession(
             prompt: prompt,
             baseURL: baseURL,
             token: token,
@@ -56,49 +56,21 @@ enum OdysseusWorkoutAI {
 
     // MARK: - Session handling
 
-    /// Sends `prompt` on the persisted session, creating one first if there
-    /// isn't one yet.
+    /// Sends `prompt` on a brand-new session created just for this generation.
     ///
-    /// The session carries conversation history server-side, so reusing a
-    /// single id across launches is what gives the coach continuity between
-    /// generations. It's only rebuilt when the server reports it's gone — and
-    /// then the turn is retried once, so a pruned session costs a round trip
-    /// rather than a failed generation.
-    private static func sendReusingSession(
+    /// Every generation is deliberately stateless. The coach's awareness of
+    /// what it has already programmed comes from the recent-session history
+    /// baked into the prompt (`PromptBuilder.requestBlock`), not from
+    /// server-side conversation memory — so there is nothing to carry over and
+    /// nothing for the lifter to reset. A fresh session is created each time
+    /// and never persisted.
+    private static func sendFreshSession(
         prompt: String,
         baseURL: String,
         token: String,
         endpointID: String,
         model: String
     ) async throws -> String {
-        let sessionID = try await currentSessionID(
-            baseURL: baseURL, token: token, endpointID: endpointID, model: model
-        )
-
-        do {
-            return try await OdysseusClient.chat(
-                baseURL: baseURL, token: token, sessionID: sessionID, message: prompt
-            )
-        } catch OdysseusClient.OdysseusError.sessionNotFound {
-            OdysseusConfig.clearSession()
-            let fresh = try await currentSessionID(
-                baseURL: baseURL, token: token, endpointID: endpointID, model: model
-            )
-            return try await OdysseusClient.chat(
-                baseURL: baseURL, token: token, sessionID: fresh, message: prompt
-            )
-        }
-    }
-
-    /// The persisted session id, or a newly created one.
-    static func currentSessionID(
-        baseURL: String,
-        token: String,
-        endpointID: String,
-        model: String
-    ) async throws -> String {
-        if let existing = OdysseusConfig.sessionID { return existing }
-
         let session = try await OdysseusClient.createSession(
             baseURL: baseURL,
             token: token,
@@ -106,8 +78,9 @@ enum OdysseusWorkoutAI {
             model: model,
             name: "LimitBreak"
         )
-        OdysseusConfig.sessionID = session.id
-        return session.id
+        return try await OdysseusClient.chat(
+            baseURL: baseURL, token: token, sessionID: session.id, message: prompt
+        )
     }
 
     // MARK: - Reply parsing

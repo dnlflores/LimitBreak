@@ -130,7 +130,29 @@ enum PromptBuilder {
         }
         lines.append("")
 
-        let sessions = Array(context.recentSessions.prefix(budget.recentSessionCap))
+        // Lead with the sessions that actually trained the muscles this
+        // workout targets, so a tight budget spends its slots on what the coach
+        // recently programmed for *these* muscles rather than an unrelated leg
+        // day. Sessions that don't hit the target fill any remaining slots (and
+        // are all that's shown for a full-body focus, where nothing is
+        // singled out). `recentSessions` is newest-first and `filter` preserves
+        // order, so each group stays newest-first.
+        let targetNames = Set(targetMuscleGroups.compactMap {
+            MuscleGroup(rawValue: $0)?.displayName
+        })
+        let prioritized: [TrainingContext.SessionSummary]
+        if targetNames.isEmpty {
+            prioritized = context.recentSessions
+        } else {
+            let related = context.recentSessions.filter {
+                !Set($0.muscleGroups).isDisjoint(with: targetNames)
+            }
+            let others = context.recentSessions.filter {
+                Set($0.muscleGroups).isDisjoint(with: targetNames)
+            }
+            prioritized = related + others
+        }
+        let sessions = Array(prioritized.prefix(budget.recentSessionCap))
         if !sessions.isEmpty {
             lines.append("RECENT SESSIONS (newest first):")
             for session in sessions {

@@ -930,10 +930,15 @@ private struct SwipeablePlanRow<Content: View>: View {
                 .background(Theme.surface)
                 .contentShape(Rectangle())
                 .offset(x: offset)
-                // simultaneousGesture (not .gesture) so the swipe is recognized
-                // alongside the row's own tap Button/Menu and the ScrollView's
-                // vertical pan, instead of being swallowed by them.
-                .simultaneousGesture(swipeGesture, including: isEnabled ? .all : .subviews)
+                // A UIKit pan recognizer that *fails* the instant a drag is
+                // vertical-dominant, handing the touch back to the enclosing
+                // ScrollView so the list scrolls no matter where the finger
+                // lands. A SwiftUI DragGesture (even a simultaneous one) can't
+                // bow out of a vertical pan on demand, so it kept swallowing
+                // scrolls that started on a card; this recognizer only ever
+                // claims horizontal swipes. Taps still reach the row's own
+                // Button/Menu untouched.
+                .gesture(horizontalSwipe)
         }
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.glassBorder, lineWidth: 1))
@@ -991,22 +996,24 @@ private struct SwipeablePlanRow<Content: View>: View {
 
     // MARK: Gesture
 
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 14)
-            .onChanged { value in
-                // Let mostly-vertical drags scroll the list instead.
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                offset = rubberBanded(value.translation.width)
+    /// The horizontal swipe, backed by a directional UIKit pan recognizer. The
+    /// recognizer guarantees these callbacks only fire for horizontal-dominant
+    /// drags — a vertical drag fails the recognizer before it reaches us and
+    /// scrolls the list instead — so no directional guard is needed here.
+    private var horizontalSwipe: HorizontalSwipeGesture {
+        HorizontalSwipeGesture(
+            isEnabled: isEnabled,
+            onChanged: { translationX in
+                offset = rubberBanded(translationX)
                 let nowArmed = abs(offset) >= triggerDistance
                 if nowArmed != armed {
                     armed = nowArmed
                     Haptics.shared.tick()
                 }
-            }
-            .onEnded { value in
-                let horizontal = abs(value.translation.width) > abs(value.translation.height)
-                let fired = horizontal && abs(value.translation.width) >= triggerDistance
-                let goRight = value.translation.width > 0
+            },
+            onEnded: { translationX in
+                let fired = abs(translationX) >= triggerDistance
+                let goRight = translationX > 0
                 armed = false
                 withAnimation(.spring(duration: 0.35)) { offset = 0 }
                 if fired {
@@ -1014,6 +1021,7 @@ private struct SwipeablePlanRow<Content: View>: View {
                     if goRight { onReplaceAI() } else { onReplaceManual() }
                 }
             }
+        )
     }
 
     /// Eases resistance past `maxReveal` so the row can't be dragged off the card.
@@ -1024,11 +1032,76 @@ private struct SwipeablePlanRow<Content: View>: View {
     }
 }
 
+// MARK: - Directional swipe gesture
+
+/// A `UIPanGestureRecognizer` that only survives for horizontal-dominant drags.
+/// The first time a touch travels far enough to judge its direction, a
+/// mostly-vertical drag fails the recognizer, which lets the enclosing
+/// `ScrollView` take over and scroll — so a swipe row never traps a vertical
+/// pan the way a SwiftUI `DragGesture` would.
+private final class HorizontalPanGestureRecognizer: UIPanGestureRecognizer {
+    /// The touch's starting point, cleared once direction has been decided.
+    private var startLocation: CGPoint?
+
+    override func reset() {
+        super.reset()
+        startLocation = nil
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesBegan(touches, with: event)
+        startLocation = touches.first?.location(in: view)
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesMoved(touches, with: event)
+        guard let start = startLocation,
+              let current = touches.first?.location(in: view) else { return }
+        let dx = current.x - start.x
+        let dy = current.y - start.y
+        // Wait for enough travel to reliably tell horizontal from vertical.
+        guard abs(dx) + abs(dy) >= 8 else { return }
+        startLocation = nil // decided — don't re-evaluate for this touch
+        if abs(dy) > abs(dx) {
+            state = .failed
+        }
+    }
+}
+
+/// Bridges `HorizontalPanGestureRecognizer` into SwiftUI, reporting the running
+/// horizontal translation as the finger moves and the final translation on
+/// release. Attached with `.gesture(_:)`.
+private struct HorizontalSwipeGesture: UIGestureRecognizerRepresentable {
+    let isEnabled: Bool
+    let onChanged: (CGFloat) -> Void
+    let onEnded: (CGFloat) -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> HorizontalPanGestureRecognizer {
+        HorizontalPanGestureRecognizer()
+    }
+
+    func updateUIGestureRecognizer(_ recognizer: HorizontalPanGestureRecognizer, context: Context) {
+        recognizer.isEnabled = isEnabled
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: HorizontalPanGestureRecognizer, context: Context) {
+        let translationX = recognizer.translation(in: recognizer.view).x
+        switch recognizer.state {
+        case .began, .changed:
+            onChanged(translationX)
+        case .ended, .cancelled, .failed:
+            onEnded(translationX)
+        default:
+            break
+        }
+    }
+}
+
 // MARK: - Swipe-back disabler
 
 /// Disables the enclosing navigation controller's left-edge back-swipe so that
 /// custom rightward swipe gestures (swipe-right-to-replace) aren't swallowed by
-/// the system before our `DragGesture` can see them.
+/// the system before our swipe recognizer can see them.
 private struct SwipeBackDisabler: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> Controller { Controller() }
     func updateUIViewController(_ controller: Controller, context: Context) {

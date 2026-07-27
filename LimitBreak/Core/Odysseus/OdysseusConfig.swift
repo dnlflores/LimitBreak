@@ -7,11 +7,10 @@ import Foundation
 /// Everything in this file is non-secret configuration and sits in
 /// `UserDefaults`.
 ///
-/// `sessionID` is the reason this type persists at all. The server holds
-/// conversation history against a session, so reusing one id across launches
-/// gives the coach continuity between generations. It's only cleared when the
-/// server says the session is gone, or when the model selection changes out
-/// from under it.
+/// No chat session is persisted: each workout generation creates a fresh
+/// server session and discards it (see `OdysseusWorkoutAI`). The coach's
+/// awareness of past training comes from the recent-session history in the
+/// prompt, so there is no server-side conversation state to hold onto.
 enum OdysseusConfig {
     private static let defaults = UserDefaults.standard
 
@@ -20,7 +19,6 @@ enum OdysseusConfig {
         static let endpointID = "odysseus.endpointID"
         static let endpointName = "odysseus.endpointName"
         static let model = "odysseus.model"
-        static let sessionID = "odysseus.sessionID"
     }
 
     // MARK: - Connection
@@ -49,33 +47,38 @@ enum OdysseusConfig {
         set { defaults.set(newValue, forKey: Key.model) }
     }
 
-    /// Records a picked endpoint and model. Changing either invalidates the
-    /// session: its history belongs to the old model, and the server binds a
-    /// session to the model it was created with.
-    static func select(endpointID: String, endpointName: String?, model: String) {
-        if self.endpointID != endpointID || self.model != model {
-            clearSession()
+    /// The configured model as a human-readable name rather than the full
+    /// server-side file path the weights are served from.
+    static var modelDisplayName: String? {
+        model.map(displayName(forModel:))
+    }
+
+    /// Strips the directory path and any weight-file extension from a model
+    /// identifier so it reads as a name, not the file it's served from
+    /// (e.g. `/…/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` becomes `Qwen3.6-35B-A3B-UD-Q4_K_M`).
+    /// A model id with no recognized extension is left untouched, since these
+    /// ids often carry dots of their own.
+    nonisolated static func displayName(forModel model: String) -> String {
+        let file = model.split(separator: "/").last.map(String.init) ?? model
+        let weightExtensions: Set<String> = ["gguf", "bin", "safetensors", "ggml", "pt", "onnx"]
+        if let dot = file.lastIndex(of: "."),
+           weightExtensions.contains(file[file.index(after: dot)...].lowercased()) {
+            return String(file[..<dot])
         }
+        return file
+    }
+
+    /// Records a picked endpoint and model.
+    static func select(endpointID: String, endpointName: String?, model: String) {
         self.endpointID = endpointID
         self.endpointName = endpointName
         self.model = model
     }
 
-    // MARK: - Session
-
-    static var sessionID: String? {
-        get { defaults.string(forKey: Key.sessionID)?.nilIfEmpty }
-        set { defaults.set(newValue, forKey: Key.sessionID) }
-    }
-
-    static func clearSession() {
-        defaults.removeObject(forKey: Key.sessionID)
-    }
-
     // MARK: - Readiness
 
     /// A URL, a token, and a model are all required before a request can be
-    /// attempted. The session id is not — it's created on demand.
+    /// attempted.
     static var isConfigured: Bool {
         !baseURL.isEmpty
             && KeychainStore.hasOdysseusToken
@@ -91,7 +94,7 @@ enum OdysseusConfig {
 
     /// Forgets everything, including the token. Used by "Disconnect".
     static func reset() {
-        [Key.baseURL, Key.endpointID, Key.endpointName, Key.model, Key.sessionID]
+        [Key.baseURL, Key.endpointID, Key.endpointName, Key.model]
             .forEach(defaults.removeObject(forKey:))
         KeychainStore.deleteOdysseusToken()
     }

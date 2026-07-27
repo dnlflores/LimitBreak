@@ -221,7 +221,7 @@ struct SettingsView: View {
     }
 
     private var odysseusSummary: String {
-        if OdysseusConfig.isConfigured, let model = OdysseusConfig.model {
+        if OdysseusConfig.isConfigured, let model = OdysseusConfig.modelDisplayName {
             return "Ready — \(model)"
         }
         if OdysseusConfig.needsModelSelection {

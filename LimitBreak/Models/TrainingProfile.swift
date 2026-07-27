@@ -131,7 +131,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .claude:
             return "Anthropic's hosted model. Works anywhere, billed to your API key."
         case .odysseus:
-            return "Your Odysseus server. Free and private, but needs your tailnet."
+            return "Your Odysseus server. Free and private."
         }
     }
 

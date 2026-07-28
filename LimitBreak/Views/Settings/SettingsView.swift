@@ -125,16 +125,16 @@ struct SettingsView: View {
     // MARK: - AI
 
     private func aiSection(_ profile: TrainingProfile) -> some View {
-        section("SMARTER AI COACHING") {
+        section("AI FEATURES") {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle(isOn: Binding(
                     get: { profile.cloudAIEnabled },
                     set: { profile.cloudAIEnabled = $0; try? modelContext.save(); Haptics.shared.tick() }
                 )) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Fatigue-aware coaching")
+                        Text("Smarter AI features")
                             .font(.subheadline.weight(.semibold))
-                        Text("Plans that account for muscle fatigue and your goal.")
+                        Text("Powers fatigue-aware workout plans and your weekly Saga patch notes, tuned to your goal and recent training.")
                             .font(.caption)
                             .foregroundStyle(Theme.textDim)
                     }

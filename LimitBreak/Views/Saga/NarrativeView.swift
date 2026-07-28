@@ -1,9 +1,11 @@
 import SwiftUI
 import SwiftData
 
-/// The Saga tab: on-device AI patch notes synthesized from the week's telemetry.
+/// The Saga tab: AI patch notes synthesized from the week's telemetry, using
+/// whichever coaching tier the lifter has selected in Settings.
 struct NarrativeView: View {
     @Environment(\.modelContext) private var modelContext
+    @Query private var profiles: [TrainingProfile]
 
     @State private var patchNotes: String?
     @State private var isGenerating = false
@@ -23,7 +25,7 @@ struct NarrativeView: View {
 
                     generateButton
 
-                    Text("Patch notes are synthesized entirely on-device. Your training telemetry never leaves this phone.")
+                    Text(privacyFooter)
                         .font(.caption2)
                         .foregroundStyle(Theme.textDim)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -79,7 +81,7 @@ struct NarrativeView: View {
     }
 
     private func patchNotesCard(_ notes: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "scroll.fill")
                     .foregroundStyle(Theme.gold)
@@ -88,18 +90,43 @@ struct NarrativeView: View {
                     .foregroundStyle(Theme.textDim)
                     .kerning(1.5)
             }
-            Text(notes)
-                .font(.system(.subheadline, design: .monospaced))
-                .lineSpacing(5)
-                .textSelection(.enabled)
+
+            let lines = PatchNotesFormatter.lines(from: notes)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                    patchLine(line, index: index)
+                }
+            }
+            .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardStyle()
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 20)
                 .strokeBorder(Theme.limitBreakGradient.opacity(0.5), lineWidth: 1)
         )
     }
+
+    /// One patch-note entry: a cycling accent marker plus the tinted text, so
+    /// the block reads like a color-coded RPG changelog rather than a wall of
+    /// monospace.
+    private func patchLine(_ line: String, index: Int) -> some View {
+        let accent = Self.markerAccents[index % Self.markerAccents.count]
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text("◆")
+                .font(.system(size: 9, weight: .black))
+                .foregroundStyle(accent)
+            PatchNotesFormatter.styledText(for: line)
+                .font(.system(.subheadline, design: .monospaced))
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Accent colors the per-line markers rotate through, drawn from the app's
+    /// neon palette.
+    private static let markerAccents: [Color] = [Theme.emerald, Theme.violet, Theme.gold, Theme.teal]
 
     private var generateButton: some View {
         Button {
@@ -124,13 +151,38 @@ struct NarrativeView: View {
         .disabled(isGenerating)
     }
 
+    /// The provider to route generation through, or nil when cloud AI is off —
+    /// in which case the notes are synthesized on-device.
+    private var activeProvider: AIProvider? {
+        guard let profile = profiles.first, profile.cloudAIEnabled else { return nil }
+        return profile.aiProvider
+    }
+
+    /// Where the notes are composed — and therefore where the week's telemetry
+    /// goes — tracks the AI provider chosen in Settings. When a provider is
+    /// selected but not yet configured, generation falls back on-device, so the
+    /// footer says so too.
+    private var privacyFooter: String {
+        let onDevice = "Patch notes are synthesized entirely on-device. Your training telemetry never leaves this phone."
+        guard let profile = profiles.first, profile.cloudAIEnabled else { return onDevice }
+        switch profile.aiProvider {
+        case .claude where CloudWorkoutAI.isConfigured:
+            return "Patch notes are composed by Claude. Your weekly training telemetry is sent to Anthropic to write them — nothing else leaves your device."
+        case .odysseus where OdysseusConfig.isConfigured:
+            return "Patch notes are composed by your own Odysseus server. Your weekly training telemetry is sent over your tailnet to write them — nothing else leaves your device."
+        default:
+            return onDevice
+        }
+    }
+
     private func generate() {
         isGenerating = true
         Haptics.shared.tick()
         let snapshot = NarrativeEngine.weeklyTelemetry(context: modelContext)
         telemetry = snapshot
+        let provider = activeProvider
         Task { @MainActor in
-            let notes = await NarrativeEngine.generatePatchNotes(from: snapshot)
+            let notes = await NarrativeEngine.generatePatchNotes(from: snapshot, provider: provider)
             withAnimation(.spring(duration: 0.4)) {
                 patchNotes = notes
                 isGenerating = false
@@ -138,4 +190,97 @@ struct NarrativeView: View {
             Haptics.shared.success()
         }
     }
+}
+
+/// Turns a model's free-text patch notes into color-coded, per-line SwiftUI
+/// text that matches the app's neon-on-obsidian aesthetic.
+///
+/// The notes arrive as loose prose — one flowing block from a self-hosted
+/// model, or newline-separated lines from the on-device template — so this
+/// splits them into readable entries and tints the parts that carry meaning:
+/// every number in gold, and RPG signal words in their palette color.
+enum PatchNotesFormatter {
+
+    /// Splits raw notes into display lines. Honors explicit line breaks; a
+    /// single unbroken block is broken into sentences instead, so it still
+    /// reads as a list. Decimal points (e.g. `133.3`) are never treated as
+    /// sentence ends.
+    static func lines(from notes: String) -> [String] {
+        let byNewline = notes
+            .split(whereSeparator: \.isNewline)
+            .map { stripMarker(String($0)) }
+            .filter { !$0.isEmpty }
+        if byNewline.count > 1 { return byNewline }
+
+        let text = byNewline.first ?? notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        return sentences(in: text).map(stripMarker).filter { !$0.isEmpty }
+    }
+
+    /// Breaks a block into sentences on terminal punctuation, but only when the
+    /// next character is whitespace or the end — so `98.7` and `13.3` stay whole.
+    private static func sentences(in text: String) -> [String] {
+        let characters = Array(text)
+        var result: [String] = []
+        var current = ""
+        for (index, character) in characters.enumerated() {
+            current.append(character)
+            let isTerminator = character == "." || character == "!" || character == "?"
+            let nextIsBreak = index + 1 >= characters.count || characters[index + 1].isWhitespace
+            if isTerminator && nextIsBreak {
+                let trimmed = current.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty { result.append(trimmed) }
+                current = ""
+            }
+        }
+        let tail = current.trimmingCharacters(in: .whitespaces)
+        if !tail.isEmpty { result.append(tail) }
+        return result
+    }
+
+    /// Drops a leading bullet or dash so a marker can be drawn consistently.
+    private static func stripMarker(_ line: String) -> String {
+        var trimmed = line.trimmingCharacters(in: .whitespaces)
+        for marker in ["•", "◆", "-", "–", "—", "*", "·"] where trimmed.hasPrefix(marker) {
+            trimmed = String(trimmed.dropFirst(marker.count)).trimmingCharacters(in: .whitespaces)
+            break
+        }
+        return trimmed
+    }
+
+    /// Builds the tinted, word-by-word `Text` for one line. Any word carrying a
+    /// digit is gold and bold; a recognized signal word takes its palette color
+    /// and semibold weight; everything else is left in the default foreground.
+    static func styledText(for line: String) -> Text {
+        var result = Text("")
+        let words = line.split(separator: " ", omittingEmptySubsequences: true)
+        for (index, word) in words.enumerated() {
+            result = result + styledWord(String(word))
+            if index < words.count - 1 { result = result + Text(" ") }
+        }
+        return result
+    }
+
+    private static func styledWord(_ word: String) -> Text {
+        if word.contains(where: \.isNumber) {
+            return Text(word).foregroundStyle(Theme.gold).fontWeight(.bold)
+        }
+        let key = word.lowercased().filter(\.isLetter)
+        if let color = keywordColors[key] {
+            return Text(word).foregroundStyle(color).fontWeight(.semibold)
+        }
+        return Text(word).foregroundStyle(.white.opacity(0.92))
+    }
+
+    /// Signal words worth lighting up, mapped to the palette meaning they carry
+    /// elsewhere in the app: violet for LimitBreak energy, gold for records,
+    /// emerald for streaks/momentum, teal for ceilings, coral for combat flavor.
+    private static let keywordColors: [String: Color] = [
+        "limitbreak": Theme.violet, "limitbreaks": Theme.violet,
+        "record": Theme.gold, "records": Theme.gold, "pr": Theme.gold, "prs": Theme.gold,
+        "streak": Theme.emerald, "momentum": Theme.emerald, "buff": Theme.emerald,
+        "ceiling": Theme.teal, "ceilings": Theme.teal, "shattered": Theme.teal,
+        "unlocked": Theme.teal, "expanded": Theme.teal,
+        "boss": Theme.coral, "bosses": Theme.coral, "raid": Theme.coral, "raids": Theme.coral,
+        "damage": Theme.coral, "critical": Theme.coral, "combo": Theme.coral, "combos": Theme.coral,
+    ]
 }

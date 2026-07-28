@@ -80,7 +80,10 @@ struct SkillMatrixView: View {
             stats.sessionCount += 1
             result[day] = stats
         }
-        for walk in walks {
+        // Only walks that sustain the streak (≥ 1 mile) light a node, so the
+        // grid agrees with the streak count. Sub-mile walks still earn XP, they
+        // just don't mark a trained day.
+        for walk in walks where walk.distanceMiles >= XPEngine.streakWalkMinimumMiles {
             let day = calendar.startOfDay(for: walk.date)
             var stats = result[day] ?? DayStats()
             stats.walkCount += 1

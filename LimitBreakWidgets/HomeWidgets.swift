@@ -181,7 +181,7 @@ struct StreakWidget: Widget {
                 .containerBackground(LBColor.background, for: .widget)
         }
         .configurationDisplayName("Streak")
-        .description("Day streak and weekly damage dealt, at a glance.")
+        .description("Your level, weekly XP, and day streak, at a glance.")
         .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular])
     }
 }
@@ -203,11 +203,11 @@ struct StreakWidgetView: View {
 
         case .accessoryRectangular:
             VStack(alignment: .leading, spacing: 1) {
-                Label("\(snapshot.streakDays) day streak", systemImage: "flame.fill")
+                Text("LV \(snapshot.level) \(snapshot.rankTitle)")
                     .font(.headline)
-                Text("\(Int(snapshot.weeklyVolume).formatted()) lbs this week")
+                Text("\(snapshot.weeklyXP.formatted()) XP this week")
                     .font(.caption2)
-                Text("\(snapshot.weeklyPRs) LimitBreak\(snapshot.weeklyPRs == 1 ? "" : "s")")
+                Label("\(snapshot.streakDays) day streak", systemImage: "flame.fill")
                     .font(.caption2)
             }
 
@@ -229,10 +229,10 @@ struct StreakWidgetView: View {
                 Spacer(minLength: 0)
 
                 HStack(spacing: 4) {
-                    Text("\(Int(snapshot.weeklyVolume).formatted(.number.notation(.compactName)))")
+                    Text("\(snapshot.weeklyXP.formatted(.number.notation(.compactName)))")
                         .font(.system(.subheadline, design: .rounded, weight: .bold))
                         .foregroundStyle(LBColor.emerald)
-                    Text("lbs this week")
+                    Text("XP this week")
                         .font(.caption2)
                         .foregroundStyle(LBColor.dim)
                 }

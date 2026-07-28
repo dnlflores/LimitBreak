@@ -13,6 +13,10 @@ struct WidgetSnapshot: Codable {
     var totalLimitBreaks: Int
     var topRecords: [TopRecord]
     var generatedAt: Date
+    /// Current level, its RPG rank title, and XP earned in the last 7 days.
+    var level: Int
+    var rankTitle: String
+    var weeklyXP: Int
 
     struct TopRecord: Codable, Identifiable, Hashable {
         var name: String
@@ -38,7 +42,10 @@ struct WidgetSnapshot: Codable {
             TopRecord(name: "Barbell Back Squat", value: 315, unit: "lbs"),
             TopRecord(name: "Deadlift", value: 405, unit: "lbs"),
         ],
-        generatedAt: Date()
+        generatedAt: Date(),
+        level: 8,
+        rankTitle: "Adventurer",
+        weeklyXP: 2_450
     )
 }
 

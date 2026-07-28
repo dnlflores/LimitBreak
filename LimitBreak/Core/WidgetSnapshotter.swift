@@ -61,6 +61,13 @@ final class WidgetSnapshotter {
             .sorted { $0.value > $1.value }
             .prefix(3)
 
+        // Full XP progression — the single source of truth for level and the
+        // XP earned over the trailing week.
+        let progress = XPEngine.progress(
+            sessions: sessions, records: records, walks: walks, activities: activities
+        )
+        let level = XPEngine.levelInfo(totalXP: progress.totalXP).level
+
         let snapshot = WidgetSnapshot(
             dayActivity: dayActivity,
             streakDays: XPEngine.currentStreak(sessions: sessions, walks: walks, activities: activities),
@@ -68,7 +75,10 @@ final class WidgetSnapshotter {
             weeklyPRs: records.filter { $0.dateAchieved >= weekAgo }.count,
             totalLimitBreaks: records.count,
             topRecords: Array(topRecords),
-            generatedAt: Date()
+            generatedAt: Date(),
+            level: level,
+            rankTitle: XPEngine.rankTitle(for: level),
+            weeklyXP: progress.weeklyXP
         )
 
         WidgetSnapshotStore.save(snapshot)

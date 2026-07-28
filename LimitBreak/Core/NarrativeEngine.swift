@@ -17,9 +17,11 @@ struct WeeklyTelemetry {
     var isEmpty: Bool { sessionCount == 0 }
 }
 
-/// Synthesizes weekly telemetry into RPG-flavored patch notes — fully on-device.
-/// Uses Apple's FoundationModels when available; otherwise falls back to a
-/// deterministic local template composer. Zero cloud, zero API keys.
+/// Synthesizes weekly telemetry into RPG-flavored patch notes. The tier used
+/// tracks the lifter's AI choice: the cloud/self-hosted coach when they've
+/// opted into it, otherwise Apple's on-device FoundationModels, otherwise a
+/// deterministic local template. Whichever path is taken, a failure falls
+/// through to the next so the Saga always renders something readable.
 enum NarrativeEngine {
 
     static func weeklyTelemetry(context: ModelContext) -> WeeklyTelemetry {
@@ -68,9 +70,34 @@ enum NarrativeEngine {
 
     // MARK: - Generation
 
-    static func generatePatchNotes(from telemetry: WeeklyTelemetry) async -> String {
+    /// Generates the week's patch notes using whichever intelligence tier the
+    /// lifter has chosen. `provider` is non-nil only when cloud AI is enabled;
+    /// it names the backend to route through. Any failure falls through to the
+    /// on-device path, so the Saga always produces something readable offline.
+    static func generatePatchNotes(
+        from telemetry: WeeklyTelemetry,
+        provider: AIProvider? = nil
+    ) async -> String {
         guard !telemetry.isEmpty else {
             return "No quest data logged this week. The arena awaits — start a session to generate your first patch notes."
+        }
+
+        if let provider {
+            do {
+                switch provider {
+                case .claude:
+                    if CloudWorkoutAI.isConfigured {
+                        return try await generateWithClaude(telemetry)
+                    }
+                case .odysseus:
+                    if OdysseusConfig.isConfigured {
+                        return try await generateWithOdysseus(telemetry)
+                    }
+                }
+            } catch {
+                // A network blip, a declined request, or an unparseable reply
+                // should never leave the Saga blank — fall through to on-device.
+            }
         }
 
         #if canImport(FoundationModels)
@@ -88,17 +115,21 @@ enum NarrativeEngine {
         return templatePatchNotes(telemetry)
     }
 
-    #if canImport(FoundationModels)
-    @available(iOS 26.0, *)
-    private static func generateWithFoundationModel(_ telemetry: WeeklyTelemetry) async throws -> String {
-        let session = LanguageModelSession(instructions: """
-            You are the narrative engine for LimitBreak, an RPG-styled workout tracker. \
-            Write short, punchy weekly "patch notes" in the voice of a video game changelog \
-            describing the user's real training week as character upgrades. Use RPG flavor \
-            (raid bosses, ceilings expanded, damage dealt) but keep every number accurate to \
-            the telemetry provided. 4-6 lines, no markdown headers.
-            """)
+    // MARK: - Prompt
 
+    /// The voice and rules shared by every model tier, so the Saga reads the
+    /// same whether it was composed by Claude, a self-hosted model, or Apple's
+    /// on-device model.
+    static let patchNotesInstructions = """
+        You are the narrative engine for LimitBreak, an RPG-styled workout tracker. \
+        Write short, punchy weekly "patch notes" in the voice of a video game changelog \
+        describing the user's real training week as character upgrades. Use RPG flavor \
+        (raid bosses, ceilings expanded, damage dealt) but keep every number accurate to \
+        the telemetry provided. 4-6 lines, no markdown headers.
+        """
+
+    /// The week's numbers, rendered as the model's input.
+    static func patchNotesPrompt(_ telemetry: WeeklyTelemetry) -> String {
         var prompt = """
             Weekly telemetry:
             - Sessions completed: \(telemetry.sessionCount)
@@ -111,8 +142,134 @@ enum NarrativeEngine {
             let deltaText = record.delta.map { String(format: " (+%.1f)", $0) } ?? " (first record)"
             prompt += "\n- New \(record.type) on \(record.exercise): \(record.value.cleanWeight)\(deltaText)"
         }
+        return prompt
+    }
 
-        let response = try await session.respond(to: prompt)
+    // MARK: - Cloud tiers
+
+    /// Claude composes the notes as a single constrained string, reusing the
+    /// same hardened request path as workout coaching.
+    private static func generateWithClaude(_ telemetry: WeeklyTelemetry) async throws -> String {
+        let result: CloudPatchNotes = try await ClaudeClient.structuredRequest(
+            system: [ClaudeClient.SystemBlock(text: patchNotesInstructions)],
+            userMessage: patchNotesPrompt(telemetry),
+            schema: patchNotesSchema,
+            as: CloudPatchNotes.self,
+            maxTokens: 1_000
+        )
+        let notes = result.patchNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !notes.isEmpty else { throw ClaudeClient.ClientError.malformedResponse }
+        return notes
+    }
+
+    private struct CloudPatchNotes: Decodable {
+        let patchNotes: String
+    }
+
+    private static let patchNotesSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "patchNotes": [
+                "type": "string",
+                "description": "The 4-6 line weekly patch notes, as plain text with one line per note.",
+            ],
+        ],
+        "required": ["patchNotes"],
+        "additionalProperties": false,
+    ]
+
+    /// A self-hosted model returns free text — often the notes wrapped in a
+    /// JSON envelope with tool-call scaffolding. `narrativeText` recovers the
+    /// readable part; the raw envelope is never shown to the lifter.
+    private static func generateWithOdysseus(_ telemetry: WeeklyTelemetry) async throws -> String {
+        guard let token = KeychainStore.odysseusToken,
+              let endpointID = OdysseusConfig.endpointID,
+              let model = OdysseusConfig.model
+        else { throw OdysseusClient.OdysseusError.notConfigured }
+
+        let baseURL = OdysseusConfig.baseURL
+        guard !baseURL.isEmpty else { throw OdysseusClient.OdysseusError.notConfigured }
+
+        let message = patchNotesInstructions + "\n\n" + patchNotesPrompt(telemetry)
+            + "\n\nReply with only the patch notes text — no JSON, no tool calls, no preamble."
+
+        let session = try await OdysseusClient.createSession(
+            baseURL: baseURL, token: token, endpointID: endpointID, model: model, name: "LimitBreak Saga"
+        )
+        let reply = try await OdysseusClient.chat(
+            baseURL: baseURL, token: token, sessionID: session.id, message: message
+        )
+
+        guard let notes = narrativeText(from: reply) else {
+            throw OdysseusClient.OdysseusError.emptyReply
+        }
+        return notes
+    }
+
+    // MARK: - Reply parsing
+
+    /// Pulls the human-readable narrative out of a model reply that may be
+    /// plain prose, fenced JSON, or a tool-calling envelope. Local models
+    /// frequently return the actual patch notes inside a JSON field such as
+    /// `eventual_response`, alongside tool-call scaffolding that is unreadable
+    /// if shown raw — the Saga bug this was written for.
+    static func narrativeText(from reply: String) -> String? {
+        let cleaned = JSONExtractor.strippingReasoning(reply)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+
+        // Prefer a narrative field from any JSON object the reply contains.
+        if case .found(let objects) = JSONExtractor.scan(cleaned) {
+            for object in objects {
+                guard let data = object.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { continue }
+                if let text = narrativeField(in: json) { return text }
+            }
+        }
+
+        // No JSON envelope, or none with a usable field: if the reply is
+        // essentially prose, it's already readable — show it as-is.
+        let looksLikeJSON = cleaned.hasPrefix("{") || cleaned.hasPrefix("[") || cleaned.hasPrefix("```")
+        return looksLikeJSON ? nil : cleaned
+    }
+
+    /// Keys a model is likely to put the finished narrative under, most
+    /// specific first. `eventual_response` is what the self-hosted tool-calling
+    /// template emits.
+    private static let narrativeKeys = [
+        "eventual_response", "patch_notes", "patchNotes", "narrative",
+        "response", "message", "content", "text", "notes", "summary",
+        "answer", "output",
+    ]
+
+    /// The first non-empty narrative string in `object`, searching known keys
+    /// at this level before descending into nested objects and arrays.
+    private static func narrativeField(in object: [String: Any]) -> String? {
+        for key in narrativeKeys {
+            if let value = object[key] as? String {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { return trimmed }
+            }
+        }
+        for value in object.values {
+            if let nested = value as? [String: Any], let found = narrativeField(in: nested) {
+                return found
+            }
+            if let array = value as? [[String: Any]] {
+                for item in array {
+                    if let found = narrativeField(in: item) { return found }
+                }
+            }
+        }
+        return nil
+    }
+
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, *)
+    private static func generateWithFoundationModel(_ telemetry: WeeklyTelemetry) async throws -> String {
+        let session = LanguageModelSession(instructions: patchNotesInstructions)
+        let response = try await session.respond(to: patchNotesPrompt(telemetry))
         return response.content
     }
     #endif

@@ -39,8 +39,13 @@ struct WorkoutDetailView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                         .cardStyle()
                 } else {
-                    ForEach(session.setsByExercise, id: \.exercise.id) { group in
-                        exerciseCard(group.exercise, sets: group.sets)
+                    let groups = session.exerciseGroups
+                    ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                        if group.count > 1 {
+                            supersetGroupCard(letter: supersetLetter(for: index, in: groups), group: group)
+                        } else if let entry = group.first {
+                            exerciseCard(entry.exercise, sets: entry.sets)
+                        }
                     }
                 }
             }
@@ -55,7 +60,9 @@ struct WorkoutDetailView: View {
             RoutineEditorView(
                 seedName: session.name,
                 seedItems: session.setsByExercise.map { group in
-                    (exercise: group.exercise, targetSets: max(1, group.sets.filter { !$0.isWarmup }.count))
+                    (exercise: group.exercise,
+                     targetSets: max(1, group.sets.filter { !$0.isWarmup }.count),
+                     supersetGroup: group.sets.first?.supersetGroup)
                 }
             )
         }
@@ -170,6 +177,39 @@ struct WorkoutDetailView: View {
     }
 
     // MARK: - Exercises
+
+    /// Wraps the movements of one superset in a tinted, labeled container so a
+    /// paired set reads as a unit in history, matching the live-session badge.
+    private func supersetGroupCard(
+        letter: String,
+        group: [(exercise: Exercise, sets: [ExerciseSet])]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("SUPERSET \(letter)", systemImage: "link")
+                .font(.caption.weight(.bold))
+                .kerning(0.5)
+                .foregroundStyle(Theme.teal)
+            ForEach(group, id: \.exercise.id) { entry in
+                exerciseCard(entry.exercise, sets: entry.sets)
+            }
+        }
+        .padding(10)
+        .background(Theme.teal.opacity(0.06), in: RoundedRectangle(cornerRadius: 20))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .strokeBorder(Theme.teal.opacity(0.28), lineWidth: 1)
+        )
+    }
+
+    /// Letter for a superset run: counts multi-member runs up to this position so
+    /// the first superset is "A", the next "B", regardless of standalone slots.
+    private func supersetLetter(
+        for index: Int,
+        in groups: [[(exercise: Exercise, sets: [ExerciseSet])]]
+    ) -> String {
+        let count = groups.prefix(index).filter { $0.count > 1 }.count
+        return String(UnicodeScalar(UInt8(65 + min(count, 25))))
+    }
 
     private func exerciseCard(_ exercise: Exercise, sets: [ExerciseSet]) -> some View {
         VStack(alignment: .leading, spacing: 10) {

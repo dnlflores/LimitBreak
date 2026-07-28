@@ -18,6 +18,9 @@ struct RoutineEditorView: View {
         var targetReps: Int? = nil
         /// Suggested working weight in canonical pounds, when present.
         var targetWeight: Double? = nil
+        /// Superset grouping tag. Consecutive slots sharing a non-nil value are
+        /// one superset. Nil means the slot is performed standalone.
+        var supersetGroup: Int? = nil
     }
 
     /// The routine being edited, or `nil` when creating a new one.
@@ -32,12 +35,18 @@ struct RoutineEditorView: View {
     @State private var showPicker = false
     @State private var showAIGenerator = false
 
-    /// New routine, optionally seeded (e.g. from a past session).
-    init(seedName: String = "", seedItems: [(exercise: Exercise, targetSets: Int)] = []) {
+    /// New routine, optionally seeded (e.g. from a past session). Seed items may
+    /// carry a superset tag so a paired past session round-trips into a routine.
+    init(
+        seedName: String = "",
+        seedItems: [(exercise: Exercise, targetSets: Int, supersetGroup: Int?)] = []
+    ) {
         self.existing = nil
         _name = State(initialValue: seedName)
         _notes = State(initialValue: "")
-        _items = State(initialValue: seedItems.map { DraftItem(exercise: $0.exercise, targetSets: $0.targetSets) })
+        _items = State(initialValue: seedItems.map {
+            DraftItem(exercise: $0.exercise, targetSets: $0.targetSets, supersetGroup: $0.supersetGroup)
+        })
         _isAIGenerated = State(initialValue: false)
         _focusLabel = State(initialValue: nil)
     }
@@ -53,7 +62,8 @@ struct RoutineEditorView: View {
                     exercise: $0,
                     targetSets: item.targetSets,
                     targetReps: item.targetReps,
-                    targetWeight: item.targetWeight
+                    targetWeight: item.targetWeight,
+                    supersetGroup: item.supersetGroup
                 )
             }
         })
@@ -164,8 +174,22 @@ struct RoutineEditorView: View {
     }
 
     private func exerciseRow(_ item: Binding<DraftItem>) -> some View {
-        HStack(spacing: 12) {
+        let id = item.wrappedValue.id
+        let letter = supersetLetters[id]
+        return HStack(spacing: 12) {
+            // A colored rail flags a slot that belongs to a superset.
+            RoundedRectangle(cornerRadius: 2)
+                .fill(letter == nil ? Color.clear : Theme.teal)
+                .frame(width: 3)
+                .padding(.vertical, 2)
+
             VStack(alignment: .leading, spacing: 2) {
+                if let letter {
+                    Text("SUPERSET \(letter)")
+                        .font(.caption2.weight(.bold))
+                        .kerning(0.5)
+                        .foregroundStyle(Theme.teal)
+                }
                 Text(item.wrappedValue.exercise.name)
                     .font(.subheadline.weight(.semibold))
                 Text(item.wrappedValue.exercise.muscleGroupDisplay)
@@ -191,6 +215,23 @@ struct RoutineEditorView: View {
             .fixedSize()
         }
         .listRowBackground(Theme.surfaceRaised)
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            if item.wrappedValue.supersetGroup != nil {
+                Button {
+                    ungroup(id)
+                } label: {
+                    Label("Ungroup", systemImage: "rectangle.split.1x2")
+                }
+                .tint(Theme.textDim)
+            } else if canGroupWithNext(id) {
+                Button {
+                    groupWithNext(id)
+                } label: {
+                    Label("Superset", systemImage: "link")
+                }
+                .tint(Theme.teal)
+            }
+        }
     }
 
     /// A compact "8 reps · 185 lb" summary of a slot's coached targets, or nil
@@ -200,6 +241,71 @@ struct RoutineEditorView: View {
         if let reps = item.targetReps { parts.append("\(reps) reps") }
         if let weight = item.targetWeight, weight > 0 { parts.append("\(weight.cleanWeight) lb") }
         return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
+    }
+
+    // MARK: - Supersets
+
+    /// Letter labels ("A", "B", …) for each slot that sits inside a superset,
+    /// derived from consecutive runs of matching tags. Standalone slots are absent.
+    private var supersetLetters: [UUID: String] {
+        var map: [UUID: String] = [:]
+        let runs = supersetRuns(items.map(\.id)) { id in
+            items.first(where: { $0.id == id })?.supersetGroup
+        }
+        var letter = 0
+        for run in runs where run.count > 1 {
+            let label = String(UnicodeScalar(UInt8(65 + min(letter, 25))))
+            for id in run { map[id] = label }
+            letter += 1
+        }
+        return map
+    }
+
+    /// Whether a slot has a following slot it can be paired with.
+    private func canGroupWithNext(_ id: UUID) -> Bool {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return false }
+        return i < items.count - 1
+    }
+
+    /// Pairs a slot with the one below it, joining the next slot's group when it
+    /// already has one, otherwise minting a fresh tag.
+    private func groupWithNext(_ id: UUID) {
+        guard let i = items.firstIndex(where: { $0.id == id }), i < items.count - 1 else { return }
+        let tag = items[i].supersetGroup
+            ?? items[i + 1].supersetGroup
+            ?? ((items.compactMap(\.supersetGroup).max() ?? 0) + 1)
+        items[i].supersetGroup = tag
+        items[i + 1].supersetGroup = tag
+        Haptics.shared.success()
+    }
+
+    /// Removes a slot from its superset; a group left with one member dissolves.
+    private func ungroup(_ id: UUID) {
+        guard let i = items.firstIndex(where: { $0.id == id }), let tag = items[i].supersetGroup else { return }
+        items[i].supersetGroup = nil
+        if items.filter({ $0.supersetGroup == tag }).count < 2 {
+            for j in items.indices where items[j].supersetGroup == tag { items[j].supersetGroup = nil }
+        }
+        Haptics.shared.tick()
+    }
+
+    /// Clean, contiguous 1…N tags for save: only adjacent multi-member runs keep
+    /// a group; everything else becomes standalone (nil).
+    private func normalizedSupersetTags() -> [UUID: Int?] {
+        var map: [UUID: Int?] = [:]
+        let runs = supersetRuns(items.map(\.id)) { id in
+            items.first(where: { $0.id == id })?.supersetGroup
+        }
+        var tag = 0
+        for run in runs {
+            if run.count > 1 {
+                tag += 1
+                for id in run { map[id] = tag }
+            } else {
+                map[run[0]] = Int?.none
+            }
+        }
+        return map
     }
 
     // MARK: - Mutations
@@ -223,7 +329,8 @@ struct RoutineEditorView: View {
                 exercise: exercise,
                 targetSets: planned.sets,
                 targetReps: planned.targetReps,
-                targetWeight: weight
+                targetWeight: weight,
+                supersetGroup: planned.supersetGroup
             )
         }
         guard !mapped.isEmpty else { return }
@@ -237,8 +344,13 @@ struct RoutineEditorView: View {
     }
 
     private func save() {
+        // Normalize superset tags to clean, contiguous 1…N groups so only real
+        // (adjacent, multi-member) supersets persist — a group split apart by a
+        // reorder collapses back to standalone slots.
+        let tags = normalizedSupersetTags()
         let pairs = items.map {
-            (exercise: $0.exercise, targetSets: $0.targetSets, targetReps: $0.targetReps, targetWeight: $0.targetWeight)
+            (exercise: $0.exercise, targetSets: $0.targetSets, targetReps: $0.targetReps,
+             targetWeight: $0.targetWeight, supersetGroup: tags[$0.id] ?? nil)
         }
         if let existing {
             workout.updateRoutine(existing, name: name, notes: notes, items: pairs)

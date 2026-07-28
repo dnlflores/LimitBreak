@@ -149,7 +149,9 @@ struct WorkoutHistoryView: View {
                 RoutineEditorView(
                     seedName: session.name,
                     seedItems: session.setsByExercise.map { group in
-                        (exercise: group.exercise, targetSets: max(1, group.sets.filter { !$0.isWarmup }.count))
+                        (exercise: group.exercise,
+                         targetSets: max(1, group.sets.filter { !$0.isWarmup }.count),
+                         supersetGroup: group.sets.first?.supersetGroup)
                     }
                 )
             }

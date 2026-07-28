@@ -186,9 +186,10 @@ enum XPEngine {
         records: [PRRecord] = [],
         walks: [Walk],
         activities: [Activity] = [],
+        routines: [Routine] = [],
         now: Date = Date()
     ) -> Progress {
-        let rewards = allRewards(sessions: sessions, records: records, walks: walks, activities: activities)
+        let rewards = allRewards(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines)
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
         let byDay = Dictionary(grouping: rewards) { calendar.startOfDay(for: $0.date) }
@@ -269,12 +270,13 @@ enum XPEngine {
     }
 
     /// Every earning in the log, unsorted: LimitBreaks, finished quests,
-    /// walks, and activities.
+    /// walks, activities, and mastery rank-ups on specific exercises/routines.
     static func allRewards(
         sessions: [WorkoutSession],
         records: [PRRecord],
         walks: [Walk],
-        activities: [Activity] = []
+        activities: [Activity] = [],
+        routines: [Routine] = []
     ) -> [Reward] {
         var rewards: [Reward] = []
 
@@ -319,6 +321,10 @@ enum XPEngine {
             ))
         }
 
+        // Per-workout mastery milestones — each time a specific exercise or
+        // routine levels up, folded in at the date the rank fell.
+        rewards.append(contentsOf: Mastery.milestoneRewards(sessions: sessions, routines: routines))
+
         return rewards
     }
 
@@ -329,12 +335,13 @@ enum XPEngine {
         records: [PRRecord],
         walks: [Walk],
         activities: [Activity] = [],
+        routines: [Routine] = [],
         multipliers: [Date: Int] = [:],
         limit: Int = 6
     ) -> [Reward] {
         let calendar = Calendar.current
         return Array(
-            allRewards(sessions: sessions, records: records, walks: walks, activities: activities)
+            allRewards(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines)
                 .sorted { $0.date > $1.date }
                 .prefix(limit)
                 .map { reward in
@@ -381,12 +388,13 @@ enum XPEngine {
         records: [PRRecord],
         walks: [Walk],
         activities: [Activity] = [],
+        routines: [Routine] = [],
         now: Date = Date()
     ) -> [TimelineDay] {
-        let prog = progress(sessions: sessions, records: records, walks: walks, activities: activities, now: now)
+        let prog = progress(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines, now: now)
         let calendar = Calendar.current
         let rewardsByDay = Dictionary(
-            grouping: allRewards(sessions: sessions, records: records, walks: walks, activities: activities)
+            grouping: allRewards(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines)
         ) { calendar.startOfDay(for: $0.date) }
 
         var events: [TimelineEvent] = []

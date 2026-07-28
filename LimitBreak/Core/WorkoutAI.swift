@@ -37,13 +37,24 @@ struct PlannedExercise: Identifiable {
     /// can slide it anywhere in `repRangeLow...repRangeHigh`; defaults to the top
     /// of the range. Nil when there is no coached prescription to resolve.
     var targetReps: Int?
+    /// Superset grouping tag. Exercises sharing a non-nil value are meant to run
+    /// back-to-back as one superset. Nil means standalone. Normalized to clean
+    /// 1…N runs by `matchToCatalog` after catalog matching.
+    var supersetGroup: Int?
 
-    init(id: UUID = UUID(), name: String, sets: Int, prescription: Prescription? = nil) {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        sets: Int,
+        prescription: Prescription? = nil,
+        supersetGroup: Int? = nil
+    ) {
         self.id = id
         self.name = name
         self.sets = sets
         self.prescription = prescription
         self.targetReps = prescription?.repRangeHigh
+        self.supersetGroup = supersetGroup
     }
 }
 
@@ -144,10 +155,14 @@ enum WorkoutAI {
         exerciseCount: Int,
         durationMinutes: Int?,
         withPartner: Bool = false,
+        allowSupersets: Bool = false,
         context: TrainingContext? = nil,
         catalog: [ExerciseBrief]
     ) async -> WorkoutPlan {
         let count = max(1, min(exerciseCount, catalog.count))
+        // Supersets can call for a movement or two beyond the requested count, so
+        // the catalog match keeps a little headroom when they're allowed.
+        let matchLimit = allowSupersets ? min(count + 2, catalog.count) : count
 
         // Tier 1: the coached plan — the only tier that sees muscle fatigue, the
         // lifter's goal, and their recorded ceilings. Which backend answers is
@@ -165,6 +180,7 @@ enum WorkoutAI {
                         exerciseCount: count,
                         durationMinutes: durationMinutes,
                         context: context,
+                        allowSupersets: allowSupersets,
                         catalog: catalog
                     )
                 case .odysseus:
@@ -174,12 +190,13 @@ enum WorkoutAI {
                         exerciseCount: count,
                         durationMinutes: durationMinutes,
                         context: context,
+                        allowSupersets: allowSupersets,
                         catalog: catalog
                     )
                 }
 
                 let source: PlanSource = backend == .claude ? .cloud : .selfHosted
-                if let plan = matchToCatalog(coached, catalog: catalog, limit: count, source: source) {
+                if let plan = matchToCatalog(coached, catalog: catalog, limit: matchLimit, source: source) {
                     return plan
                 }
                 cloudError = "The coach returned movements that aren't in your library."
@@ -196,6 +213,7 @@ enum WorkoutAI {
             exerciseCount: count,
             durationMinutes: durationMinutes,
             withPartner: withPartner,
+            allowSupersets: allowSupersets,
             catalog: catalog
         )
         plan.cloudError = cloudError
@@ -248,6 +266,7 @@ enum WorkoutAI {
 
             let low = max(1, min(entry.repRangeLow, entry.repRangeHigh))
             let high = max(low, max(entry.repRangeLow, entry.repRangeHigh))
+            let rawGroup = entry.supersetGroup.flatMap { $0 == 0 ? nil : $0 }
             matched.append(PlannedExercise(
                 name: realName,
                 sets: min(max(entry.sets, 1), 8),
@@ -257,7 +276,8 @@ enum WorkoutAI {
                     targetLoadPounds: max(0, entry.targetLoadPounds),
                     restSeconds: min(max(entry.restSeconds, 15), 600),
                     note: entry.note
-                )
+                ),
+                supersetGroup: rawGroup
             ))
             if matched.count == limit { break }
         }
@@ -265,10 +285,29 @@ enum WorkoutAI {
         guard !matched.isEmpty else { return nil }
         return WorkoutPlan(
             title: sanitizeName(coached.title),
-            exercises: matched,
+            exercises: normalizeSupersets(matched),
             rationale: coached.rationale,
             source: source
         )
+    }
+
+    /// Rewrites coached superset tags into clean, contiguous 1…N groups after
+    /// catalog matching. Dropping hallucinated movements can leave a group with a
+    /// single survivor, or scatter a tag across non-adjacent slots — both collapse
+    /// to standalone here so only real, back-to-back supersets reach the UI.
+    static func normalizeSupersets(_ exercises: [PlannedExercise]) -> [PlannedExercise] {
+        var result = exercises
+        let runs = supersetRuns(Array(result.indices)) { result[$0].supersetGroup }
+        var tag = 0
+        for run in runs {
+            if run.count > 1 {
+                tag += 1
+                for i in run { result[i].supersetGroup = tag }
+            } else {
+                result[run[0]].supersetGroup = nil
+            }
+        }
+        return result
     }
 
     /// Tiers 2 and 3: Apple's on-device model, then deterministic selection.
@@ -278,6 +317,7 @@ enum WorkoutAI {
         exerciseCount: Int,
         durationMinutes: Int?,
         withPartner: Bool,
+        allowSupersets: Bool = false,
         catalog: [ExerciseBrief]
     ) async -> WorkoutPlan {
         let count = exerciseCount
@@ -290,6 +330,7 @@ enum WorkoutAI {
                     exerciseCount: count,
                     durationMinutes: durationMinutes,
                     withPartner: withPartner,
+                    allowSupersets: allowSupersets,
                     catalog: focusedCatalog(catalog, targetMuscleGroups: targetMuscleGroups)
                 )
             } catch {
@@ -449,6 +490,8 @@ enum WorkoutAI {
         var name: String
         @Guide(description: "Number of working sets, between 2 and 5")
         var sets: Int
+        @Guide(description: "Superset group: 0 for a standalone movement, or 1, 2, … to pair adjacent movements that run back-to-back (same number = same superset)")
+        var supersetGroup: Int
     }
 
     @available(iOS 26.0, *)
@@ -457,6 +500,7 @@ enum WorkoutAI {
         exerciseCount: Int,
         durationMinutes: Int?,
         withPartner: Bool,
+        allowSupersets: Bool,
         catalog: [ExerciseBrief]
     ) async throws -> WorkoutPlan {
         var instructions = """
@@ -466,6 +510,17 @@ enum WorkoutAI {
             Order the exercises sensibly, leading with the biggest compound movements. \
             Give the workout a short, fun, video-game-themed title.
             """
+        if allowSupersets {
+            instructions += """
+                \nGroup some movements into supersets where they pair well (antagonists, or a \
+                compound with a non-competing accessory). Aim for one to three supersets — usually \
+                fewer than half the movements are grouped. Give paired movements the same \
+                supersetGroup number (1, 2, …) and keep them next to each other; leave every other \
+                movement at 0.
+                """
+        } else {
+            instructions += "\nDo not use supersets: set supersetGroup to 0 for every movement."
+        }
         if withPartner {
             instructions += """
                 \nThe lifter is training with a partner who can spot them, so heavy \
@@ -480,7 +535,11 @@ enum WorkoutAI {
             .map { "- \($0.name) (\($0.muscleGroups.joined(separator: ", ")); \($0.equipment))" }
             .joined(separator: "\n")
 
-        var prompt = """
+        var prompt = allowSupersets ? """
+            Focus: \(focusLabel)
+            Pick \(exerciseCount) exercises as the core of the session; you may add one or two more \
+            only to complete a superset.
+            """ : """
             Focus: \(focusLabel)
             Select exactly \(exerciseCount) exercises.
             """
@@ -495,6 +554,7 @@ enum WorkoutAI {
         let response = try await session.respond(to: prompt, generating: GeneratedPlan.self)
         let plan = response.content
 
+        let limit = allowSupersets ? exerciseCount + 2 : exerciseCount
         let byName = Dictionary(catalog.map { ($0.name.lowercased(), $0.name) }) { first, _ in first }
         var seen = Set<String>()
         var matched: [PlannedExercise] = []
@@ -502,8 +562,9 @@ enum WorkoutAI {
             let key = exercise.name.lowercased().trimmingCharacters(in: .whitespaces)
             guard let realName = byName[key], !seen.contains(realName) else { continue }
             seen.insert(realName)
-            matched.append(PlannedExercise(name: realName, sets: min(max(exercise.sets, 2), 5)))
-            if matched.count == exerciseCount { break }
+            let group = allowSupersets && exercise.supersetGroup != 0 ? exercise.supersetGroup : nil
+            matched.append(PlannedExercise(name: realName, sets: min(max(exercise.sets, 2), 5), supersetGroup: group))
+            if matched.count == limit { break }
         }
 
         guard !matched.isEmpty else {
@@ -511,7 +572,7 @@ enum WorkoutAI {
         }
 
         let title = sanitizeName(plan.title)
-        return WorkoutPlan(title: title, exercises: matched, source: .onDevice)
+        return WorkoutPlan(title: title, exercises: normalizeSupersets(matched), source: .onDevice)
     }
     #endif
 

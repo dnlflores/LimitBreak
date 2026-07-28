@@ -173,8 +173,15 @@ struct DayDetailSheet: View {
 
             ForEach(session.setsByExercise, id: \.exercise.id) { group in
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(group.exercise.name)
-                        .font(.subheadline.weight(.semibold))
+                    HStack(spacing: 6) {
+                        Text(group.exercise.name)
+                            .font(.subheadline.weight(.semibold))
+                        if group.sets.first?.supersetGroup != nil {
+                            Image(systemName: "link")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(Theme.teal)
+                        }
+                    }
 
                     ForEach(group.sets, id: \.id) { set in
                         setLine(set, exercise: group.exercise)

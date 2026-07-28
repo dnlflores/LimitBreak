@@ -256,6 +256,11 @@ final class WorkoutSession {
     /// so every session logged before this existed reads as solo.
     var trainedWithPartner: Bool = false
 
+    /// The routine this session was started from, if any. Stamped so routine
+    /// mastery can count how many times a saved workout has been run. Nil for
+    /// ad-hoc sessions and every session logged before this existed.
+    var startedFromRoutineID: UUID? = nil
+
     @Relationship(deleteRule: .cascade, inverse: \ExerciseSet.session)
     var sets: [ExerciseSet]
 
@@ -274,6 +279,22 @@ final class WorkoutSession {
     }
 
     var prCount: Int { sets.filter(\.isPR).count }
+
+    /// The session's whole-body effort signal, derived from the per-exercise
+    /// "reps in reserve" reads captured as each movement finished (1–5, lower =
+    /// closer to failure). One read per rated exercise — all its working sets
+    /// carry the same stamp — averaged into a single number the coach can weigh.
+    /// Nil when no movement was rated.
+    var repsInReserve: Int? {
+        var perExercise: [UUID: Int] = [:]
+        for set in sets where !set.isWarmup {
+            guard let rir = set.repsInReserve, let exercise = set.exercise else { continue }
+            perExercise[exercise.id] = rir
+        }
+        guard !perExercise.isEmpty else { return nil }
+        let total = perExercise.values.reduce(0, +)
+        return Int((Double(total) / Double(perExercise.count)).rounded())
+    }
 
     var duration: TimeInterval {
         let end = endDate ?? sets.map(\.timestamp).max() ?? startDate
@@ -294,6 +315,35 @@ final class WorkoutSession {
         }
         return order.compactMap { buckets[$0] }
     }
+
+    /// `setsByExercise` collapsed into superset runs: each element is a run of
+    /// consecutive movements that shared the same non-nil `supersetGroup` tag.
+    /// Standalone movements come back as single-element runs, so history views
+    /// can render supersets grouped while leaving everything else flat.
+    var exerciseGroups: [[(exercise: Exercise, sets: [ExerciseSet])]] {
+        let entries = setsByExercise
+        return supersetRuns(Array(entries.indices)) { index in
+            entries[index].sets.first?.supersetGroup
+        }.map { run in run.map { entries[$0] } }
+    }
+}
+
+/// Groups an ordered id list into runs of consecutive entries that share the
+/// same non-nil superset tag. A `nil` tag (standalone) always breaks a run, so
+/// unpaired items come back as singletons. Shared by the routine editor, the
+/// live session manager, and history rendering.
+func supersetRuns<ID: Hashable>(_ ids: [ID], tag: (ID) -> Int?) -> [[ID]] {
+    var runs: [[ID]] = []
+    for id in ids {
+        if let last = runs.last?.last,
+           let lastTag = tag(last), let thisTag = tag(id),
+           lastTag == thisTag {
+            runs[runs.count - 1].append(id)
+        } else {
+            runs.append([id])
+        }
+    }
+    return runs
 }
 
 // MARK: - Exercise Set Model
@@ -321,6 +371,20 @@ final class ExerciseSet {
     /// weight changes. Nil for barbell-style sets or when weight was unknown.
     var bodyweightAtTime: Double? = nil
 
+    /// Superset grouping tag stamped from the live session so history and
+    /// "save as routine" remember which movements were paired. Nil (or 0) means
+    /// this set's exercise was performed standalone. Movements sharing the same
+    /// non-nil tag within a session were run as one superset.
+    var supersetGroup: Int? = nil
+
+    /// The lifter's "reps in reserve" read for this movement, captured mid-session
+    /// once every set for the exercise is logged: how many more reps they could
+    /// have done (1–5, lower = closer to failure). Stamped identically onto every
+    /// working set of the exercise so the effort travels with the lift. Nil when
+    /// unrated or for sets logged before this was asked, so the coach and the
+    /// progression engine only weigh it when present.
+    var repsInReserve: Int? = nil
+
     var exercise: Exercise?
     var session: WorkoutSession?
 
@@ -331,6 +395,7 @@ final class ExerciseSet {
         distanceMeters: Double? = nil,
         isWarmup: Bool = false,
         repWeights: [Double] = [],
+        supersetGroup: Int? = nil,
         timestamp: Date = Date()
     ) {
         self.id = UUID()
@@ -341,6 +406,7 @@ final class ExerciseSet {
         self.distanceMeters = distanceMeters
         self.isWarmup = isWarmup
         self.repWeights = repWeights
+        self.supersetGroup = supersetGroup
         self.isPR = false
     }
 
@@ -543,6 +609,10 @@ final class RoutineItem {
     /// unset or for bodyweight movements.
     var targetWeight: Double?
 
+    /// Superset grouping tag. Consecutive routine items sharing the same non-nil
+    /// value form one superset. Nil (or 0) means the slot is performed standalone.
+    var supersetGroup: Int? = nil
+
     var exercise: Exercise?
     var routine: Routine?
 
@@ -551,6 +621,7 @@ final class RoutineItem {
         targetSets: Int = 3,
         targetReps: Int? = nil,
         targetWeight: Double? = nil,
+        supersetGroup: Int? = nil,
         exercise: Exercise? = nil
     ) {
         self.id = UUID()
@@ -558,6 +629,7 @@ final class RoutineItem {
         self.targetSets = max(1, targetSets)
         self.targetReps = targetReps
         self.targetWeight = targetWeight
+        self.supersetGroup = supersetGroup
         self.exercise = exercise
     }
 }

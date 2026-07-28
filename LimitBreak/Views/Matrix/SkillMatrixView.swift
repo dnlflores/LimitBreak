@@ -10,6 +10,7 @@ struct SkillMatrixView: View {
     @Query(sort: \Walk.date, order: .reverse) private var walks: [Walk]
     @Query(sort: \PRRecord.dateAchieved, order: .reverse) private var records: [PRRecord]
     @Query(sort: \Activity.date, order: .reverse) private var activities: [Activity]
+    @Query private var routines: [Routine]
 
     @State private var selectedDay: Date?
     @State private var showHealthSheet = false
@@ -29,6 +30,7 @@ struct SkillMatrixView: View {
                     levelCard
                     statHeader
                     rewardsSection
+                    masterySection
                     StatDialsView(sessions: sessions)
                     BodyDiagramView(sessions: sessions)
                     ProgressChartView(sessions: sessions)
@@ -164,7 +166,7 @@ struct SkillMatrixView: View {
     // MARK: - Level & rewards
 
     private var xpProgress: XPEngine.Progress {
-        XPEngine.progress(sessions: sessions, records: records, walks: walks, activities: activities)
+        XPEngine.progress(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines)
     }
 
     private var levelInfo: XPEngine.LevelInfo {
@@ -212,7 +214,7 @@ struct SkillMatrixView: View {
     @ViewBuilder
     private var rewardsSection: some View {
         let rewards = XPEngine.recentRewards(
-            sessions: sessions, records: records, walks: walks, activities: activities,
+            sessions: sessions, records: records, walks: walks, activities: activities, routines: routines,
             multipliers: xpProgress.multipliers
         )
         if !rewards.isEmpty {
@@ -267,6 +269,52 @@ struct SkillMatrixView: View {
                 .cardStyle()
             }
         }
+    }
+
+    /// Workout mastery: the exercises and routines ground the deepest, each with
+    /// its rank and a bar toward the next. Tap through for the full skill tree.
+    @ViewBuilder
+    private var masterySection: some View {
+        let ranks = Mastery.routineRanks(in: sessions, routines: routines)
+            + Mastery.exerciseRanks(in: sessions)
+        let top = Array(ranks.sorted(by: masteryDisplayOrder).prefix(3))
+        if !top.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("WORKOUT MASTERY")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.textDim)
+                        .kerning(1.5)
+                    Spacer()
+                    NavigationLink {
+                        MasteryView()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("Skill tree")
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.bold))
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.violet)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                VStack(spacing: 10) {
+                    ForEach(top) { rank in
+                        MasteryRankRow(rank: rank)
+                    }
+                }
+                .cardStyle()
+            }
+        }
+    }
+
+    /// Deepest rank first, then most completions, then name.
+    private func masteryDisplayOrder(_ a: Mastery.Rank, _ b: Mastery.Rank) -> Bool {
+        if a.level != b.level { return a.level > b.level }
+        if a.completions != b.completions { return a.completions > b.completions }
+        return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
     }
 
     private func statTile(value: String, label: String, color: Color) -> some View {

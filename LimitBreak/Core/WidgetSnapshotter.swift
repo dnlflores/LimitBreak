@@ -30,6 +30,7 @@ final class WidgetSnapshotter {
         let exercises = (try? context.fetch(FetchDescriptor<Exercise>())) ?? []
         let walks = (try? context.fetch(FetchDescriptor<Walk>())) ?? []
         let activities = (try? context.fetch(FetchDescriptor<Activity>())) ?? []
+        let routines = (try? context.fetch(FetchDescriptor<Routine>())) ?? []
 
         // Per-day activity level, oldest first, ending today. Any qualifying
         // activity — session, sport, or a walk over a mile — lights a day.
@@ -64,7 +65,7 @@ final class WidgetSnapshotter {
         // Full XP progression — the single source of truth for level and the
         // XP earned over the trailing week.
         let progress = XPEngine.progress(
-            sessions: sessions, records: records, walks: walks, activities: activities
+            sessions: sessions, records: records, walks: walks, activities: activities, routines: routines
         )
         let level = XPEngine.levelInfo(totalXP: progress.totalXP).level
 

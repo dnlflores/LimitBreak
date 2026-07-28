@@ -79,6 +79,13 @@ enum PromptBuilder {
         there is no recorded ceiling, infer a sensible starting weight from their ceilings on \
         similar movements, and be conservative. Use 0 for bodyweight movements carrying no \
         added load.
+        - Where it serves the session, pair movements into supersets: give two (occasionally \
+        three) movements that run well back-to-back the same "supersetGroup" index (1 for the \
+        first pair, 2 for the next, and so on), and place them next to each other in the list. \
+        Good supersets pair an agonist with its antagonist (e.g. a press with a row), or a \
+        compound with a non-competing accessory; never superset two heavy movements that fight \
+        for the same fresh muscle. Most movements stay standalone — use 0 for those. Do not \
+        force supersets when straight sets serve the lifter better.
         - Give the session a short, punchy, video-game-themed title of 2 to 4 words.
         - The rationale is two sentences at most, addressed to the lifter. Say what this \
         session targets and which muscles you steered around and why. Plain language, no jargon.
@@ -104,6 +111,7 @@ enum PromptBuilder {
         exerciseCount: Int,
         durationMinutes: Int?,
         context: TrainingContext,
+        allowSupersets: Bool = false,
         budget: Budget = .full,
         now: Date = Date()
     ) -> String {
@@ -160,7 +168,15 @@ enum PromptBuilder {
                 let groups = session.muscleGroups.isEmpty
                     ? "no sets logged"
                     : session.muscleGroups.joined(separator: ", ")
-                lines.append("- \(ago): \(session.name) — \(groups) (\(session.workingSets) working sets)")
+                var detail = "\(session.workingSets) working sets"
+                if let rir = session.repsInReserve {
+                    // Lifter's self-reported reps left in the tank: 0 = trained to
+                    // failure, higher = more headroom. Use it to gauge whether to
+                    // push load/volume up or hold.
+                    let effort = rir == 0 ? "to failure" : "~\(rir) reps in reserve"
+                    detail += ", \(effort)"
+                }
+                lines.append("- \(ago): \(session.name) — \(groups) (\(detail))")
             }
             lines.append("")
         }
@@ -178,15 +194,44 @@ enum PromptBuilder {
             lines.append("")
         }
 
+        // The concrete last→next math per lift. Stated as a floor the coach must
+        // meet, so programming a movement that has one of these targets can't
+        // silently repeat or regress last session.
+        let progression = context.progressionLines.prefix(budget.ceilingCap)
+        if !progression.isEmpty {
+            lines.append("PROGRESSION TARGETS (advance the lifter past last session — "
+                         + "add reps toward the top of the range before adding weight):")
+            for line in progression {
+                lines.append("- \(line)")
+            }
+            lines.append("")
+        }
+
         lines.append("THIS SESSION:")
         lines.append("- Focus: \(focusLabel)")
+        lines.append("- Program this as a \(context.sessionEmphasis.label.uppercased()) day: "
+                     + "\(context.sessionEmphasis.descriptor). Bias every movement's rep range "
+                     + "to match, not just the ones with a recorded target.")
         if !targetMuscleGroups.isEmpty {
             let display = targetMuscleGroups
                 .compactMap { MuscleGroup(rawValue: $0)?.displayName ?? $0 }
                 .joined(separator: ", ")
             lines.append("- Requested emphasis: \(display)")
         }
-        lines.append("- Select exactly \(exerciseCount) movements.")
+        if allowSupersets {
+            lines.append("- Select \(exerciseCount) movements as the core of the session. You may add "
+                         + "one or two extra movements beyond that only when it completes a strong superset.")
+            lines.append("- SUPERSETS ARE WANTED this session. Actively group movements into supersets "
+                         + "where they pair well — antagonists (a press with a row), or a compound with a "
+                         + "non-competing accessory. Aim for one to three supersets, but usually fewer than "
+                         + "half the movements are grouped; the rest stay standalone. You choose which "
+                         + "movements to bundle, and may introduce a movement specifically to complete a "
+                         + "superset. Give paired movements the same supersetGroup index (1, 2, …), keep "
+                         + "them adjacent in the list, and leave standalone movements at 0.")
+        } else {
+            lines.append("- Select exactly \(exerciseCount) movements.")
+            lines.append("- Do not use supersets this session. Set supersetGroup to 0 for every movement.")
+        }
         if let durationMinutes {
             lines.append("- Target length: about \(durationMinutes) minutes.")
         }
@@ -222,7 +267,9 @@ enum PromptBuilder {
               "repRangeHigh": integer — high end of the rep range,
               "targetLoadPounds": number — working weight in pounds, 0 for bodyweight,
               "restSeconds": integer — rest between sets in seconds,
-              "note": string — one short sentence on why this movement is here
+              "note": string — one short sentence on why this movement is here,
+              "supersetGroup": integer — 0 for a standalone movement, or 1, 2, … to pair \
+        adjacent movements into a superset run (same number = same superset)
             }
           ]
         }
@@ -245,6 +292,7 @@ enum PromptBuilder {
         durationMinutes: Int?,
         context: TrainingContext,
         catalog: [ExerciseBrief],
+        allowSupersets: Bool = false,
         budget: Budget = .compact,
         now: Date = Date()
     ) -> String {
@@ -268,6 +316,7 @@ enum PromptBuilder {
                 exerciseCount: exerciseCount,
                 durationMinutes: durationMinutes,
                 context: context,
+                allowSupersets: allowSupersets,
                 budget: budget,
                 now: now
             ),

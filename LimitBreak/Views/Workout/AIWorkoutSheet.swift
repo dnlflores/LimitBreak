@@ -12,13 +12,17 @@ struct AIWorkoutSheet: View {
     @Query private var profiles: [TrainingProfile]
 
     /// Called with the generated session title, the ordered exercises to load,
-    /// and whether the session is being trained with a partner.
-    let onStart: (String, [Exercise], Bool) -> Void
+    /// the superset grouping (exercise id → tag) the coach recommended, and
+    /// whether the session is being trained with a partner.
+    let onStart: (String, [Exercise], [UUID: Int], Bool) -> Void
 
     @State private var focus: WorkoutFocus = .fullBody
     @State private var exerciseCount = 5
     @State private var duration: WorkoutLength = .any
     @State private var withPartner = false
+    /// Whether the coach may bundle some movements into supersets. On by default
+    /// so plans arrive with a couple of pairings; the lifter can opt out.
+    @State private var allowSupersets = true
     @State private var plan: WorkoutPlan?
     @State private var isGenerating = false
     @State private var didSaveRoutine = false
@@ -117,6 +121,8 @@ struct AIWorkoutSheet: View {
                 Text("\(exerciseCount) exercise\(exerciseCount == 1 ? "" : "s")")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.emerald)
+
+                supersetToggle
             }
 
             section("HOW LONG?") {
@@ -137,6 +143,34 @@ struct AIWorkoutSheet: View {
                     .foregroundStyle(Theme.textDim)
             }
         }
+    }
+
+    /// Checkbox that lets the coach add supersets alongside the chosen movements.
+    private var supersetToggle: some View {
+        Button {
+            Haptics.shared.tick()
+            allowSupersets.toggle()
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: allowSupersets ? "checkmark.square.fill" : "square")
+                    .font(.title3)
+                    .foregroundStyle(allowSupersets ? Theme.teal : Theme.textDim)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Include supersets")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("Let the coach pair some movements back-to-back — it picks which, and may add one or two extra to complete a good superset.")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textDim)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -303,6 +337,12 @@ struct AIWorkoutSheet: View {
                 inspectedExercise = detailPayload(for: planned, exercise: exercise)
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
+                    if let letter = supersetLetter(for: planned) {
+                        Label("SUPERSET \(letter)", systemImage: "link")
+                            .font(.caption2.weight(.bold))
+                            .kerning(0.5)
+                            .foregroundStyle(Theme.teal)
+                    }
                     Text(planned.name)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
@@ -348,6 +388,23 @@ struct AIWorkoutSheet: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity)
+    }
+
+    /// Letter label ("A", "B", …) for a planned row that sits inside a coached
+    /// superset run, so the preview reads the same as the routine editor.
+    private func supersetLetter(for planned: PlannedExercise) -> String? {
+        guard planned.supersetGroup != nil, let plan else { return nil }
+        let runs = supersetRuns(plan.exercises.map(\.id)) { id in
+            plan.exercises.first(where: { $0.id == id })?.supersetGroup
+        }
+        var letter = 0
+        for run in runs where run.count > 1 {
+            if run.contains(planned.id) {
+                return String(UnicodeScalar(UInt8(65 + min(letter, 25))))
+            }
+            letter += 1
+        }
+        return nil
     }
 
     /// Trailing per-row control: a spinner while an AI swap is in flight,
@@ -504,6 +561,7 @@ struct AIWorkoutSheet: View {
             exerciseCount: exerciseCount,
             durationMinutes: duration.minutes,
             withPartner: withPartner,
+            allowSupersets: allowSupersets,
             context: context,
             catalog: catalog
         )
@@ -536,7 +594,9 @@ struct AIWorkoutSheet: View {
               updated.exercises.indices.contains(index) else { return }
         // Keep the same row id so the swiped row stays put and animates in place
         // instead of being torn down and reinserted (which kills the slide).
-        updated.exercises[index] = PlannedExercise(id: outgoing.id, name: replacement, sets: outgoing.sets)
+        updated.exercises[index] = PlannedExercise(
+            id: outgoing.id, name: replacement, sets: outgoing.sets, supersetGroup: outgoing.supersetGroup
+        )
         didSaveRoutine = false
         withAnimation(.spring(duration: 0.3)) { plan = updated }
         Haptics.shared.success()
@@ -547,7 +607,9 @@ struct AIWorkoutSheet: View {
         guard var updated = plan, updated.exercises.indices.contains(index) else { return }
         let outgoing = updated.exercises[index]
         // Preserve the row id (see swapWithAI) so the update animates in place.
-        updated.exercises[index] = PlannedExercise(id: outgoing.id, name: exercise.name, sets: outgoing.sets)
+        updated.exercises[index] = PlannedExercise(
+            id: outgoing.id, name: exercise.name, sets: outgoing.sets, supersetGroup: outgoing.supersetGroup
+        )
         didSaveRoutine = false
         withAnimation(.spring(duration: 0.3)) { plan = updated }
     }
@@ -555,9 +617,15 @@ struct AIWorkoutSheet: View {
     private func startWorkout() {
         guard let plan else { return }
         let byName = Dictionary(exercises.map { ($0.name.lowercased(), $0) }) { first, _ in first }
-        let matched = plan.exercises.compactMap { byName[$0.name.lowercased()] }
+        var matched: [Exercise] = []
+        var supersets: [UUID: Int] = [:]
+        for planned in plan.exercises {
+            guard let exercise = byName[planned.name.lowercased()] else { continue }
+            matched.append(exercise)
+            if let tag = planned.supersetGroup { supersets[exercise.id] = tag }
+        }
         guard !matched.isEmpty else { return }
-        onStart(plan.title, matched, withPartner)
+        onStart(plan.title, matched, supersets, withPartner)
         dismiss()
     }
 
@@ -572,7 +640,7 @@ struct AIWorkoutSheet: View {
                 guard let load = planned.prescription?.targetLoadPounds, load > 0 else { return nil }
                 return load
             }()
-            return (exercise, max(1, planned.sets), planned.targetReps, weight)
+            return (exercise, max(1, planned.sets), planned.targetReps, weight, planned.supersetGroup)
         }
         guard !items.isEmpty else { return }
         workout.createRoutine(

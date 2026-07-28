@@ -130,8 +130,8 @@ struct XPEngineTests {
         container.mainContext.insert(bench)
 
         // Two heavy past sessions push total XP well past the first threshold (150).
-        let entries: [(exercise: Exercise, sets: [PastSetEntry])] = [
-            (bench, (0..<5).map { _ in PastSetEntry(weight: 200, reps: 5) })
+        let entries: [(exercise: Exercise, supersetGroup: Int?, sets: [PastSetEntry])] = [
+            (bench, nil, (0..<5).map { _ in PastSetEntry(weight: 200, reps: 5) })
         ]
         manager.logPastSession(name: "Day 1", date: Date().addingTimeInterval(-172_800), entries: entries)
         manager.logPastSession(name: "Day 2", date: Date().addingTimeInterval(-86_400), entries: entries)
@@ -695,8 +695,8 @@ struct TrainingPartnerTests {
         let bench = Exercise(name: "Bench", muscleGroup: "Chest")
         container.mainContext.insert(bench)
 
-        let entries: [(exercise: Exercise, sets: [PastSetEntry])] = [
-            (bench, [PastSetEntry(weight: 185, reps: 5)])
+        let entries: [(exercise: Exercise, supersetGroup: Int?, sets: [PastSetEntry])] = [
+            (bench, nil, [PastSetEntry(weight: 185, reps: 5)])
         ]
         manager.logPastSession(
             name: "Spotted",
@@ -1148,6 +1148,32 @@ struct PromptBuilderTests {
             durationMinutes: nil, context: context()
         )
         #expect(!block.contains("Target length"))
+    }
+
+    /// The superset directive is opt-in: allowed → the coach is told to add some
+    /// and the strict count is relaxed; disallowed → an explicit ban and a hard
+    /// count. Default (no flag) is the disallowed, back-compatible path.
+    @Test func supersetDirectiveTracksTheFlag() {
+        let allowed = PromptBuilder.requestBlock(
+            focusLabel: "Push", targetMuscleGroups: [], exerciseCount: 5,
+            durationMinutes: nil, context: context(), allowSupersets: true
+        )
+        #expect(allowed.lowercased().contains("superset"))
+        #expect(!allowed.contains("Select exactly"))
+
+        let disallowed = PromptBuilder.requestBlock(
+            focusLabel: "Push", targetMuscleGroups: [], exerciseCount: 5,
+            durationMinutes: nil, context: context(), allowSupersets: false
+        )
+        #expect(disallowed.contains("Select exactly 5 movements."))
+        #expect(disallowed.contains("Do not use supersets"))
+
+        // Default omits the flag → same as disallowed.
+        let byDefault = PromptBuilder.requestBlock(
+            focusLabel: "Push", targetMuscleGroups: [], exerciseCount: 5,
+            durationMinutes: nil, context: context()
+        )
+        #expect(byDefault.contains("Do not use supersets"))
     }
 
     /// The self-hosted prompt has no system channel, so instructions, catalog,
@@ -1789,5 +1815,268 @@ struct OdysseusReplyShapeTests {
         #expect(JSONExtractor.scan(#"{"a": 1, "b": "#) == .truncated)
         #expect(JSONExtractor.scan(#"{"a": "unterminated"#) == .truncated)
         #expect(JSONExtractor.scan(#"{"a":1}{"b":2}"#) == .found([#"{"a":1}"#, #"{"b":2}"#]))
+    }
+}
+
+// MARK: - Progressive overload
+
+@MainActor
+struct ProgressionEngineTests {
+
+    /// An in-memory store plus one weight/rep movement to hang history on. The
+    /// container is returned so the caller can keep it alive — a context whose
+    /// container has been deallocated crashes on use.
+    private func makeStore() throws -> (ModelContainer, ModelContext, Exercise) {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self,
+                             Walk.self, Activity.self, TrainingProfile.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        let context = container.mainContext
+        // Barbell → benefits from a spot → treated as a compound (narrow bands).
+        let bench = Exercise(name: "Bench Press", muscleGroup: "Chest", equipmentType: "Barbell")
+        context.insert(bench)
+        return (container, context, bench)
+    }
+
+    /// Logs one session of identical working sets for an exercise.
+    @discardableResult
+    private func logSession(
+        _ context: ModelContext,
+        exercise: Exercise,
+        weight: Double,
+        reps: Int,
+        sets: Int,
+        daysAgo: Double,
+        repsInReserve: Int? = nil
+    ) -> WorkoutSession {
+        let start = Date().addingTimeInterval(-daysAgo * 86_400)
+        let session = WorkoutSession(name: "Session", startDate: start)
+        context.insert(session)
+        for i in 0..<sets {
+            let set = ExerciseSet(weight: weight, reps: reps,
+                                  timestamp: start.addingTimeInterval(Double(i) * 120))
+            set.exercise = exercise
+            set.session = session
+            // Effort is now captured per exercise, stamped on each working set.
+            set.repsInReserve = repsInReserve
+            context.insert(set)
+        }
+        try? context.save()
+        return session
+    }
+
+    /// Rep short of the top and effort left → hold weight, add a rep.
+    @Test func addsARepWhenShortOfTheTop() throws {
+        let (container, context, bench) = try makeStore()
+        // buildMuscle volume band is 10–12; 3×10 with reps left → aim 11.
+        logSession(context, exercise: bench, weight: 135, reps: 10, sets: 3, daysAgo: 3, repsInReserve: 2)
+
+        let target = ProgressionEngine.nextTarget(
+            for: bench, goal: .buildMuscle, emphasis: .volume
+        )
+        #expect(target?.targetReps == 11)
+        #expect(target?.targetWeightPounds == 135)
+        #expect(target?.previous?.topReps == 10)
+        #expect(target?.previous?.sets == 3)
+        withExtendedLifetime(container) {}
+    }
+
+    /// Every set caps the range → cash the reps in for a heavier load, reset reps.
+    @Test func cashesInLoadWhenRangeCapped() throws {
+        let (container, context, bench) = try makeStore()
+        // getStronger heavy band is 3–4; 3×4 across the board → +increment, reset to 3.
+        logSession(context, exercise: bench, weight: 200, reps: 4, sets: 3, daysAgo: 3)
+
+        let target = ProgressionEngine.nextTarget(
+            for: bench, goal: .getStronger, emphasis: .heavy
+        )
+        #expect(target?.targetReps == 3)
+        #expect(target?.targetWeightPounds == 205) // 200 + default 5 lb increment
+        withExtendedLifetime(container) {}
+    }
+
+    /// Trained to failure but short of the top → consolidate the same numbers.
+    @Test func holdsWhenTrainedToFailure() throws {
+        let (container, context, bench) = try makeStore()
+        logSession(context, exercise: bench, weight: 135, reps: 10, sets: 3, daysAgo: 3, repsInReserve: 0)
+
+        let target = ProgressionEngine.nextTarget(
+            for: bench, goal: .buildMuscle, emphasis: .volume
+        )
+        #expect(target?.targetReps == 10)
+        #expect(target?.targetWeightPounds == 135)
+        withExtendedLifetime(container) {}
+    }
+
+    /// No history → seed a starting load from the recorded ceiling.
+    @Test func startsFromCeilingWithNoHistory() throws {
+        let (container, context, bench) = try makeStore()
+        let pr = PRRecord(recordType: "1RM", numericValue: 225, repsAchieved: 1, exercise: bench)
+        context.insert(pr)
+        try context.save()
+
+        let target = ProgressionEngine.nextTarget(
+            for: bench, goal: .getStronger, emphasis: .heavy
+        )
+        // ~78% of 225 = 175.5, snapped to the 5 lb increment.
+        #expect(target?.targetWeightPounds == 175)
+        #expect(target?.targetReps == 3)
+        #expect(target?.previous == nil)
+        withExtendedLifetime(container) {}
+    }
+
+    /// The session track alternates: a heavy last session → a volume next one.
+    @Test func emphasisUndulatesOffLastSession() throws {
+        let (container, context, bench) = try makeStore()
+        // getStronger heavy band tops out at 4; 3 reps reads as a heavy day.
+        logSession(context, exercise: bench, weight: 200, reps: 3, sets: 3, daysAgo: 3)
+
+        let target = ProgressionEngine.nextTarget(for: bench, goal: .getStronger)
+        #expect(target?.emphasis == .volume)
+        withExtendedLifetime(container) {}
+    }
+}
+
+// MARK: - Supersets
+
+/// Grouping is derived, never stored as runs — so the run logic and the AI's
+/// tag-normalization are the load-bearing pieces and are pinned here.
+struct SupersetGroupingTests {
+
+    /// Consecutive slots sharing a non-nil tag form one run; a nil tag always
+    /// breaks the run, so standalone slots come back as singletons.
+    @Test func runsGroupConsecutiveMatchingTags() {
+        let tags: [Int: Int?] = [0: nil, 1: 1, 2: 1, 3: nil, 4: 2, 5: 3]
+        let runs = supersetRuns([0, 1, 2, 3, 4, 5]) { tags[$0] ?? nil }
+        #expect(runs == [[0], [1, 2], [3], [4], [5]])
+    }
+
+    /// The same tag on non-adjacent slots does not merge across the gap.
+    @Test func runsDoNotMergeAcrossAGap() {
+        let tags: [Int: Int?] = [0: 1, 1: 2, 2: 1]
+        let runs = supersetRuns([0, 1, 2]) { tags[$0] ?? nil }
+        #expect(runs == [[0], [1], [2]])
+    }
+
+    private func planned(_ name: String, group: Int?) -> PlannedExercise {
+        PlannedExercise(name: name, sets: 3, supersetGroup: group)
+    }
+
+    /// Coached tags are rewritten to clean 1…N groups regardless of what the
+    /// model numbered them.
+    @Test func normalizeRenumbersContiguousPairs() {
+        let result = WorkoutAI.normalizeSupersets([
+            planned("A", group: 5),
+            planned("B", group: 5),
+            planned("C", group: nil),
+            planned("D", group: 9),
+            planned("E", group: 9),
+        ])
+        #expect(result.map(\.supersetGroup) == [1, 1, nil, 2, 2])
+    }
+
+    /// A group left with a single survivor (its partner was hallucinated away)
+    /// collapses to standalone rather than showing a superset of one.
+    @Test func normalizeDropsSingleMemberGroups() {
+        let result = WorkoutAI.normalizeSupersets([
+            planned("A", group: nil),
+            planned("B", group: 3),
+            planned("C", group: nil),
+        ])
+        #expect(result.allSatisfy { $0.supersetGroup == nil })
+    }
+
+    /// A tag scattered across non-adjacent slots is not a real superset — both
+    /// slots become standalone.
+    @Test func normalizeSplitsNonAdjacentSameTag() {
+        let result = WorkoutAI.normalizeSupersets([
+            planned("A", group: 1),
+            planned("B", group: 2),
+            planned("C", group: 1),
+        ])
+        #expect(result.map(\.supersetGroup) == [nil, nil, nil])
+    }
+}
+
+/// Serialized: each test spins up a `WorkoutManager`, which claims the process
+/// -wide `WorkoutManager.shared` singleton and broadcasts over WatchConnectivity.
+/// Running them concurrently races those singletons, so they go one at a time.
+@MainActor
+@Suite(.serialized)
+struct SupersetSessionTests {
+
+    private func withManager(_ body: (WorkoutManager, ModelContext) throws -> Void) throws {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self, Walk.self, Activity.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        let manager = WorkoutManager(context: container.mainContext)
+        try body(manager, container.mainContext)
+        manager.stopRest()
+        withExtendedLifetime(container) {}
+    }
+
+    /// Grouping two movements holds the rest timer until the round's last partner
+    /// finishes, then fires once with the longer of the two rests.
+    @Test func sharedRestIsSuppressedBetweenPartners() throws {
+        try withManager { manager, context in
+            let bench = Exercise(name: "Bench", muscleGroup: "Chest", defaultRestSeconds: 90)
+            let row = Exercise(name: "Row", muscleGroup: "Lats", defaultRestSeconds: 120)
+            [bench, row].forEach(context.insert)
+
+            manager.startSession(named: "SS", exercises: [bench, row])
+            manager.groupWithNextInSession(bench)
+            #expect(manager.supersetTag(for: bench) != nil)
+            #expect(manager.supersetTag(for: bench) == manager.supersetTag(for: row))
+
+            // First partner: rest holds because the other partner is still up.
+            manager.logSet(exercise: bench, weight: 135, reps: 8)
+            #expect(manager.isResting == false)
+
+            // Round complete: rest fires with the longer partner's value.
+            manager.logSet(exercise: row, weight: 95, reps: 8)
+            #expect(manager.restTotal == 120)
+        }
+    }
+
+    /// Ungrouping dissolves a two-member superset entirely and restores each
+    /// movement's own rest.
+    @Test func ungroupRestoresStandaloneRest() throws {
+        try withManager { manager, context in
+            let bench = Exercise(name: "Bench", muscleGroup: "Chest", defaultRestSeconds: 90)
+            let row = Exercise(name: "Row", muscleGroup: "Lats", defaultRestSeconds: 120)
+            [bench, row].forEach(context.insert)
+
+            manager.startSession(named: "SS", exercises: [bench, row])
+            manager.groupWithNextInSession(bench)
+            manager.ungroupSuperset(bench)
+            #expect(manager.supersetTag(for: bench) == nil)
+            #expect(manager.supersetTag(for: row) == nil)
+
+            manager.logSet(exercise: bench, weight: 135, reps: 8)
+            #expect(manager.restTotal == 90)
+        }
+    }
+
+    /// A routine's supersets stamp onto every logged set and round-trip into the
+    /// session's history grouping.
+    @Test func routineSupersetsStampSetsAndGroupHistory() throws {
+        try withManager { manager, context in
+            let bench = Exercise(name: "Bench", muscleGroup: "Chest", defaultRestSeconds: 0)
+            let row = Exercise(name: "Row", muscleGroup: "Lats", defaultRestSeconds: 0)
+            [bench, row].forEach(context.insert)
+
+            manager.startSession(named: "SS", exercises: [bench, row], supersets: [bench.id: 1, row.id: 1])
+            manager.logSet(exercise: bench, weight: 135, reps: 8)
+            manager.logSet(exercise: row, weight: 95, reps: 8)
+
+            #expect(manager.sets(for: bench).first?.supersetGroup == 1)
+            let session = try #require(manager.activeSession)
+            #expect(session.exerciseGroups.count == 1)
+            #expect(session.exerciseGroups.first?.count == 2)
+        }
     }
 }

@@ -65,8 +65,8 @@ private struct SessionLauncherView: View {
             WalkDrawView()
         }
         .sheet(isPresented: $showAIWorkout) {
-            AIWorkoutSheet { title, exercises, partnered in
-                workout.startSession(named: title, exercises: exercises, withPartner: partnered)
+            AIWorkoutSheet { title, exercises, supersets, partnered in
+                workout.startSession(named: title, exercises: exercises, supersets: supersets, withPartner: partnered)
             }
         }
         .sheet(isPresented: $showRoutineLibrary) {
@@ -374,26 +374,42 @@ private struct ActiveSessionView: View {
     @State private var showEndConfirmation = false
     @State private var showCancelConfirmation = false
     @State private var isEndBarVisible = true
+    /// Superset-building mode: cards become checkboxes and the toolbar swaps to a
+    /// Cancel/Group pair. `supersetSelection` holds the picked exercise ids.
+    @State private var isSelectingSuperset = false
+    @State private var supersetSelection: Set<UUID> = []
 
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
                 sessionHeader
 
+                if isSelectingSuperset { supersetSelectionHint }
+
                 ReorderableVStack(sessionExercisesBinding, spacing: 14) { $exercise, grip in
-                    ExerciseLogCard(exercise: exercise, grip: grip)
+                    let alreadyGrouped = workout.supersetTag(for: exercise) != nil
+                    ExerciseLogCard(
+                        exercise: exercise,
+                        grip: grip,
+                        isSelecting: isSelectingSuperset,
+                        isSelected: alreadyGrouped || supersetSelection.contains(exercise.id),
+                        isLocked: alreadyGrouped,
+                        onToggleSelect: { toggleSupersetSelection(exercise) }
+                    )
                 }
 
-                Button {
-                    showExercisePicker = true
-                } label: {
-                    Label("Add Exercise", systemImage: "plus.circle.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .foregroundStyle(Theme.emerald)
-                        .glassControl(cornerRadius: 16)
-                        .contentShape(Rectangle())
+                if !isSelectingSuperset {
+                    Button {
+                        showExercisePicker = true
+                    } label: {
+                        Label("Add Exercise", systemImage: "plus.circle.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .foregroundStyle(Theme.emerald)
+                            .glassControl(cornerRadius: 16)
+                            .contentShape(Rectangle())
+                    }
                 }
             }
             .padding()
@@ -406,16 +422,44 @@ private struct ActiveSessionView: View {
         .navigationTitle(workout.activeSession?.name ?? "Session")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    Haptics.shared.tick()
-                    showCancelConfirmation = true
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.subheadline.weight(.semibold))
+            if isSelectingSuperset {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { exitSupersetSelection() }
+                        .tint(Theme.textDim)
                 }
-                .tint(Theme.textDim)
-                .accessibilityLabel("Cancel session")
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Group") { confirmSuperset() }
+                        .fontWeight(.semibold)
+                        .tint(Theme.teal)
+                        .disabled(supersetSelection.count < 2)
+                }
+            } else {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Haptics.shared.tick()
+                        showCancelConfirmation = true
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .tint(Theme.textDim)
+                    .accessibilityLabel("Cancel session")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            beginSupersetSelection()
+                        } label: {
+                            Label("Build a Superset", systemImage: "link")
+                        }
+                        .disabled(workout.sessionExercises.count < 2)
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .tint(Theme.textDim)
+                    .accessibilityLabel("Session options")
+                }
             }
         }
         .overlay(alignment: .bottom) {
@@ -441,9 +485,9 @@ private struct ActiveSessionView: View {
         .sheet(isPresented: $showEndConfirmation) {
             SessionConfirmSheet(
                 icon: "flag.checkered",
-                tint: Theme.crimson,
+                tint: Theme.emerald,
                 title: "End this session?",
-                message: "Your sets are saved. Ending closes the session log.",
+                message: "Saves everything you logged to your history.",
                 confirmLabel: "End Session"
             ) {
                 workout.endSession()
@@ -488,6 +532,55 @@ private struct ActiveSessionView: View {
             get: { workout.sessionExercises },
             set: { workout.reorderExercises(to: $0) }
         )
+    }
+
+    // MARK: Superset building
+
+    /// Banner shown atop the log while picking exercises for a new superset.
+    private var supersetSelectionHint: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "link")
+                .foregroundStyle(Theme.teal)
+            Text(supersetSelection.count < 2
+                 ? "Tap 2 or more exercises to run them as a superset."
+                 : "\(supersetSelection.count) selected — tap Group to link them.")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.primary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.teal.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.teal.opacity(0.3), lineWidth: 1))
+    }
+
+    private func beginSupersetSelection() {
+        Haptics.shared.tick()
+        supersetSelection = []
+        withAnimation(.snappy) { isSelectingSuperset = true }
+    }
+
+    private func exitSupersetSelection() {
+        withAnimation(.snappy) { isSelectingSuperset = false }
+        supersetSelection = []
+    }
+
+    private func toggleSupersetSelection(_ exercise: Exercise) {
+        // Movements already in a superset are locked out of a new one.
+        guard workout.supersetTag(for: exercise) == nil else { return }
+        if supersetSelection.contains(exercise.id) {
+            supersetSelection.remove(exercise.id)
+        } else {
+            supersetSelection.insert(exercise.id)
+        }
+    }
+
+    private func confirmSuperset() {
+        let members = workout.sessionExercises.filter { supersetSelection.contains($0.id) }
+        guard members.count > 1 else { return }
+        workout.groupAsSuperset(members)
+        exitSupersetSelection()
     }
 
     /// Reserve room at the bottom of the scroll content so the last card is never

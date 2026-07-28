@@ -20,6 +20,14 @@ struct TrainingContext {
     /// Which backend the lifter has chosen to coach with. Carried here so
     /// `WorkoutAI` can route without reaching back into SwiftData.
     var provider: AIProvider = .claude
+    /// The track this session should run — heavy (lower reps, more load) or
+    /// volume (higher reps, moderate load) — undulated off the last session so
+    /// emphasis alternates over time.
+    var sessionEmphasis: TrainingEmphasis = .volume
+    /// Per-lift progression targets ("Bench Press: aim 3×5 @ 140 lb (last 3×8 @
+    /// 135)"), strongest lifts first, so the coach programs each movement one
+    /// step past last session instead of guessing from a summary.
+    var progressionLines: [String] = []
 
     /// A finished session, flattened to what the coach needs.
     struct SessionSummary {
@@ -27,6 +35,9 @@ struct TrainingContext {
         var daysAgo: Int
         var muscleGroups: [String]
         var workingSets: Int
+        /// The lifter's end-of-session estimate of reps left in the tank, if they
+        /// answered. Lower = closer to failure; drives load progression next time.
+        var repsInReserve: Int?
     }
 
     /// How many past sessions and recorded ceilings to include. Both are
@@ -34,6 +45,9 @@ struct TrainingContext {
     /// keep the prompt (and the bill) predictable.
     static let recentSessionLimit = 8
     static let ceilingLimit = 40
+    /// Per-lift progression targets to compute — bounded like the others so a
+    /// full training log can't grow the prompt without limit.
+    static let progressionLimit = 16
 
     /// Assembles the coach's view of the lifter from the store.
     static func build(
@@ -53,7 +67,8 @@ struct TrainingContext {
                 name: session.name,
                 daysAgo: max(0, Int(now.timeIntervalSince(session.startDate) / 86_400)),
                 muscleGroups: groups.map(\.displayName).sorted(),
-                workingSets: session.sets.filter { !$0.isWarmup }.count
+                workingSets: session.sets.filter { !$0.isWarmup }.count,
+                repsInReserve: session.repsInReserve
             )
         }
 
@@ -63,15 +78,47 @@ struct TrainingContext {
             .sorted { $0.1 > $1.1 }
             .prefix(ceilingLimit)
 
+        let goal = profile.goal
+
+        // Undulate the whole session's track off the most recent one: if last
+        // time leaned heavy (low average reps), this is a volume day, and vice
+        // versa. No history → open on the goal's natural track.
+        let emphasis: TrainingEmphasis
+        if let recent = finished.first {
+            let working = recent.sets.filter { !$0.isWarmup }
+            let midpoint = Double(goal.repRange.low + goal.repRange.high) / 2
+            let avgReps = working.isEmpty
+                ? midpoint
+                : Double(working.map(\.reps).reduce(0, +)) / Double(working.count)
+            emphasis = (avgReps <= midpoint ? TrainingEmphasis.heavy : .volume).flipped
+        } else {
+            emphasis = goal.defaultEmphasis
+        }
+
+        // A concrete last→next target per lift, strongest first, for the
+        // movements the coach is most likely to reach for.
+        let progressionLines = exercises
+            .filter { ex in ex.sets.contains { !$0.isWarmup } }
+            .sorted { $0.ceiling(for: "1RM") > $1.ceiling(for: "1RM") }
+            .prefix(progressionLimit)
+            .compactMap { ex -> String? in
+                ProgressionEngine.nextTarget(
+                    for: ex, goal: goal, withPartner: withPartner,
+                    emphasis: emphasis, now: now
+                )?.promptLine(exerciseName: ex.name)
+            }
+
         return TrainingContext(
-            goal: profile.goal,
+            goal: goal,
             experience: profile.experience,
             daysPerWeek: profile.daysPerWeek,
             muscleStatuses: MuscleRecovery.statuses(sessions: finished, now: now),
             recentSessions: Array(summaries),
             ceilings: Dictionary(uniqueKeysWithValues: ranked),
             withPartner: withPartner,
-            provider: profile.aiProvider
+            provider: profile.aiProvider,
+            sessionEmphasis: emphasis,
+            progressionLines: Array(progressionLines)
         )
     }
 }
@@ -97,6 +144,9 @@ struct CoachedExercise: Decodable {
     let restSeconds: Int
     /// One line on why this movement is here.
     let note: String
+    /// Superset grouping index: 0 (or absent) = standalone; 1, 2, … pair movements
+    /// meant to run back-to-back. Optional so older/looser responses still decode.
+    let supersetGroup: Int?
 }
 
 // MARK: - Generator
@@ -115,6 +165,7 @@ enum CloudWorkoutAI {
         exerciseCount: Int,
         durationMinutes: Int?,
         context: TrainingContext,
+        allowSupersets: Bool = false,
         catalog: [ExerciseBrief]
     ) async throws -> CoachedPlan {
         let plan: CoachedPlan = try await ClaudeClient.structuredRequest(
@@ -129,7 +180,8 @@ enum CloudWorkoutAI {
                 targetMuscleGroups: targetMuscleGroups,
                 exerciseCount: exerciseCount,
                 durationMinutes: durationMinutes,
-                context: context
+                context: context,
+                allowSupersets: allowSupersets
             ),
             schema: planSchema,
             as: CoachedPlan.self
@@ -191,10 +243,14 @@ enum CloudWorkoutAI {
                             "type": "string",
                             "description": "One short sentence on why this movement is in the session.",
                         ],
+                        "supersetGroup": [
+                            "type": "integer",
+                            "description": "Superset grouping index. Use 0 for a standalone movement. Give two (occasionally three) complementary movements the same index (1, 2, …) to pair them as a superset run back-to-back; keep grouped movements adjacent in the list.",
+                        ],
                     ],
                     "required": [
                         "name", "sets", "repRangeLow", "repRangeHigh",
-                        "targetLoadPounds", "restSeconds", "note",
+                        "targetLoadPounds", "restSeconds", "note", "supersetGroup",
                     ],
                     "additionalProperties": false,
                 ],

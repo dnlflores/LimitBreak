@@ -10,9 +10,10 @@ struct RewardsTimelineView: View {
     @Query(sort: \Walk.date, order: .reverse) private var walks: [Walk]
     @Query(sort: \Activity.date, order: .reverse) private var activities: [Activity]
     @Query(sort: \PRRecord.dateAchieved, order: .reverse) private var records: [PRRecord]
+    @Query private var routines: [Routine]
 
     private var timeline: [XPEngine.TimelineDay] {
-        XPEngine.timeline(sessions: sessions, records: records, walks: walks, activities: activities)
+        XPEngine.timeline(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines)
     }
 
     /// Days grouped under "JULY 2026"-style month banners.

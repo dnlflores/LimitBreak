@@ -53,6 +53,10 @@ final class WorkoutManager {
     var sessionWeightTargets: [UUID: Double] = [:]
     /// Exercises the user skipped ahead of (watch "next exercise").
     var skippedExercises: Set<UUID> = []
+    /// Superset grouping for the live session: exercise id → group tag. Movements
+    /// sharing a non-nil tag are one superset. Populated from a routine and
+    /// editable mid-session; each logged set is stamped with its exercise's tag.
+    var sessionSupersets: [UUID: Int] = [:]
 
     var limitBreakEvent: LimitBreakEvent?
 
@@ -90,24 +94,31 @@ final class WorkoutManager {
         targets: [UUID: Int]? = nil,
         repTargets: [UUID: Int] = [:],
         weightTargets: [UUID: Double] = [:],
-        withPartner: Bool = false
+        supersets: [UUID: Int] = [:],
+        withPartner: Bool = false,
+        routineID: UUID? = nil
     ) {
         let session = WorkoutSession(
             name: name.isEmpty ? "Training Session" : name,
             trainedWithPartner: withPartner
         )
+        session.startedFromRoutineID = routineID
         context.insert(session)
         activeSession = session
         sessionExercises = exercises
         sessionTargets = targets ?? Dictionary(uniqueKeysWithValues: exercises.map { ($0.id, 3) })
         sessionRepTargets = repTargets
         sessionWeightTargets = weightTargets
+        sessionSupersets = supersets
         skippedExercises = []
         try? context.save()
         Haptics.shared.success()
         SessionSync.shared.broadcast(from: self)
     }
 
+    /// Closes out the active session. Effort is captured per exercise during the
+    /// session (see `setRepsInReserve(_:for:)`), so ending is just a matter of
+    /// stamping the end date and saving.
     func endSession() {
         activeSession?.endDate = Date()
         try? context.save()
@@ -119,6 +130,7 @@ final class WorkoutManager {
         sessionTargets = [:]
         sessionRepTargets = [:]
         sessionWeightTargets = [:]
+        sessionSupersets = [:]
         skippedExercises = []
         stopRest()
         SessionSync.shared.broadcast(from: self)
@@ -140,6 +152,7 @@ final class WorkoutManager {
         sessionTargets = [:]
         sessionRepTargets = [:]
         sessionWeightTargets = [:]
+        sessionSupersets = [:]
         skippedExercises = []
         stopRest()
         Haptics.shared.logSet()
@@ -187,10 +200,12 @@ final class WorkoutManager {
         guard activeSession != nil, let exercise = currentExercise else { return nil }
         let template = lastSet(for: exercise)
             ?? exercise.sets.max(by: { $0.timestamp < $1.timestamp })
-        // A coached routine's prescription wins over history and the generic
-        // fallback, so one-tap logging matches what the plan asked for.
-        let reps = plannedReps(for: exercise) ?? template?.reps ?? 8
-        let plannedLoad = plannedWeight(for: exercise)
+        // A coached routine's prescription wins; failing that, the progression
+        // target advances on last session (add a rep, or cash in for load);
+        // history and the generic default are the last resorts.
+        let target = progressionTarget(for: exercise)
+        let reps = plannedReps(for: exercise) ?? target?.targetReps ?? template?.reps ?? 8
+        let plannedLoad = plannedWeight(for: exercise) ?? target?.targetWeightPounds
 
         switch exercise.trackingType {
         case .weightAndReps:
@@ -268,6 +283,122 @@ final class WorkoutManager {
         SessionSync.shared.broadcast(from: self)
     }
 
+    // MARK: - Supersets
+
+    /// The live superset tag for an exercise, or nil when it's standalone.
+    func supersetTag(for exercise: Exercise) -> Int? {
+        sessionSupersets[exercise.id]
+    }
+
+    /// The other movements sharing an exercise's superset (excludes itself).
+    /// Empty when the exercise is standalone.
+    func supersetPartners(for exercise: Exercise) -> [Exercise] {
+        guard let tag = sessionSupersets[exercise.id] else { return [] }
+        return sessionExercises.filter { $0.id != exercise.id && sessionSupersets[$0.id] == tag }
+    }
+
+    /// The session's exercises collapsed into superset runs, in logging order.
+    /// Standalone movements come back as single-element runs.
+    func sessionSupersetRuns() -> [[Exercise]] {
+        let byID = Dictionary(uniqueKeysWithValues: sessionExercises.map { ($0.id, $0) })
+        return supersetRuns(sessionExercises.map(\.id)) { sessionSupersets[$0] }
+            .map { run in run.compactMap { byID[$0] } }
+    }
+
+    /// The one-based display label ("A", "B", …) for a superset run, so the UI can
+    /// badge grouped movements. Nil for standalone exercises.
+    func supersetLabel(for exercise: Exercise) -> String? {
+        guard sessionSupersets[exercise.id] != nil else { return nil }
+        let runs = sessionSupersetRuns().filter { $0.count > 1 }
+        guard let index = runs.firstIndex(where: { $0.contains(where: { $0.id == exercise.id }) }) else {
+            return nil
+        }
+        return String(UnicodeScalar(UInt8(65 + min(index, 25))))
+    }
+
+    /// Groups a set of movements into one superset, tagging them with a fresh
+    /// group id and pulling them adjacent (keeping their relative order) right
+    /// after the earliest member, so a superset always renders as a contiguous run.
+    func groupAsSuperset(_ exercises: [Exercise]) {
+        let ids = Set(exercises.map(\.id))
+        let members = sessionExercises.filter { ids.contains($0.id) }
+        guard members.count > 1 else { return }
+        let tag = (sessionSupersets.values.max() ?? 0) + 1
+        for member in members { sessionSupersets[member.id] = tag }
+
+        // Rebuild order: keep everything, but relocate later members up next to
+        // the first member so the group is contiguous.
+        guard let anchorIndex = sessionExercises.firstIndex(where: { ids.contains($0.id) }) else { return }
+        var reordered = sessionExercises.filter { !ids.contains($0.id) }
+        let insertAt = min(anchorIndex, reordered.count)
+        reordered.insert(contentsOf: members, at: insertAt)
+        sessionExercises = reordered
+        Haptics.shared.success()
+        SessionSync.shared.broadcast(from: self)
+    }
+
+    /// Whether an exercise has a following movement in session order it can be
+    /// paired with (and isn't already grouped with it).
+    func canGroupWithNextInSession(_ exercise: Exercise) -> Bool {
+        guard let i = sessionExercises.firstIndex(where: { $0.id == exercise.id }),
+              i < sessionExercises.count - 1 else { return false }
+        let next = sessionExercises[i + 1]
+        let tag = sessionSupersets[exercise.id]
+        return tag == nil || sessionSupersets[next.id] != tag
+    }
+
+    /// Supersets a movement with the one right after it in session order, joining
+    /// an existing group when either already has one.
+    func groupWithNextInSession(_ exercise: Exercise) {
+        guard let i = sessionExercises.firstIndex(where: { $0.id == exercise.id }),
+              i < sessionExercises.count - 1 else { return }
+        let next = sessionExercises[i + 1]
+        if let tag = sessionSupersets[exercise.id] ?? sessionSupersets[next.id] {
+            sessionSupersets[exercise.id] = tag
+            sessionSupersets[next.id] = tag
+            Haptics.shared.success()
+            SessionSync.shared.broadcast(from: self)
+        } else {
+            groupAsSuperset([exercise, next])
+        }
+    }
+
+    /// Removes an exercise from its superset. If only one movement is left in the
+    /// group, that one becomes standalone too.
+    func ungroupSuperset(_ exercise: Exercise) {
+        guard let tag = sessionSupersets[exercise.id] else { return }
+        sessionSupersets[exercise.id] = nil
+        let remaining = sessionExercises.filter { sessionSupersets[$0.id] == tag }
+        if remaining.count < 2 {
+            for member in remaining { sessionSupersets[member.id] = nil }
+        }
+        Haptics.shared.tick()
+        SessionSync.shared.broadcast(from: self)
+    }
+
+    /// Starts the rest timer after a logged set — unless the movement is in a
+    /// superset and a partner still owes a set this round, in which case the pair
+    /// is meant to run back-to-back with no rest between. When rest does fire for
+    /// a superset, it uses the longest rest among the group's members.
+    private func startRestAfterLogging(_ exercise: Exercise, isWarmup: Bool) {
+        guard !isWarmup else { return }
+        let partners = supersetPartners(for: exercise)
+        if !partners.isEmpty {
+            let mySets = sets(for: exercise).filter { !$0.isWarmup }.count
+            let partnerIsUp = partners.contains { partner in
+                !skippedExercises.contains(partner.id) &&
+                sets(for: partner).filter { !$0.isWarmup }.count < mySets
+            }
+            if partnerIsUp { return }
+            let rest = ([exercise] + partners).map(\.defaultRestSeconds).max() ?? exercise.defaultRestSeconds
+            if rest > 0 { startRest(seconds: TimeInterval(rest)) }
+            return
+        }
+        if exercise.defaultRestSeconds > 0 {
+            startRest(seconds: TimeInterval(exercise.defaultRestSeconds))
+        }
+    }
+
     /// Reverts an accidentally logged set: deletes it and replays the exercise's
     /// history so any PR it minted is withdrawn.
     func undoSet(_ set: ExerciseSet) {
@@ -304,7 +435,8 @@ final class WorkoutManager {
             durationSeconds: durationSeconds,
             distanceMeters: distanceMeters,
             isWarmup: isWarmup,
-            repWeights: repWeights
+            repWeights: repWeights,
+            supersetGroup: sessionSupersets[exercise.id]
         )
         set.exercise = exercise
         set.session = session
@@ -322,9 +454,7 @@ final class WorkoutManager {
             Haptics.shared.logSet()
         }
 
-        if exercise.defaultRestSeconds > 0 {
-            startRest(seconds: TimeInterval(exercise.defaultRestSeconds))
-        }
+        startRestAfterLogging(exercise, isWarmup: isWarmup)
         SessionSync.shared.broadcast(from: self)
         return event
     }
@@ -336,7 +466,7 @@ final class WorkoutManager {
         name: String,
         date: Date,
         withPartner: Bool = false,
-        entries: [(exercise: Exercise, sets: [PastSetEntry])]
+        entries: [(exercise: Exercise, supersetGroup: Int?, sets: [PastSetEntry])]
     ) {
         let session = WorkoutSession(
             name: name.isEmpty ? "Training Session" : name,
@@ -354,6 +484,7 @@ final class WorkoutManager {
                     durationSeconds: draft.durationSeconds,
                     distanceMeters: draft.distanceMeters,
                     isWarmup: draft.isWarmup,
+                    supersetGroup: entry.supersetGroup,
                     timestamp: date.addingTimeInterval(offset)
                 )
                 set.exercise = entry.exercise
@@ -381,7 +512,7 @@ final class WorkoutManager {
         name: String,
         date: Date,
         withPartner: Bool,
-        entries: [(exercise: Exercise, sets: [PastSetEntry])]
+        entries: [(exercise: Exercise, supersetGroup: Int?, sets: [PastSetEntry])]
     ) {
         var affected = Set(session.sets.compactMap(\.exercise))
 
@@ -404,6 +535,7 @@ final class WorkoutManager {
                     durationSeconds: draft.durationSeconds,
                     distanceMeters: draft.distanceMeters,
                     isWarmup: draft.isWarmup,
+                    supersetGroup: entry.supersetGroup,
                     timestamp: date.addingTimeInterval(offset)
                 )
                 set.exercise = entry.exercise
@@ -548,6 +680,27 @@ final class WorkoutManager {
             .sorted { $0.timestamp < $1.timestamp }
     }
 
+    // MARK: - Reps in reserve (per-exercise effort)
+
+    /// Records how many more reps the lifter felt they had on a movement, asked
+    /// once its sets are all logged (1–5, lower = closer to failure). Stamped onto
+    /// every working set of the exercise so the effort travels with the lift into
+    /// history, the coach's prompt, and the progression engine. Pass nil to clear.
+    func setRepsInReserve(_ value: Int?, for exercise: Exercise) {
+        guard activeSession != nil else { return }
+        for set in sets(for: exercise) where !set.isWarmup {
+            set.repsInReserve = value
+        }
+        try? context.save()
+        Haptics.shared.tick()
+        SessionSync.shared.broadcast(from: self)
+    }
+
+    /// The reps-in-reserve read already recorded for a movement this session, if any.
+    func repsInReserve(for exercise: Exercise) -> Int? {
+        sets(for: exercise).first { !$0.isWarmup && $0.repsInReserve != nil }?.repsInReserve
+    }
+
     // MARK: - Rest timer
 
     /// Wall-clock end of the current rest period, for countdown rendering on
@@ -596,7 +749,8 @@ final class WorkoutManager {
         exercise: Exercise,
         targetSets: Int,
         targetReps: Int?,
-        targetWeight: Double?
+        targetWeight: Double?,
+        supersetGroup: Int?
     )
 
     /// Creates and persists a new routine from an ordered list of draft items.
@@ -651,6 +805,7 @@ final class WorkoutManager {
                 targetSets: entry.targetSets,
                 targetReps: entry.targetReps,
                 targetWeight: entry.targetWeight,
+                supersetGroup: entry.supersetGroup,
                 exercise: entry.exercise
             )
             item.routine = routine
@@ -669,7 +824,8 @@ final class WorkoutManager {
     @discardableResult
     func saveRoutine(from session: WorkoutSession) -> Routine {
         let items = session.setsByExercise.map { group -> RoutineDraftItem in
-            (group.exercise, max(1, group.sets.filter { !$0.isWarmup }.count), nil, nil)
+            let tag = group.sets.first?.supersetGroup
+            return (group.exercise, max(1, group.sets.filter { !$0.isWarmup }.count), nil, nil, tag)
         }
         return createRoutine(name: session.name, items: items)
     }
@@ -681,11 +837,13 @@ final class WorkoutManager {
         var targets: [UUID: Int] = [:]
         var repTargets: [UUID: Int] = [:]
         var weightTargets: [UUID: Double] = [:]
+        var supersets: [UUID: Int] = [:]
         for item in routine.orderedItems {
             if let exercise = item.exercise {
                 targets[exercise.id] = max(1, item.targetSets)
                 if let reps = item.targetReps { repTargets[exercise.id] = reps }
                 if let weight = item.targetWeight, weight > 0 { weightTargets[exercise.id] = weight }
+                if let tag = item.supersetGroup, tag != 0 { supersets[exercise.id] = tag }
             }
         }
         startSession(
@@ -694,7 +852,9 @@ final class WorkoutManager {
             targets: targets,
             repTargets: repTargets,
             weightTargets: weightTargets,
-            withPartner: withPartner
+            supersets: supersets,
+            withPartner: withPartner,
+            routineID: routine.id
         )
     }
 
@@ -708,5 +868,21 @@ final class WorkoutManager {
     /// live session, if the routine that started it prescribed one.
     func plannedWeight(for exercise: Exercise) -> Double? {
         sessionWeightTargets[exercise.id]
+    }
+
+    // MARK: - Progressive overload
+
+    /// The next-session progression target for a movement, derived from its own
+    /// history and the lifter's goal (double progression + heavy/volume
+    /// undulation). Nil for movements progression doesn't model, or when there's
+    /// nothing to suggest. Drives the log card's target banner, its prefill, and
+    /// ordered one-tap logging.
+    func progressionTarget(for exercise: Exercise) -> ProgressionTarget? {
+        let goal = TrainingProfile.current(in: context).goal
+        return ProgressionEngine.nextTarget(
+            for: exercise,
+            goal: goal,
+            withPartner: isTrainingWithPartner
+        )
     }
 }

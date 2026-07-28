@@ -24,6 +24,7 @@ enum OdysseusWorkoutAI {
         exerciseCount: Int,
         durationMinutes: Int?,
         context: TrainingContext,
+        allowSupersets: Bool = false,
         catalog: [ExerciseBrief]
     ) async throws -> CoachedPlan {
         guard let token = KeychainStore.odysseusToken,
@@ -40,7 +41,8 @@ enum OdysseusWorkoutAI {
             exerciseCount: exerciseCount,
             durationMinutes: durationMinutes,
             context: context,
-            catalog: catalog
+            catalog: catalog,
+            allowSupersets: allowSupersets
         )
 
         let reply = try await sendFreshSession(
@@ -202,12 +204,13 @@ enum OdysseusWorkoutAI {
         let targetLoadPounds: Double?
         let restSeconds: Int?
         let note: String?
+        let supersetGroup: Int?
 
         private enum CodingKeys: String, CodingKey {
             case name, exercise
             case sets
             case repRangeLow, repRangeHigh
-            case targetLoadPounds, restSeconds, note
+            case targetLoadPounds, restSeconds, note, supersetGroup
         }
 
         init(from decoder: Decoder) throws {
@@ -227,6 +230,7 @@ enum OdysseusWorkoutAI {
             targetLoadPounds = container.lenientDouble(.targetLoadPounds)
             restSeconds = container.lenientInt(.restSeconds)
             note = try? container.decode(String.self, forKey: .note)
+            supersetGroup = container.lenientInt(.supersetGroup)
         }
 
         /// Defaults are a plain hypertrophy prescription — a reasonable session
@@ -242,7 +246,8 @@ enum OdysseusWorkoutAI {
                 repRangeHigh: high,
                 targetLoadPounds: targetLoadPounds ?? 0,
                 restSeconds: restSeconds ?? 90,
-                note: note?.trimmed ?? ""
+                note: note?.trimmed ?? "",
+                supersetGroup: supersetGroup
             )
         }
     }

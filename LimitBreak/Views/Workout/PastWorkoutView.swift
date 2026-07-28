@@ -195,14 +195,14 @@ struct PastWorkoutView: View {
     // MARK: - Save
 
     private func save() {
-        let payload: [(exercise: Exercise, sets: [PastSetEntry])] = entries.compactMap { entry in
+        let payload: [(exercise: Exercise, supersetGroup: Int?, sets: [PastSetEntry])] = entries.compactMap { entry in
             let sets = entry.sets.compactMap { draft -> PastSetEntry? in
                 let weight = entry.exercise.weightUnit.toPounds(Double(draft.weight) ?? 0)
                 let reps = Int(draft.reps) ?? 0
                 guard weight > 0 || reps > 0 else { return nil }
                 return PastSetEntry(weight: weight, reps: reps, isWarmup: draft.isWarmup)
             }
-            return sets.isEmpty ? nil : (entry.exercise, sets)
+            return sets.isEmpty ? nil : (entry.exercise, nil, sets)
         }
         guard !payload.isEmpty else { return }
         workout.logPastSession(name: sessionName, date: date, withPartner: withPartner, entries: payload)

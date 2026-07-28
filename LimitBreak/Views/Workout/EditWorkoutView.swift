@@ -20,6 +20,9 @@ struct EditWorkoutView: View {
         let id = UUID()
         var exercise: Exercise
         var sets: [SetDraft] = [SetDraft()]
+        /// Superset tag carried from the original session so editing sets never
+        /// wipes the pairing.
+        var supersetGroup: Int? = nil
     }
 
     private struct SetDraft: Identifiable {
@@ -49,7 +52,8 @@ struct EditWorkoutView: View {
                         durationSeconds: set.durationSeconds,
                         distanceMeters: set.distanceMeters
                     )
-                }
+                },
+                supersetGroup: group.sets.first?.supersetGroup
             )
         })
     }
@@ -223,7 +227,7 @@ struct EditWorkoutView: View {
     // MARK: - Save
 
     private func save() {
-        let payload: [(exercise: Exercise, sets: [PastSetEntry])] = entries.compactMap { entry in
+        let payload: [(exercise: Exercise, supersetGroup: Int?, sets: [PastSetEntry])] = entries.compactMap { entry in
             let sets = entry.sets.compactMap { draft -> PastSetEntry? in
                 let enteredWeight = Double(draft.weight) ?? 0
                 let weight = entry.exercise.weightUnit.toPounds(enteredWeight)
@@ -238,7 +242,7 @@ struct EditWorkoutView: View {
                     distanceMeters: draft.distanceMeters
                 )
             }
-            return sets.isEmpty ? nil : (entry.exercise, sets)
+            return sets.isEmpty ? nil : (entry.exercise, entry.supersetGroup, sets)
         }
         guard !payload.isEmpty else { return }
         workout.updateSession(session, name: sessionName, date: date, withPartner: withPartner, entries: payload)

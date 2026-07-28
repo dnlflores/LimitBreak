@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// Per-exercise logging card built around planned set rows.
+/// Compact, image-forward session card for one movement.
 ///
-/// Expanded, the card lists every set: checked-off sets show their summary
-/// with a crown for PRs and a tappable check to undo; upcoming sets are dim
-/// placeholders. One big value pair below the rows edits whatever LOG SET
-/// will record next. Collapsed, the card shows a compact progress strip, and
-/// Replace/Remove controls cover mid-session pivots.
+/// Shows the movement's example image with the targeted muscle badged in the
+/// corner, its name, a "sets × reps × weight" summary, and a progress strip
+/// counting off the planned sets. Tapping the card opens the full logging sheet
+/// (`ExerciseLogSheet`), which is where sets are edited and recorded. During
+/// superset-building the whole surface becomes a selection checkbox instead.
 struct ExerciseLogCard: View {
     @Environment(WorkoutManager.self) private var workout
     let exercise: Exercise
@@ -15,70 +15,47 @@ struct ExerciseLogCard: View {
     var grip: ReorderGrip?
 
     /// When the session is in superset-building mode the card turns into a
-    /// checkbox: normal controls are inert and a tap toggles selection instead.
+    /// checkbox: the tap-to-open action is inert and a tap toggles selection.
     var isSelecting: Bool = false
     var isSelected: Bool = false
     /// Already part of an existing superset: shown pre-filled but not tappable, so
     /// a new superset can't be built over movements already grouped in another.
     var isLocked: Bool = false
     var onToggleSelect: (() -> Void)?
+    /// Opens the logging sheet for this movement.
+    var onOpen: (() -> Void)?
 
-    @State private var drafts: [SetDraft] = []
-    @State private var isWarmup = false
-    @State private var isExpanded = false
-    @State private var didPrefill = false
-    /// The lifter's reps-in-reserve read for this movement, asked once every set
-    /// is logged (1–5, lower = closer to failure). Nil until answered.
-    @State private var repsInReserve: Int?
     @State private var showReplacePicker = false
     @State private var showRemoveConfirmation = false
     /// The progressive-overload target for this movement, resolved once when the
-    /// card appears. Drives the target banner and the prefilled numbers.
+    /// card appears — drives the summary's rep range and working weight.
     @State private var target: ProgressionTarget?
 
-    /// One planned set. `primary` is weight (lbs) for weight-based types,
-    /// seconds for duration-based types, or the custom-metric value.
-    /// `loggedSet` links the persisted record once the set is checked off.
-    private struct SetDraft: Identifiable {
-        let id = UUID()
-        var primary: Double
-        var reps: Int
-        var distance: Double = 1600
-        var loggedSet: ExerciseSet?
-
-        var isLogged: Bool { loggedSet != nil }
-    }
-
     var body: some View {
-        ZStack {
-            VStack(alignment: .leading, spacing: 14) {
-                header
-                if isExpanded {
-                    targetBanner
-                    setRows
-                    nextSetInputs
-                    addSetButton
-                    warmupToggle
-                    logButton
-                    repsInReserveSection
-                    sessionActions
-                } else {
-                    progressStrip
+        cardButton
+            // The muscle target and drag grip float over the image banner.
+            .overlay(alignment: .topLeading) {
+                MuscleBadge(exercise: exercise)
+                    .padding(10)
+            }
+            .overlay(alignment: .topTrailing) {
+                if let grip, !isSelecting {
+                    // Backed so the drag handle reads clearly over the image
+                    // banner instead of vanishing against a busy photo — the
+                    // same glass treatment as the muscle badge opposite it.
+                    grip
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().strokeBorder(Theme.glassBorder, lineWidth: 1))
+                        .padding(10)
                 }
             }
-            .cardStyle()
-            // In selection mode the card's own buttons and drag grip go inert so
-            // the whole surface reads as one big checkbox.
             .disabled(isSelecting)
-
-            if isSelecting { selectionOverlay }
-        }
-        .onAppear(perform: initialSetup)
-        .onChange(of: workout.sets(for: exercise).count) {
-            // Sets can arrive from the watch or the Live Activity button;
-            // fold them into the planned rows so the card stays in step.
-            adoptLoggedSets()
-        }
+            // The selection checkbox layers above everything and stays live even
+            // while the card beneath is disabled during superset building.
+            .overlay {
+                if isSelecting { selectionOverlay }
+            }
+            .onAppear { if target == nil { target = workout.progressionTarget(for: exercise) } }
         .sheet(isPresented: $showReplacePicker) {
             ExercisePickerSheet { replacement in
                 workout.replaceExercise(exercise, with: replacement)
@@ -99,6 +76,78 @@ struct ExerciseLogCard: View {
                 ? "This also deletes the \(logged) set\(logged == 1 ? "" : "s") you logged for it in this session."
                 : "Removes this movement from the session.")
         }
+    }
+
+    // MARK: - Card
+
+    private var cardButton: some View {
+        Button {
+            Haptics.shared.tick()
+            onOpen?()
+        } label: {
+            VStack(spacing: 0) {
+                ExerciseImageBanner(exercise: exercise, height: 150)
+                infoSection
+            }
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.glassBorder, lineWidth: 1))
+            .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+            .contentShape(RoundedRectangle(cornerRadius: 20))
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                Haptics.shared.tick()
+                showReplacePicker = true
+            } label: {
+                Label("Replace", systemImage: "arrow.triangle.2.circlepath")
+            }
+            if workout.supersetTag(for: exercise) != nil {
+                Button {
+                    workout.ungroupSuperset(exercise)
+                } label: {
+                    Label("Ungroup Superset", systemImage: "rectangle.split.1x2")
+                }
+            }
+            Button(role: .destructive) {
+                Haptics.shared.tick()
+                showRemoveConfirmation = true
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+        }
+    }
+
+    /// The text block beneath the image: name + progress count, the plan
+    /// summary, and the per-set progress strip.
+    private var infoSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let letter = workout.supersetLabel(for: exercise) {
+                Label("SUPERSET \(letter)", systemImage: "link")
+                    .font(.caption2.weight(.bold))
+                    .kerning(0.5)
+                    .foregroundStyle(Theme.teal)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(exercise.name)
+                    .font(.headline)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(2)
+                Spacer(minLength: 4)
+                Text("\(loggedCount)/\(plannedCount)")
+                    .font(.subheadline.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(isComplete ? Theme.emerald : Theme.textDim)
+            }
+            Text(summaryLine)
+                .font(.caption)
+                .foregroundStyle(Theme.textDim)
+            progressStrip
+                .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
     }
 
     // MARK: - Selection
@@ -133,883 +182,92 @@ struct ExerciseLogCard: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    // MARK: - Derived state
+    // MARK: - Progress strip
 
-    private var loggedCount: Int { drafts.filter(\.isLogged).count }
-
-    private var nextPendingIndex: Int? { drafts.firstIndex { !$0.isLogged } }
-
-    private var nextPending: SetDraft? { nextPendingIndex.map { drafts[$0] } }
-
-    /// Body weight factored into bodyweight/assisted movements (Health first,
-    /// manual fallback), matching what WorkoutManager will stamp on the set.
-    private var bodyWeight: Double? {
-        guard exercise.trackingType == .bodyweightAndReps || exercise.isAssisted else { return nil }
-        return HealthKitManager.shared.currentBodyWeightLbs
-    }
-
-    private var showsOneRM: Bool {
-        guard let next = nextPending else { return false }
-        switch exercise.trackingType {
-        case .weightAndReps: return exercise.weightUnit.toPounds(next.primary) + (bodyWeight ?? 0) > 0
-        case .bodyweightAndReps: return next.primary > 0 || bodyWeight != nil
-        default: return false
-        }
-    }
-
-    /// Live estimated 1RM in canonical pounds (the draft's added weight is in
-    /// the exercise's unit, so convert before combining with body weight).
-    private var liveOneRepMax: Double {
-        guard let next = nextPending else { return 0 }
-        let addedPounds = exercise.usesWeightUnit ? exercise.weightUnit.toPounds(next.primary) : next.primary
-        return exercise.formula.estimate(weight: addedPounds + (bodyWeight ?? 0), reps: next.reps)
-    }
-
-    /// Live preview: would checking off the next set shatter the ceiling?
-    private var wouldLimitBreak: Bool {
-        showsOneRM && liveOneRepMax > exercise.ceiling(for: "1RM") && exercise.ceiling(for: "1RM") > 0
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        // The grip sits outside the button so dragging it never toggles the card.
-        HStack(alignment: .top, spacing: 4) {
-            if let grip { grip }
-            expandButton
-        }
-    }
-
-    private var expandButton: some View {
-        Button {
-            withAnimation(.snappy) { isExpanded.toggle() }
-            Haptics.shared.tick()
-        } label: {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    if let letter = workout.supersetLabel(for: exercise) {
-                        Label("SUPERSET \(letter)", systemImage: "link")
-                            .font(.caption2.weight(.bold))
-                            .kerning(0.5)
-                            .foregroundStyle(Theme.teal)
-                    }
-                    HStack(spacing: 6) {
-                        Text(exercise.name)
-                            .font(.headline)
-                            .multilineTextAlignment(.leading)
-                        Image(systemName: "chevron.down")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(Theme.textDim)
-                            .rotationEffect(.degrees(isExpanded ? 0 : -90))
-                    }
-                    Text(exercise.muscleGroupDisplay)
-                        .font(.caption)
-                        .foregroundStyle(Theme.textDim)
-                }
-                Spacer()
-                if isExpanded && showsOneRM {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("e1RM · \(exercise.weightUnit.abbreviation)")
-                            .font(.caption)
-                            .foregroundStyle(Theme.textDim)
-                        Text(exercise.displayWeightString(fromPounds: liveOneRepMax))
-                            .font(.title3.weight(.bold))
-                            .monospacedDigit()
-                            .foregroundStyle(wouldLimitBreak ? Theme.gold : .primary)
-                    }
-                } else if !isExpanded {
-                    Text("\(loggedCount)/\(drafts.count)")
-                        .font(.subheadline.weight(.bold))
-                        .monospacedDigit()
-                        .foregroundStyle(loggedCount == drafts.count && !drafts.isEmpty ? Theme.emerald : Theme.textDim)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Progression target
-
-    /// The "aim for N×R @ W — beat last time" banner. Shown while working sets
-    /// remain, so the goal for this movement is explicit and last session's
-    /// numbers are the thing to beat.
-    @ViewBuilder
-    private var targetBanner: some View {
-        if let target, nextPending != nil {
-            HStack(alignment: .center, spacing: 10) {
-                Image(systemName: "target")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(Theme.violet)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(targetHeadline(target))
-                        .font(.subheadline.weight(.bold))
-                        .monospacedDigit()
-                    Text(targetSubline(target))
-                        .font(.caption2)
-                        .foregroundStyle(Theme.textDim)
-                }
-                Spacer()
-                Text(target.emphasis.label.uppercased())
-                    .font(.caption2.weight(.bold))
-                    .kerning(0.5)
-                    .foregroundStyle(target.emphasis == .heavy ? Theme.gold : Theme.teal)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        (target.emphasis == .heavy ? Theme.gold : Theme.teal).opacity(0.14),
-                        in: Capsule()
-                    )
-            }
-            .padding(.vertical, 10)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.violet.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
-        }
-    }
-
-    /// "Aim for 3×9 · 135 lb" — the resolved target for the next set.
-    private func targetHeadline(_ target: ProgressionTarget) -> String {
-        var text = "Aim for \(target.sets)\u{00D7}\(target.targetReps)"
-        if let pounds = target.targetWeightPounds, pounds > 0 {
-            text += " \u{00B7} \(exercise.displayWeightString(fromPounds: pounds)) \(exercise.weightUnit.abbreviation)"
-        }
-        return text
-    }
-
-    /// "Beat last 3×8 @ 135 lb", or the track's descriptor when there's no
-    /// prior effort to beat yet.
-    private func targetSubline(_ target: ProgressionTarget) -> String {
-        guard let previous = target.previous else { return target.emphasis.descriptor }
-        var text = "Beat last \(previous.sets)\u{00D7}\(previous.topReps)"
-        if previous.weightPounds > 0 {
-            text += " @ \(exercise.displayWeightString(fromPounds: previous.weightPounds)) \(exercise.weightUnit.abbreviation)"
-        }
-        return text
-    }
-
-    // MARK: - Collapsed progress
-
-    /// Visual march through the planned sets: one segment per set, filled as
-    /// each one is checked off (gold when it minted a PR).
+    /// One segment per planned set, filled as each is logged (gold for a PR).
     private var progressStrip: some View {
-        HStack(spacing: 6) {
-            ForEach(Array(drafts.enumerated()), id: \.element.id) { _, draft in
+        let sets = workout.sets(for: exercise)
+        let total = max(plannedCount, 1)
+        return HStack(spacing: 6) {
+            ForEach(0..<total, id: \.self) { index in
                 Capsule()
-                    .fill(segmentColor(for: draft))
+                    .fill(segmentColor(index: index, sets: sets))
                     .frame(height: 6)
                     .overlay(
                         Capsule().strokeBorder(
-                            draft.isLogged ? Color.clear : Theme.stroke,
+                            index < sets.count ? Color.clear : Theme.stroke,
                             lineWidth: 1
                         )
                     )
             }
-            Text(progressLabel)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Theme.textDim)
-                .fixedSize()
-                .padding(.leading, 4)
         }
     }
 
-    private func segmentColor(for draft: SetDraft) -> Color {
-        guard draft.isLogged else { return Color.white.opacity(0.05) }
-        return draft.loggedSet?.isPR == true ? Theme.gold : Theme.emerald
+    private func segmentColor(index: Int, sets: [ExerciseSet]) -> Color {
+        guard index < sets.count else { return Color.white.opacity(0.05) }
+        return sets[index].isPR ? Theme.gold : Theme.emerald
     }
 
-    private var progressLabel: String {
-        if drafts.isEmpty { return "no sets" }
-        return loggedCount == drafts.count ? "complete" : "\(loggedCount)/\(drafts.count) sets"
-    }
+    // MARK: - Derived state
 
-    // MARK: - Set rows
+    private var loggedCount: Int { workout.sets(for: exercise).count }
 
-    private var setRows: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(drafts.enumerated()), id: \.element.id) { index, draft in
-                if draft.isLogged {
-                    loggedRow(index: index, draft: draft)
-                } else {
-                    upcomingRow(index: index)
-                }
-            }
-        }
-    }
+    private var plannedCount: Int { workout.targetSets(for: exercise) }
 
-    /// A checked-off set: summary text, crown for PRs, tappable check to undo.
-    private func loggedRow(index: Int, draft: SetDraft) -> some View {
-        let set = draft.loggedSet!
-        return HStack(spacing: 10) {
-            Text("SET \(index + 1)")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(set.isPR ? Theme.gold : Theme.emerald)
+    private var isComplete: Bool { plannedCount > 0 && loggedCount >= plannedCount }
 
-            Text(setSummary(set))
-                .font(.subheadline.weight(.medium))
-                .monospacedDigit()
-
-            Spacer()
-
-            if set.isPR {
-                Label("PR", systemImage: "crown.fill")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(Theme.gold)
-            } else if set.isWarmup {
-                Text("warmup")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textDim)
-            }
-
-            Button {
-                undoSet(at: index)
-            } label: {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(Theme.emerald)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Undo set \(index + 1)")
-        }
-        .padding(.vertical, 9)
-        .padding(.horizontal, 12)
-        .background(
-            set.isPR ? Theme.gold.opacity(0.10) : Theme.emerald.opacity(0.07),
-            in: RoundedRectangle(cornerRadius: 10)
-        )
-    }
-
-    /// A planned set still to come: dim placeholder line. Long-press to remove.
-    private func upcomingRow(index: Int) -> some View {
-        HStack(spacing: 10) {
-            Text("SET \(index + 1)")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.textDim)
-
-            Text("…")
-                .font(.subheadline)
-                .foregroundStyle(Theme.textDim)
-
-            Spacer()
-
-            Text("upcoming")
-                .font(.subheadline)
-                .foregroundStyle(Theme.textDim)
-        }
-        .padding(.vertical, 9)
-        .padding(.horizontal, 12)
-        .contentShape(Rectangle())
-        .contextMenu {
-            if canDeleteRows {
-                Button(role: .destructive) {
-                    deleteSet(at: index)
-                } label: {
-                    Label("Remove Set", systemImage: "trash")
-                }
-            }
-        }
-    }
-
-    private var canDeleteRows: Bool { drafts.count > 1 }
-
-    private func setSummary(_ set: ExerciseSet) -> String {
+    /// "3 sets × 8–10 × 30 lb" — the plan at a glance. Reps come as a range when
+    /// the progression target frames one; weight from the coached plan, the
+    /// target, or the last logged working set.
+    private var summaryLine: String {
+        let sets = plannedCount
+        let setsText = "\(sets) set\(sets == 1 ? "" : "s")"
         switch exercise.trackingType {
-        case .weightAndReps:
-            return "\(exercise.displayWeightString(fromPounds: set.weight)) \(exercise.weightUnit.abbreviation) × \(set.reps)"
-        case .bodyweightAndReps:
-            if set.weight > 0 { return "BW+\(exercise.displayWeightString(fromPounds: set.weight)) × \(set.reps)" }
-            if set.weight < 0 { return "BW\(exercise.displayWeightString(fromPounds: set.weight)) × \(set.reps)" }
-            return "BW × \(set.reps)"
-        case .durationAndReps:
-            return "\((set.durationSeconds ?? 0).clockString) × \(set.reps)"
+        case .weightAndReps, .bodyweightAndReps:
+            var parts = [setsText, repsText]
+            if let weight = weightText { parts.append(weight) }
+            return parts.joined(separator: " × ")
+        case .customMetric, .durationAndReps:
+            return "\(setsText) × \(repsText)"
         case .timeAndDistance:
-            return "\(Int(set.distanceMeters ?? 0)) m in \((set.durationSeconds ?? 0).clockString)"
-        case .customMetric:
-            return "\(set.weight.cleanWeight) \(exercise.customMetricUnit ?? "") × \(set.reps)"
+            return setsText
         }
     }
 
-    // MARK: - Next-set inputs
-
-    /// One big value pair that edits whatever LOG SET records next.
-    @ViewBuilder
-    private var nextSetInputs: some View {
-        if let index = nextPendingIndex {
-            HStack(spacing: 12) {
-                switch exercise.trackingType {
-                case .weightAndReps, .bodyweightAndReps, .customMetric:
-                    VStack(spacing: 6) {
-                        BigValueField(
-                            value: $drafts[index].primary,
-                            step: exercise.defaultIncrement,
-                            allowsNegative: exercise.isAssisted
-                        )
-                        if exercise.usesWeightUnit {
-                            unitToggle
-                        }
-                    }
-                    separator("x")
-                    VStack(spacing: 6) {
-                        BigValueField(value: repsBinding(index), step: 1, allowsNegative: false, minimum: 1)
-                        if exercise.usesWeightUnit {
-                            Text("reps")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(Theme.textDim)
-                                .frame(height: 24)
-                        }
-                    }
-                    .frame(maxWidth: 110)
-                case .durationAndReps:
-                    BigValueField(value: $drafts[index].primary, step: 5, allowsNegative: false)
-                    separator("x")
-                    BigValueField(value: repsBinding(index), step: 1, allowsNegative: false, minimum: 1)
-                        .frame(maxWidth: 110)
-                case .timeAndDistance:
-                    BigValueField(value: $drafts[index].primary, step: 15, allowsNegative: false)
-                    separator("·")
-                    BigValueField(value: $drafts[index].distance, step: 100, allowsNegative: false)
-                }
-            }
-        }
-    }
-
-    private func separator(_ symbol: String) -> some View {
-        Text(symbol)
-            .font(.headline)
-            .foregroundStyle(Theme.textDim)
-    }
-
-    private func repsBinding(_ index: Int) -> Binding<Double> {
-        Binding(
-            get: { Double(drafts[index].reps) },
-            set: { drafts[index].reps = max(1, Int($0)) }
-        )
-    }
-
-    /// Compact lb/kg switch sitting beneath the weight field. Switching preserves
-    /// the physical load of any pending sets by re-expressing them in the new unit.
-    private var unitToggle: some View {
-        HStack(spacing: 0) {
-            ForEach(WeightUnit.allCases) { unit in
-                let selected = exercise.weightUnit == unit
-                Button {
-                    setUnit(unit)
-                } label: {
-                    Text(unit.tag)
-                        .font(.caption2.weight(.bold))
-                        .kerning(0.5)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 5)
-                        .foregroundStyle(selected ? .black : Theme.textDim)
-                        .background(
-                            selected ? AnyShapeStyle(Theme.emerald) : AnyShapeStyle(Color.clear),
-                            in: RoundedRectangle(cornerRadius: 7)
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(2)
-        .frame(height: 24)
-        .background(Theme.surfaceRaised.opacity(0.5), in: RoundedRectangle(cornerRadius: 9))
-    }
-
-    private func setUnit(_ unit: WeightUnit) {
-        let old = exercise.weightUnit
-        guard old != unit else { return }
-        // Keep pending inputs at the same physical load across the switch.
-        for i in drafts.indices where !drafts[i].isLogged {
-            drafts[i].primary = unit.fromPounds(old.toPounds(drafts[i].primary))
-        }
-        workout.setWeightUnit(unit, for: exercise)
-        Haptics.shared.tick()
-    }
-
-    private var addSetButton: some View {
-        Button {
-            addSet()
-        } label: {
-            Label("Add Set", systemImage: "plus.circle.fill")
-                .font(.subheadline.weight(.semibold))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(Theme.emerald)
-    }
-
-    // MARK: - Warmup & actions
-
-    private var warmupToggle: some View {
-        HStack {
-            Toggle(isOn: $isWarmup) {
-                Text("Warmup")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textDim)
-            }
-            .toggleStyle(.button)
-            .tint(Theme.violet)
-
-            Spacer()
-
-            Text(loadHint)
-                .font(.caption2)
-                .foregroundStyle(Theme.textDim)
-        }
-    }
-
-    private var loadHint: String {
-        if let bodyWeight {
-            return "incl. BW \(bodyWeight.cleanWeight) lbs"
-        }
-        return exercise.isAssisted ? "Assisted — negative = help" : ""
-    }
-
-    @ViewBuilder
-    private var logButton: some View {
-        if nextPending != nil {
-            Button {
-                logNextSet()
-            } label: {
-                Text(isWarmup ? "LOG WARMUP" : "LOG SET")
-                    .font(.subheadline.weight(.bold))
-                    .kerning(1)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(
-                        wouldLimitBreak ? AnyShapeStyle(Theme.limitBreakGradient) : AnyShapeStyle(Theme.emerald),
-                        in: RoundedRectangle(cornerRadius: 12)
-                    )
-                    .foregroundStyle(.black)
-            }
-        } else {
-            Label("All sets complete", systemImage: "checkmark.seal.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.emerald)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-        }
-    }
-
-    // MARK: - Reps in reserve
-
-    /// Whether this movement has at least one working (non-warmup) set logged —
-    /// the effort question is only meaningful once real work is on the board.
-    private var hasWorkingSet: Bool {
-        drafts.contains { $0.loggedSet?.isWarmup == false }
-    }
-
-    /// Once every set is checked off, ask how many more reps were left in the
-    /// tank for this lift (1–5). The answer is stamped on the movement's sets so
-    /// the coach and progression engine can read effort per lift, not per session.
-    @ViewBuilder
-    private var repsInReserveSection: some View {
-        if nextPending == nil && hasWorkingSet {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("How many more reps could you have done?")
-                    .font(.subheadline.weight(.semibold))
-                Text("Your honest read tunes how hard your coach pushes this lift next time.")
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textDim)
-
-                HStack(spacing: 8) {
-                    ForEach(1...5, id: \.self) { value in
-                        repsInReserveButton(value)
-                    }
-                }
-
-                HStack {
-                    Text("1 · near failure")
-                    Spacer()
-                    Text("5 · easy")
-                }
-                .font(.caption2)
-                .foregroundStyle(Theme.textDim)
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.emerald.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-        }
-    }
-
-    private func repsInReserveButton(_ value: Int) -> some View {
-        let selected = repsInReserve == value
-        return Button {
-            Haptics.shared.tick()
-            withAnimation(.snappy) { repsInReserve = value }
-            workout.setRepsInReserve(value, for: exercise)
-        } label: {
-            Text("\(value)")
-                .font(.headline.weight(.bold))
-                .monospacedDigit()
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .foregroundStyle(selected ? .black : .primary)
-                .background(
-                    selected ? AnyShapeStyle(Theme.emerald) : AnyShapeStyle(Theme.surfaceRaised.opacity(0.5)),
-                    in: RoundedRectangle(cornerRadius: 10)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(selected ? Color.clear : Theme.stroke, lineWidth: 1)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(value) more rep\(value == 1 ? "" : "s") in reserve")
-    }
-
-    /// Mid-session pivots: pair into a superset, swap this movement for another,
-    /// or drop it entirely.
-    private var sessionActions: some View {
-        VStack(spacing: 10) {
-            supersetAction
-            HStack(spacing: 12) {
-                Button {
-                    Haptics.shared.tick()
-                    showReplacePicker = true
-                } label: {
-                    Label("Replace", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.caption.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .foregroundStyle(Theme.teal)
-                        .background(Theme.teal.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    Haptics.shared.tick()
-                    showRemoveConfirmation = true
-                } label: {
-                    Label("Remove", systemImage: "trash")
-                        .font(.caption.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .foregroundStyle(Theme.crimson)
-                        .background(Theme.crimson.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.top, 2)
-    }
-
-    /// Superset control: shown only when this movement is already in a superset,
-    /// to remove it. Building a superset happens from the session's options menu.
-    @ViewBuilder
-    private var supersetAction: some View {
-        if workout.supersetTag(for: exercise) != nil {
-            Button {
-                workout.ungroupSuperset(exercise)
-            } label: {
-                Label("Ungroup Superset", systemImage: "rectangle.split.1x2")
-                    .font(.caption.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
-                    .foregroundStyle(Theme.textDim)
-                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    // MARK: - Mutations
-
-    private func addSet() {
-        let template = drafts.last
-        var draft = SetDraft(
-            primary: template?.primary ?? initialPrimary,
-            reps: template?.reps ?? 8
-        )
-        if let template { draft.distance = template.distance }
-        withAnimation(.snappy) { drafts.append(draft) }
-        Haptics.shared.tick()
-    }
-
-    private func deleteSet(at index: Int) {
-        guard canDeleteRows, drafts.indices.contains(index), !drafts[index].isLogged else { return }
-        _ = withAnimation(.snappy) { drafts.remove(at: index) }
-        Haptics.shared.tick()
-    }
-
-    private func logNextSet() {
-        guard let index = nextPendingIndex else { return }
-        let draft = drafts[index]
-
-        switch exercise.trackingType {
-        case .weightAndReps, .bodyweightAndReps:
-            // Draft weight is in the exercise's unit; store canonical pounds.
-            workout.logSet(exercise: exercise, weight: exercise.weightUnit.toPounds(draft.primary), reps: draft.reps, isWarmup: isWarmup)
-        case .customMetric:
-            workout.logSet(exercise: exercise, weight: draft.primary, reps: draft.reps, isWarmup: isWarmup)
-        case .durationAndReps:
-            workout.logSet(exercise: exercise, weight: 0, reps: draft.reps, durationSeconds: draft.primary, isWarmup: isWarmup)
-        case .timeAndDistance:
-            workout.logSet(exercise: exercise, weight: 0, reps: 1, durationSeconds: draft.primary, distanceMeters: draft.distance, isWarmup: isWarmup)
-        }
-
-        // The set just persisted is the newest one for this exercise.
-        drafts[index].loggedSet = workout.lastSet(for: exercise)
-        isWarmup = false
-    }
-
-    private func undoSet(at index: Int) {
-        guard drafts.indices.contains(index), let set = drafts[index].loggedSet else { return }
-        workout.undoSet(set)
-        withAnimation(.snappy) { drafts[index].loggedSet = nil }
-    }
-
-    // MARK: - Prefill
-
-    private var initialPrimary: Double {
-        switch exercise.trackingType {
-        case .weightAndReps: return exercise.isAssisted ? 0 : exercise.weightUnit.fromPounds(45)
-        case .durationAndReps: return 30
-        case .timeAndDistance: return 300
-        default: return 0
-        }
-    }
-
-    /// Cards for movements with nothing logged yet open ready to plan; once
-    /// sets exist the card arrives collapsed, showing progress.
-    private func initialSetup() {
-        guard !didPrefill else { return }
-        didPrefill = true
-        target = workout.progressionTarget(for: exercise)
-        prefillFromHistory()
-        adoptLoggedSets()
-        repsInReserve = workout.repsInReserve(for: exercise)
-        isExpanded = loggedCount == 0
-    }
-
-    /// The routine's coached working weight for this movement, converted into
-    /// the card's display unit — nil when the session carries no such target.
-    private var plannedPrimary: Double? {
-        switch exercise.trackingType {
-        case .weightAndReps, .bodyweightAndReps:
-            guard let pounds = workout.plannedWeight(for: exercise) else { return nil }
-            return exercise.weightUnit.fromPounds(pounds)
-        case .customMetric:
-            return workout.plannedWeight(for: exercise)
-        case .durationAndReps, .timeAndDistance:
-            return nil
-        }
-    }
-
-    /// The progression target's working weight as the card's primary value, in
-    /// the display unit. Unloaded bodyweight targets (no weight) fall back to the
-    /// last logged load, then the movement's default.
-    private func targetPrimary(_ target: ProgressionTarget) -> Double {
-        switch exercise.trackingType {
-        case .weightAndReps, .bodyweightAndReps:
-            if let pounds = target.targetWeightPounds {
-                return exercise.weightUnit.fromPounds(pounds)
-            }
-        case .customMetric:
-            if let value = target.targetWeightPounds { return value }
-        default:
-            break
-        }
-        if let last = exercise.sets.filter({ !$0.isWarmup }).max(by: { $0.timestamp < $1.timestamp }) {
-            return primaryValue(from: last)
-        }
-        return initialPrimary
-    }
-
-    /// Plan rows from the coached routine that started this session, else the
-    /// movement's most recent session, else a sensible default.
-    private func prefillFromHistory() {
-        // A coached routine's prescription wins over history: open every planned
-        // set on the reps and weight the plan asked for.
-        let plannedReps = workout.plannedReps(for: exercise)
-        if plannedReps != nil || plannedPrimary != nil {
-            let count = max(1, workout.targetSets(for: exercise))
-            drafts = (0..<count).map { _ in
-                SetDraft(primary: plannedPrimary ?? initialPrimary, reps: plannedReps ?? 8)
-            }
-            return
-        }
-        // No coached routine: open on the progression target so every set starts
-        // one step ahead of last session (a rep more, or a heavier load).
+    private var repsText: String {
         if let target {
-            let count = max(1, target.sets)
-            let primary = targetPrimary(target)
-            drafts = (0..<count).map { _ in SetDraft(primary: primary, reps: target.targetReps) }
-            return
-        }
-        guard let latest = exercise.sets.max(by: { $0.timestamp < $1.timestamp }),
-              let lastSession = latest.session else {
-            drafts = (0..<3).map { _ in SetDraft(primary: initialPrimary, reps: 8) }
-            return
-        }
-        let historySets = exercise.sets
-            .filter { $0.session?.id == lastSession.id && !$0.isWarmup }
-            .sorted { $0.timestamp < $1.timestamp }
-        guard !historySets.isEmpty else {
-            drafts = (0..<3).map { _ in SetDraft(primary: initialPrimary, reps: 8) }
-            return
-        }
-        drafts = historySets.map { set in
-            var draft = SetDraft(primary: primaryValue(from: set), reps: max(1, set.reps))
-            draft.distance = set.distanceMeters ?? 1600
-            return draft
-        }
-    }
-
-    /// Reattach any sets already logged this session (card re-created on scroll,
-    /// tab switch, or replace-undo) so progress survives view identity churn.
-    private func adoptLoggedSets() {
-        let logged = workout.sets(for: exercise)
-        guard !logged.isEmpty else { return }
-        for (offset, set) in logged.enumerated() {
-            var draft = SetDraft(primary: primaryValue(from: set), reps: max(1, set.reps))
-            draft.distance = set.distanceMeters ?? 1600
-            draft.loggedSet = set
-            if offset < drafts.count {
-                drafts[offset] = draft
-            } else {
-                drafts.append(draft)
+            if target.repRangeLow != target.repRangeHigh {
+                return "\(target.repRangeLow)–\(target.repRangeHigh) reps"
             }
+            return "\(target.targetReps) reps"
         }
+        if let planned = workout.plannedReps(for: exercise) { return "\(planned) reps" }
+        if let last = lastWorkingSet { return "\(last.reps) reps" }
+        return "8 reps"
     }
 
-    private func primaryValue(from set: ExerciseSet) -> Double {
-        switch exercise.trackingType {
-        case .durationAndReps, .timeAndDistance: return set.durationSeconds ?? 0
-        case .weightAndReps, .bodyweightAndReps: return exercise.weightUnit.fromPounds(set.weight)
-        case .customMetric: return set.weight
+    private var weightText: String? {
+        let pounds: Double?
+        if let planned = workout.plannedWeight(for: exercise) {
+            pounds = planned
+        } else if let weight = target?.targetWeightPounds {
+            pounds = weight
+        } else if let last = lastWorkingSet {
+            pounds = last.weight
+        } else {
+            pounds = nil
         }
-    }
-}
-
-// MARK: - Big value field
-
-/// A large, tappable value field for the next set: type directly, or scrub
-/// horizontally to step the value with a haptic tick per increment.
-private struct BigValueField: View {
-    @Binding var value: Double
-    let step: Double
-    let allowsNegative: Bool
-    var minimum: Double? = nil
-
-    @State private var dragAccumulator: CGFloat = 0
-    @FocusState private var isEditing: Bool
-
-    var body: some View {
-        TextField("", value: $value, format: .number)
-            .keyboardType(allowsNegative ? .numbersAndPunctuation : .decimalPad)
-            .multilineTextAlignment(.center)
-            .font(.system(.title2, design: .rounded, weight: .bold))
-            .monospacedDigit()
-            .focused($isEditing)
-            .frame(maxWidth: .infinity, minHeight: 56)
-            .background(Theme.surfaceRaised.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(Color.white.opacity(isEditing ? 0.45 : 0.22), lineWidth: 1.5)
-            )
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8)
-                    .onChanged { gesture in
-                        // Mostly-vertical drags belong to the scroll view, which
-                        // owns interactive keyboard dismissal — without this the
-                        // swipe that puts the keyboard away also nudges the value.
-                        guard abs(gesture.translation.width) > abs(gesture.translation.height) else {
-                            // Re-baseline so a drag that turns horizontal later
-                            // doesn't cash in the width it covered while vertical.
-                            dragAccumulator = gesture.translation.width
-                            return
-                        }
-                        let delta = gesture.translation.width - dragAccumulator
-                        if abs(delta) >= 9 {
-                            adjust(by: delta > 0 ? step : -step)
-                            dragAccumulator = gesture.translation.width
-                        }
-                    }
-                    .onEnded { _ in dragAccumulator = 0 }
-            )
-            .onChange(of: value) { _, newValue in
-                value = clamped(newValue)
-            }
-    }
-
-    private func clamped(_ proposed: Double) -> Double {
-        var result = proposed
-        if let minimum { result = max(minimum, result) }
-        if !allowsNegative { result = max(minimum ?? 0, result) }
-        return result
-    }
-
-    private func adjust(by delta: Double) {
-        let newValue = clamped(value + delta)
-        guard newValue != value else { return }
-        value = newValue
-        Haptics.shared.tick()
-    }
-}
-
-// MARK: - Haptic dial control
-
-/// Granular incrementer: tap the end buttons or drag across the track.
-/// Every step change fires a haptic tick.
-struct HapticDial: View {
-    let label: String
-    @Binding var value: Double
-    let step: Double
-    let unit: String
-
-    @State private var dragAccumulator: CGFloat = 0
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text(label)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Theme.textDim)
-                .kerning(0.5)
-                .frame(width: 78, alignment: .leading)
-
-            dialButton(systemImage: "minus") { adjust(by: -step) }
-
-            GeometryReader { _ in
-                Text("\(value.cleanWeight)")
-                    .font(.system(.title3, design: .rounded, weight: .bold))
-                    .monospacedDigit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-                    .gesture(
-                        DragGesture(minimumDistance: 2)
-                            .onChanged { gesture in
-                                let delta = gesture.translation.width - dragAccumulator
-                                if abs(delta) >= 9 {
-                                    adjust(by: delta > 0 ? step : -step)
-                                    dragAccumulator = gesture.translation.width
-                                }
-                            }
-                            .onEnded { _ in dragAccumulator = 0 }
-                    )
-            }
-            .frame(height: 40)
-
-            dialButton(systemImage: "plus") { adjust(by: step) }
+        guard let pounds, pounds != 0 else {
+            return exercise.trackingType == .bodyweightAndReps ? "BW" : nil
         }
-    }
-
-    private func dialButton(systemImage: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.subheadline.weight(.bold))
-                .frame(width: 40, height: 40)
-                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-                .foregroundStyle(.primary)
+        if exercise.trackingType == .bodyweightAndReps {
+            let sign = pounds > 0 ? "+" : ""
+            return "BW\(sign)\(exercise.displayWeightString(fromPounds: pounds))"
         }
-        .buttonRepeatBehavior(.enabled)
+        return "\(exercise.displayWeightString(fromPounds: pounds)) \(exercise.weightUnit.abbreviation)"
     }
 
-    private func adjust(by delta: Double) {
-        let newValue = max(0, value + delta)
-        guard newValue != value else { return }
-        value = newValue
-        Haptics.shared.tick()
+    private var lastWorkingSet: ExerciseSet? {
+        exercise.sets.filter { !$0.isWarmup }.max(by: { $0.timestamp < $1.timestamp })
     }
 }

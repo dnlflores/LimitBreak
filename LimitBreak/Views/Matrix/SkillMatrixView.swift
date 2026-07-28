@@ -143,13 +143,13 @@ struct SkillMatrixView: View {
     private var statHeader: some View {
         let progress = xpProgress
         return HStack(spacing: 12) {
-            statTile(
-                value: "\(progress.currentStreak)",
-                label: progress.currentMultiplier > 1
-                    ? "Day Streak \u{00D7}\(progress.currentMultiplier) XP"
-                    : "Day Streak",
-                color: Theme.emerald
-            )
+            statTile(value: "\(progress.currentStreak)", label: "Day Streak", color: Theme.emerald)
+                .overlay(alignment: .topTrailing) {
+                    if progress.currentMultiplier > 1 {
+                        MultiplierBadge(multiplier: progress.currentMultiplier)
+                            .offset(x: 9, y: -9)
+                    }
+                }
             statTile(
                 value: progress.weeklyXP.formatted(.number.notation(.compactName)),
                 label: "Weekly XP",
@@ -542,5 +542,35 @@ private struct MatrixNode: View {
         case .walk: Theme.teal.opacity(0.75)
         case .limitBreak: Theme.gold.opacity(0.75)
         }
+    }
+}
+
+// MARK: - Multiplier badge
+
+/// A tiny gold seal that clings to the corner of the streak tile, calling out
+/// the active XP multiplier. A scalloped "squiggle" badge with a slow breathing
+/// glow so a hot streak feels like earned loot.
+private struct MultiplierBadge: View {
+    let multiplier: Int
+
+    @State private var pulsing = false
+
+    var body: some View {
+        Image(systemName: "seal.fill")
+            .font(.system(size: 30))
+            .foregroundStyle(Theme.gold)
+            .shadow(color: Theme.gold.opacity(pulsing ? 0.85 : 0.35), radius: pulsing ? 6 : 2)
+            .overlay(
+                Text("\u{00D7}\(multiplier)")
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundStyle(Theme.background)
+            )
+            .rotationEffect(.degrees(pulsing ? 8 : -8))
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                    pulsing = true
+                }
+            }
+            .accessibilityLabel("\(multiplier) times XP multiplier")
     }
 }

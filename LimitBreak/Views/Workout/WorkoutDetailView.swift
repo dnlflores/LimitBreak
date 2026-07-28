@@ -12,6 +12,8 @@ struct WorkoutDetailView: View {
     @State private var showEdit = false
     @State private var showSaveAsRoutine = false
     @State private var showDeleteConfirmation = false
+    /// The movement whose review/edit sheet is open, if any.
+    @State private var selectedExercise: Exercise?
 
     var body: some View {
         ScrollView {
@@ -44,7 +46,9 @@ struct WorkoutDetailView: View {
                         if group.count > 1 {
                             supersetGroupCard(letter: supersetLetter(for: index, in: groups), group: group)
                         } else if let entry = group.first {
-                            exerciseCard(entry.exercise, sets: entry.sets)
+                            ExerciseHistoryCard(exercise: entry.exercise, sets: entry.sets) {
+                                selectedExercise = entry.exercise
+                            }
                         }
                     }
                 }
@@ -66,14 +70,21 @@ struct WorkoutDetailView: View {
                 }
             )
         }
-        .confirmationDialog("Delete Workout?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-            Button("Delete Workout", role: .destructive) {
+        .sheet(item: $selectedExercise) { exercise in
+            ExerciseHistorySheet(session: session, exercise: exercise)
+        }
+        .sheet(isPresented: $showDeleteConfirmation) {
+            SessionConfirmSheet(
+                icon: "trash",
+                tint: Theme.crimson,
+                title: "Delete Workout?",
+                message: "\u{201C}\(session.name)\u{201D} and all its sets will be permanently removed. Records will be recalculated.",
+                confirmLabel: "Delete",
+                cancelLabel: "Cancel"
+            ) {
                 workout.deleteSession(session)
                 dismiss()
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("\u{201C}\(session.name)\u{201D} and all its sets will be permanently removed. Records will be recalculated.")
         }
     }
 
@@ -155,25 +166,51 @@ struct WorkoutDetailView: View {
 
     private var summaryTiles: some View {
         let workingSets = session.sets.filter { !$0.isWarmup }.count
+        let calories = session.estimatedActiveCalories(
+            bodyWeightLbs: HealthKitManager.shared.currentBodyWeightLbs
+        )
 
-        return HStack(spacing: 12) {
-            summaryTile(value: Int(session.totalVolume).formatted(.number.notation(.compactName)), label: "lbs shifted", color: Theme.emerald)
-            summaryTile(value: "\(workingSets)", label: "working sets", color: Theme.teal)
-            summaryTile(value: "\(session.prCount)", label: "LimitBreaks", color: Theme.gold)
+        return VStack(alignment: .leading, spacing: 14) {
+            Text("BATTLE REPORT")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.textDim)
+                .kerning(1.5)
+
+            HStack(spacing: 0) {
+                summaryStat(value: Int(session.totalVolume).formatted(.number.notation(.compactName)), label: "lbs shifted", color: Theme.emerald)
+                statDivider
+                summaryStat(value: "\(Int(calories.rounded()))", label: "kcal burned", color: Theme.crimson)
+                statDivider
+                summaryStat(value: "\(workingSets)", label: "working sets", color: Theme.teal)
+                statDivider
+                summaryStat(value: "\(session.prCount)", label: "LimitBreaks", color: Theme.gold)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
     }
 
-    private func summaryTile(value: String, label: String, color: Color) -> some View {
+    private func summaryStat(value: String, label: String, color: Color) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .statNumberStyle()
+                .font(.system(.title3, design: .rounded, weight: .bold))
+                .monospacedDigit()
                 .foregroundStyle(color)
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(Theme.textDim)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
-        .cardStyle()
+    }
+
+    /// Hairline separator between the report's stats, so the row reads as one
+    /// divided panel rather than four floating tiles.
+    private var statDivider: some View {
+        RoundedRectangle(cornerRadius: 1)
+            .fill(Color.white.opacity(0.08))
+            .frame(width: 1, height: 34)
     }
 
     // MARK: - Exercises
@@ -190,7 +227,9 @@ struct WorkoutDetailView: View {
                 .kerning(0.5)
                 .foregroundStyle(Theme.teal)
             ForEach(group, id: \.exercise.id) { entry in
-                exerciseCard(entry.exercise, sets: entry.sets)
+                ExerciseHistoryCard(exercise: entry.exercise, sets: entry.sets) {
+                    selectedExercise = entry.exercise
+                }
             }
         }
         .padding(10)
@@ -211,72 +250,6 @@ struct WorkoutDetailView: View {
         return String(UnicodeScalar(UInt8(65 + min(count, 25))))
     }
 
-    private func exerciseCard(_ exercise: Exercise, sets: [ExerciseSet]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                Image(systemName: exercise.muscleGroup.iconName)
-                    .font(.title3)
-                    .foregroundStyle(Theme.teal)
-                    .frame(width: 40, height: 40)
-                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(exercise.name)
-                        .font(.subheadline.weight(.semibold))
-                    Text("\(exercise.muscleGroupDisplay) \u{00B7} \(exercise.equipmentType)")
-                        .font(.caption)
-                        .foregroundStyle(Theme.textDim)
-                }
-
-                Spacer()
-
-                let best = sets.filter(\.isPR).count
-                if best > 0 {
-                    Label("\(best)", systemImage: "crown.fill")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Theme.gold)
-                }
-            }
-
-            VStack(spacing: 6) {
-                ForEach(Array(sets.enumerated()), id: \.element.id) { index, set in
-                    setRow(index: index, set: set, exercise: exercise)
-                }
-            }
-        }
-        .cardStyle()
-    }
-
-    private func setRow(index: Int, set: ExerciseSet, exercise: Exercise) -> some View {
-        HStack(spacing: 10) {
-            Text("SET \(index + 1)")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(set.isPR ? Theme.gold : Theme.textDim)
-                .frame(width: 44, alignment: .leading)
-
-            Text(set.displayText(for: exercise))
-                .font(.subheadline)
-                .monospacedDigit()
-
-            Spacer()
-
-            if set.isPR {
-                Label("PR", systemImage: "crown.fill")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(Theme.gold)
-            } else if set.isWarmup {
-                Text("warmup")
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textDim)
-            }
-        }
-        .padding(.vertical, 5)
-        .padding(.horizontal, 10)
-        .background(
-            set.isPR ? Theme.gold.opacity(0.08) : Color.white.opacity(0.03),
-            in: RoundedRectangle(cornerRadius: 8)
-        )
-    }
 }
 
 // MARK: - Shared set display text

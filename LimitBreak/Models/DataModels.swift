@@ -301,6 +301,17 @@ final class WorkoutSession {
         return end.timeIntervalSince(startDate)
     }
 
+    /// Rough active-energy estimate for the session, in kilocalories, so the
+    /// Health sync and the history view always report the same number.
+    /// Traditional strength training runs ~5 METs, and
+    /// kcal = MET × bodyMass(kg) × hours. Body weight is passed in from Health
+    /// (with the manual fallback); defaults to 155 lb when unknown.
+    func estimatedActiveCalories(bodyWeightLbs: Double?) -> Double {
+        let weightKg = (bodyWeightLbs ?? 155) * 0.453592
+        let hours = max(duration, 60) / 3600
+        return 5.0 * weightKg * hours
+    }
+
     /// Sets grouped by exercise, in first-logged order — powers day breakdowns.
     var setsByExercise: [(exercise: Exercise, sets: [ExerciseSet])] {
         var order: [UUID] = []
@@ -538,6 +549,23 @@ final class Walk {
     }
 
     var distanceMiles: Double { distanceMeters / 1609.344 }
+
+    /// Duration to reason with — the entered time, or a 20 min/mile estimate
+    /// from the distance when the walk wasn't timed. Shared by the Health sync
+    /// so the workout interval and its calorie math always agree.
+    var effectiveDurationSeconds: Double {
+        durationSeconds > 0 ? durationSeconds : max(distanceMiles * 20 * 60, 60)
+    }
+
+    /// Rough active-energy estimate for the walk, in kilocalories, matching the
+    /// strength-session math. Brisk walking runs ~3.5 METs, and
+    /// kcal = MET × bodyMass(kg) × hours. Body weight is passed in from Health
+    /// (with the manual fallback); defaults to 155 lb when unknown.
+    func estimatedActiveCalories(bodyWeightLbs: Double?) -> Double {
+        let weightKg = (bodyWeightLbs ?? 155) * 0.453592
+        let hours = effectiveDurationSeconds / 3600
+        return 3.5 * weightKg * hours
+    }
 }
 
 // MARK: - Routine (saved workout curation)

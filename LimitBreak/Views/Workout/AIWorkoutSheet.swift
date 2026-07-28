@@ -101,10 +101,24 @@ struct AIWorkoutSheet: View {
                 .padding(.top, 8)
 
             section("WHAT'S THE FOCUS?") {
+                let recommended = recommendedFocuses
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
                     ForEach(WorkoutFocus.allCases) { preset in
-                        focusChip(preset)
+                        FocusChip(
+                            preset: preset,
+                            isSelected: focus == preset,
+                            isRecommended: focus != preset && recommended.contains(preset)
+                        ) {
+                            focus = preset
+                            Haptics.shared.tick()
+                        }
                     }
+                }
+                if !recommended.isEmpty {
+                    Label("Freshest picks — \(recommendedLabel(recommended)). Based on your recent training.",
+                          systemImage: "sparkles")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.violet)
                 }
             }
 
@@ -181,25 +195,6 @@ struct AIWorkoutSheet: View {
                 .kerning(1)
             content()
         }
-    }
-
-    private func focusChip(_ preset: WorkoutFocus) -> some View {
-        let selected = focus == preset
-        return Button {
-            focus = preset
-            Haptics.shared.tick()
-        } label: {
-            Label(preset.label, systemImage: preset.icon)
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .foregroundStyle(selected ? .black : .white)
-                .background(
-                    selected ? AnyShapeStyle(Theme.emerald) : AnyShapeStyle(Theme.surfaceRaised),
-                    in: RoundedRectangle(cornerRadius: 14)
-                )
-        }
-        .buttonStyle(.plain)
     }
 
     private func countChip(_ count: Int) -> some View {
@@ -676,12 +671,119 @@ struct AIWorkoutSheet: View {
         didSaveRoutine = false
     }
 
+    /// The splits we nudge the lifter toward: the 2–3 whose target muscles are
+    /// the most recovered right now, given the last week of training. Full Body
+    /// is excluded so each hint is pointed, a split only qualifies if its muscles
+    /// are genuinely fresh, and once one split is picked any later split whose
+    /// muscles it already covers is skipped — so we never glow both "Push" and
+    /// "Chest". If everything's been trained hard lately, nothing glows.
+    private var recommendedFocuses: Set<WorkoutFocus> {
+        let statuses = MuscleRecovery.statuses(sessions: sessions)
+        // Freshness scores per state: rested/untouched muscles score high, ones
+        // still recovering score low, and a muscle that needs rest drags a split
+        // down so we never point at something the lifter should let heal.
+        func freshness(_ group: MuscleGroup) -> Double {
+            switch statuses[group]?.state() ?? .dormant {
+            case .dormant:    return 1.0
+            case .ready:      return 0.9
+            case .recovering: return 0.3
+            case .needsRest:  return 0.0
+            }
+        }
+
+        let scored = WorkoutFocus.allCases
+            .filter { $0 != .fullBody }
+            .compactMap { focus -> (focus: WorkoutFocus, groups: [MuscleGroup], score: Double)? in
+                let groups = focus.targetMuscleGroups.compactMap { MuscleGroup(rawValue: $0) }
+                guard !groups.isEmpty else { return nil }
+                let score = groups.reduce(0) { $0 + freshness($1) } / Double(groups.count)
+                return (focus, groups, score)
+            }
+            .filter { $0.score >= 0.75 }
+            .sorted { $0.score > $1.score }
+
+        var picked: [WorkoutFocus] = []
+        var covered: Set<MuscleGroup> = []
+        for entry in scored where picked.count < 3 {
+            // Skip a split whose muscles a stronger pick already covers.
+            guard !Set(entry.groups).isSubset(of: covered) else { continue }
+            picked.append(entry.focus)
+            covered.formUnion(entry.groups)
+        }
+        return Set(picked)
+    }
+
+    /// The recommended splits' labels in the grid's own order, for the caption.
+    private func recommendedLabel(_ focuses: Set<WorkoutFocus>) -> String {
+        WorkoutFocus.allCases
+            .filter { focuses.contains($0) }
+            .map(\.label)
+            .joined(separator: " · ")
+    }
+
     private func muscleGroup(for name: String) -> String? {
         catalogExercise(for: name)?.muscleGroupDisplay
     }
 
     private func catalogExercise(for name: String) -> Exercise? {
         exercises.first { $0.name.lowercased() == name.lowercased() }
+    }
+}
+
+// MARK: - Focus chip
+
+/// One focus option in the grid. A recommended chip breathes a violet glow —
+/// dimming and brightening on a forever loop — to flag it as a fatigue-aware
+/// pick. It owns its own animation state so the pulse survives the LazyVGrid's
+/// lazy layout, where a sheet-level `@State` toggled in `onAppear` would not.
+private struct FocusChip: View {
+    let preset: WorkoutFocus
+    let isSelected: Bool
+    let isRecommended: Bool
+    let onTap: () -> Void
+
+    /// Ping-pongs between dim and bright while the chip is recommended.
+    @State private var glow = false
+
+    var body: some View {
+        Button(action: onTap) {
+            Label(preset.label, systemImage: preset.icon)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .foregroundStyle(isSelected ? .black : .white)
+                .background(
+                    isSelected ? AnyShapeStyle(Theme.emerald) : AnyShapeStyle(Theme.surfaceRaised),
+                    in: RoundedRectangle(cornerRadius: 14)
+                )
+                .overlay {
+                    if isRecommended {
+                        RoundedRectangle(cornerRadius: 14)
+                            .strokeBorder(Theme.limitBreakGradient, lineWidth: 2)
+                            .opacity(glow ? 1 : 0.35)
+                    }
+                }
+                // A violet bloom that grows from dim to bright and back, so the
+                // pick pulses without shouting over the rest of the grid.
+                .shadow(
+                    color: isRecommended ? Theme.violet.opacity(glow ? 0.95 : 0.15) : .clear,
+                    radius: isRecommended ? (glow ? 18 : 3) : 0
+                )
+        }
+        .buttonStyle(.plain)
+        .onAppear { updateGlow() }
+        .onChange(of: isRecommended) { _, _ in updateGlow() }
+    }
+
+    /// Starts or stops the forever-looping pulse to match the chip's state.
+    private func updateGlow() {
+        if isRecommended {
+            withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
+                glow = true
+            }
+        } else {
+            withAnimation(.easeOut(duration: 0.2)) { glow = false }
+        }
     }
 }
 

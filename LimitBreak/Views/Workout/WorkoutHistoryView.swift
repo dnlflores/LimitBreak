@@ -12,6 +12,8 @@ struct WorkoutHistoryView: View {
     @Query(sort: \WorkoutSession.startDate, order: .reverse) private var allSessions: [WorkoutSession]
     @Query(sort: \Walk.date, order: .reverse) private var allWalks: [Walk]
     @Query(sort: \Activity.date, order: .reverse) private var allActivities: [Activity]
+    @Query(sort: \PRRecord.dateAchieved, order: .reverse) private var allRecords: [PRRecord]
+    @Query private var allRoutines: [Routine]
 
     @State private var searchText = ""
     @State private var sessionToEdit: WorkoutSession?
@@ -108,7 +110,7 @@ struct WorkoutHistoryView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14, pinnedViews: [.sectionHeaders]) {
+                LazyVStack(alignment: .leading, spacing: 14) {
                     titleHeader
 
                     if isEmpty {
@@ -155,13 +157,17 @@ struct WorkoutHistoryView: View {
                     }
                 )
             }
-            .alert("Delete Workout?", isPresented: deleteAlertBinding, presenting: sessionToDelete) { session in
-                Button("Delete", role: .destructive) {
+            .sheet(item: $sessionToDelete) { session in
+                SessionConfirmSheet(
+                    icon: "trash",
+                    tint: Theme.crimson,
+                    title: "Delete Workout?",
+                    message: "\u{201C}\(session.name)\u{201D} and all its sets will be permanently removed. Records will be recalculated.",
+                    confirmLabel: "Delete",
+                    cancelLabel: "Cancel"
+                ) {
                     workout.deleteSession(session)
                 }
-                Button("Cancel", role: .cancel) {}
-            } message: { session in
-                Text("\u{201C}\(session.name)\u{201D} and all its sets will be permanently removed. Records will be recalculated.")
             }
             .sheet(item: $walkToEdit) { walk in
                 EditWalkSheet(walk: walk)
@@ -169,24 +175,32 @@ struct WorkoutHistoryView: View {
             .sheet(item: $activityToEdit) { activity in
                 ActivityLogView(activity: activity)
             }
-            .alert("Delete Activity?", isPresented: deleteActivityAlertBinding, presenting: activityToDelete) { activity in
-                Button("Delete", role: .destructive) {
+            .sheet(item: $activityToDelete) { activity in
+                SessionConfirmSheet(
+                    icon: "trash",
+                    tint: Theme.crimson,
+                    title: "Delete Activity?",
+                    message: "This \(activity.durationMinutes)-minute \(activity.sport.rawValue.lowercased()) session will be permanently removed, along with the XP it earned.",
+                    confirmLabel: "Delete",
+                    cancelLabel: "Cancel"
+                ) {
                     modelContext.delete(activity)
                     try? modelContext.save()
                     WidgetSnapshotter.shared.refresh()
                 }
-                Button("Cancel", role: .cancel) {}
-            } message: { activity in
-                Text("This \(activity.durationMinutes)-minute \(activity.sport.rawValue.lowercased()) session will be permanently removed, along with the XP it earned.")
             }
-            .alert("Delete Walk?", isPresented: deleteWalkAlertBinding, presenting: walkToDelete) { walk in
-                Button("Delete", role: .destructive) {
+            .sheet(item: $walkToDelete) { walk in
+                SessionConfirmSheet(
+                    icon: "trash",
+                    tint: Theme.crimson,
+                    title: "Delete Walk?",
+                    message: "This \(String(format: "%.2f mi", walk.distanceMiles)) walk will be permanently removed.",
+                    confirmLabel: "Delete",
+                    cancelLabel: "Cancel"
+                ) {
                     modelContext.delete(walk)
                     try? modelContext.save()
                 }
-                Button("Cancel", role: .cancel) {}
-            } message: { walk in
-                Text("This \(String(format: "%.2f mi", walk.distanceMiles)) walk will be permanently removed.")
             }
             .navigationDestination(isPresented: $debugOpenFirst) {
                 if let first = allSessions.first {
@@ -194,30 +208,6 @@ struct WorkoutHistoryView: View {
                 }
             }
         }
-    }
-
-    /// Bridges the `presenting:` alert to the optional session state.
-    private var deleteAlertBinding: Binding<Bool> {
-        Binding(
-            get: { sessionToDelete != nil },
-            set: { if !$0 { sessionToDelete = nil } }
-        )
-    }
-
-    /// Bridges the `presenting:` alert to the optional walk state.
-    private var deleteWalkAlertBinding: Binding<Bool> {
-        Binding(
-            get: { walkToDelete != nil },
-            set: { if !$0 { walkToDelete = nil } }
-        )
-    }
-
-    /// Bridges the `presenting:` alert to the optional activity state.
-    private var deleteActivityAlertBinding: Binding<Bool> {
-        Binding(
-            get: { activityToDelete != nil },
-            set: { if !$0 { activityToDelete = nil } }
-        )
     }
 
     // MARK: - Title & search
@@ -258,25 +248,52 @@ struct WorkoutHistoryView: View {
     private var summaryHeader: some View {
         let volume = allSessions.reduce(0) { $0 + $1.totalVolume }
         let prCount = allSessions.reduce(0) { $0 + $1.prCount }
+        let totalXP = XPEngine.progress(
+            sessions: allSessions, records: allRecords, walks: allWalks,
+            activities: allActivities, routines: allRoutines
+        ).totalXP
 
-        return HStack(spacing: 12) {
-            summaryTile(value: "\(allSessions.count)", label: "workouts", color: Theme.teal)
-            summaryTile(value: Int(volume).formatted(.number.notation(.compactName)), label: "lbs shifted", color: Theme.emerald)
-            summaryTile(value: "\(prCount)", label: "LimitBreaks", color: Theme.gold)
+        return VStack(alignment: .leading, spacing: 14) {
+            Text("ALL-TIME STATS")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.textDim)
+                .kerning(1.5)
+
+            HStack(spacing: 0) {
+                summaryStat(value: "\(allSessions.count)", label: "workouts", color: Theme.teal)
+                statDivider
+                summaryStat(value: totalXP.formatted(.number.notation(.compactName)), label: "XP earned", color: Theme.violet)
+                statDivider
+                summaryStat(value: Int(volume).formatted(.number.notation(.compactName)), label: "lbs shifted", color: Theme.emerald)
+                statDivider
+                summaryStat(value: "\(prCount)", label: "LimitBreaks", color: Theme.gold)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
     }
 
-    private func summaryTile(value: String, label: String, color: Color) -> some View {
+    private func summaryStat(value: String, label: String, color: Color) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .statNumberStyle()
+                .font(.system(.title3, design: .rounded, weight: .bold))
+                .monospacedDigit()
                 .foregroundStyle(color)
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(Theme.textDim)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
-        .cardStyle()
+    }
+
+    /// Hairline separator between the log's stats, so the row reads as one
+    /// divided panel rather than four floating tiles.
+    private var statDivider: some View {
+        RoundedRectangle(cornerRadius: 1)
+            .fill(Color.white.opacity(0.08))
+            .frame(width: 1, height: 34)
     }
 
     // MARK: - Month header

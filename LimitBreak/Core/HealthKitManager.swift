@@ -137,6 +137,25 @@ final class HealthKitManager {
         let builder = HKWorkoutBuilder(healthStore: store, configuration: configuration, device: .local())
         do {
             try await builder.beginCollection(at: start)
+
+            // Stamp the session's id as the workout's external UUID so a backfill
+            // pass can tell what's already in Health and never write a duplicate.
+            try await builder.addMetadata([HKMetadataKeyExternalUUID: session.id.uuidString])
+
+            // Attach an estimated active-energy sample so the session actually
+            // feeds the Move and Exercise rings — a workout with no energy barely
+            // registers. Shares its math with the history view via the session.
+            let kcal = session.estimatedActiveCalories(bodyWeightLbs: currentBodyWeightLbs)
+            if kcal > 0 {
+                let energy = HKQuantitySample(
+                    type: HKQuantityType(.activeEnergyBurned),
+                    quantity: HKQuantity(unit: .kilocalorie(), doubleValue: kcal),
+                    start: start,
+                    end: end
+                )
+                try await builder.addSamples([energy])
+            }
+
             try await builder.endCollection(at: end)
             _ = try await builder.finishWorkout()
             lastError = nil
@@ -145,12 +164,50 @@ final class HealthKitManager {
         }
     }
 
+    /// Re-syncs any strength sessions from the given list that aren't already in
+    /// Health — for backfilling days the app missed (Health connected after the
+    /// fact, auto-sync off at the time, or a failed write). Dedupes on each
+    /// session's id stamped as the workout's external UUID, so it's safe to run
+    /// repeatedly. Reports how many sessions it actually wrote.
+    @discardableResult
+    func backfill(sessions: [WorkoutSession]) async -> Int {
+        guard isConnected else {
+            lastError = "Connect to Apple Health first."
+            return 0
+        }
+        var written = 0
+        for session in sessions {
+            if await workoutExists(externalID: session.id) { continue }
+            await saveStrengthSession(session)
+            if lastError == nil { written += 1 }
+        }
+        await refreshTodayStats()
+        return written
+    }
+
+    /// Whether a workout tagged with this session id already lives in Health.
+    private func workoutExists(externalID: UUID) async -> Bool {
+        await withCheckedContinuation { continuation in
+            let predicate = HKQuery.predicateForObjects(
+                withMetadataKey: HKMetadataKeyExternalUUID,
+                allowedValues: [externalID.uuidString]
+            )
+            let query = HKSampleQuery(
+                sampleType: .workoutType(),
+                predicate: predicate,
+                limit: 1,
+                sortDescriptors: nil
+            ) { _, samples, _ in
+                continuation.resume(returning: samples?.isEmpty == false)
+            }
+            store.execute(query)
+        }
+    }
+
     func saveWalk(_ walk: Walk) async {
         let start = walk.date
-        // Fall back to a 20 min/mile pace when the user didn't enter a duration.
-        let duration = walk.durationSeconds > 0
-            ? walk.durationSeconds
-            : max(walk.distanceMiles * 20 * 60, 60)
+        // Falls back to a 20 min/mile pace when the walk wasn't timed.
+        let duration = walk.effectiveDurationSeconds
         let end = start.addingTimeInterval(duration)
 
         let configuration = HKWorkoutConfiguration()
@@ -168,6 +225,20 @@ final class HealthKitManager {
                 )
                 try await builder.addSamples([sample])
             }
+
+            // Attach an estimated active-energy sample so the walk feeds the Move
+            // and Exercise rings — matching how strength sessions sync.
+            let kcal = walk.estimatedActiveCalories(bodyWeightLbs: currentBodyWeightLbs)
+            if kcal > 0 {
+                let energy = HKQuantitySample(
+                    type: HKQuantityType(.activeEnergyBurned),
+                    quantity: HKQuantity(unit: .kilocalorie(), doubleValue: kcal),
+                    start: start,
+                    end: end
+                )
+                try await builder.addSamples([energy])
+            }
+
             try await builder.endCollection(at: end)
             let workout = try await builder.finishWorkout()
 

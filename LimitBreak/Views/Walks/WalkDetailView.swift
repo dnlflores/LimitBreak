@@ -40,16 +40,20 @@ struct WalkDetailView: View {
         .sheet(isPresented: $showEdit) {
             EditWalkSheet(walk: walk)
         }
-        .confirmationDialog("Delete Walk?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-            Button("Delete Walk", role: .destructive) {
+        .sheet(isPresented: $showDeleteConfirmation) {
+            SessionConfirmSheet(
+                icon: "trash",
+                tint: Theme.crimson,
+                title: "Delete Walk?",
+                message: "This \(String(format: "%.2f mi", walk.distanceMiles)) walk will be permanently removed.",
+                confirmLabel: "Delete",
+                cancelLabel: "Cancel"
+            ) {
                 modelContext.delete(walk)
                 try? modelContext.save()
                 WidgetSnapshotter.shared.refresh()
                 dismiss()
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This \(String(format: "%.2f mi", walk.distanceMiles)) walk will be permanently removed.")
         }
     }
 

@@ -378,6 +378,8 @@ private struct ActiveSessionView: View {
     /// Cancel/Group pair. `supersetSelection` holds the picked exercise ids.
     @State private var isSelectingSuperset = false
     @State private var supersetSelection: Set<UUID> = []
+    /// The movement whose logging sheet is open, if any.
+    @State private var loggingExercise: Exercise?
 
     var body: some View {
         ScrollView {
@@ -394,7 +396,8 @@ private struct ActiveSessionView: View {
                         isSelecting: isSelectingSuperset,
                         isSelected: alreadyGrouped || supersetSelection.contains(exercise.id),
                         isLocked: alreadyGrouped,
-                        onToggleSelect: { toggleSupersetSelection(exercise) }
+                        onToggleSelect: { toggleSupersetSelection(exercise) },
+                        onOpen: { loggingExercise = exercise }
                     )
                 }
 
@@ -481,6 +484,9 @@ private struct ActiveSessionView: View {
             ExercisePickerSheet { exercise in
                 workout.addExercise(exercise)
             }
+        }
+        .sheet(item: $loggingExercise) { exercise in
+            ExerciseLogSheet(exercise: exercise)
         }
         .sheet(isPresented: $showEndConfirmation) {
             SessionConfirmSheet(
@@ -669,7 +675,16 @@ private struct ActiveSessionView: View {
 /// A themed modal replacing the system action sheet for destructive session
 /// actions (End / Discard). Presents as a compact glass card over the obsidian
 /// canvas with a clear destructive CTA and a dismiss control.
-private struct SessionConfirmSheet: View {
+/// Measures the confirmation sheet's natural content height so its detent can
+/// hug it, avoiding dead space below the buttons.
+private struct ConfirmSheetHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 380
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+struct SessionConfirmSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let icon: String
@@ -677,7 +692,10 @@ private struct SessionConfirmSheet: View {
     let title: String
     let message: String
     let confirmLabel: String
+    var cancelLabel: String = "Keep Training"
     let confirm: () -> Void
+
+    @State private var sheetHeight: CGFloat = 380
 
     var body: some View {
         VStack(spacing: 20) {
@@ -717,7 +735,7 @@ private struct SessionConfirmSheet: View {
                 Button {
                     dismiss()
                 } label: {
-                    Text("Keep Training")
+                    Text(cancelLabel)
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
@@ -729,9 +747,16 @@ private struct SessionConfirmSheet: View {
             }
         }
         .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity)
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(key: ConfirmSheetHeightKey.self, value: proxy.size.height)
+            }
+        )
         .obsidianBackground()
-        .presentationDetents([.height(380)])
+        .onPreferenceChange(ConfirmSheetHeightKey.self) { sheetHeight = $0 }
+        .presentationDetents([.height(sheetHeight)])
         .presentationDragIndicator(.visible)
         .presentationBackground(.clear)
     }

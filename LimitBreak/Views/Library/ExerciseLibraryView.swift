@@ -175,11 +175,7 @@ struct ExerciseLibraryView: View {
 
     private func exerciseCard(_ exercise: Exercise) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: exercise.muscleGroup.iconName)
-                .font(.title3)
-                .foregroundStyle(Theme.teal)
-                .frame(width: 40, height: 40)
-                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+            exerciseThumbnail(exercise)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -222,6 +218,26 @@ struct ExerciseLibraryView: View {
         .cardStyle()
     }
 
+    /// The movement's bundled illustration, cropped square, falling back to its
+    /// muscle-group symbol when no art is shipped.
+    @ViewBuilder
+    private func exerciseThumbnail(_ exercise: Exercise) -> some View {
+        if let image = exercise.exampleImage {
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.glassBorder, lineWidth: 1))
+        } else {
+            Image(systemName: exercise.muscleGroup.iconName)
+                .font(.title3)
+                .foregroundStyle(Theme.teal)
+                .frame(width: 44, height: 44)
+                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
 }
 
 // MARK: - Detail
@@ -242,6 +258,12 @@ struct ExerciseDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 detailHeader
+
+                if exercise.exampleImage != nil {
+                    ExerciseImageBanner(exercise: exercise, height: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.glassBorder, lineWidth: 1))
+                }
 
                 guideSection
 

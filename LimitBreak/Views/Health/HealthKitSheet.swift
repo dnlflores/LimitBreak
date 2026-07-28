@@ -1,9 +1,15 @@
 import SwiftUI
+import SwiftData
 
 /// Connects LimitBreak to Apple Health and shows today's activity pulled
 /// from HealthKit once connected.
 struct HealthKitSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+
+    /// Progress note shown after a manual backfill runs.
+    @State private var backfillNote: String?
+    @State private var isBackfilling = false
 
     private var health: HealthKitManager { HealthKitManager.shared }
 
@@ -122,6 +128,31 @@ struct HealthKitSheet: View {
         .tint(Theme.emerald)
         .cardStyle()
 
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                Task { await runBackfill() }
+            } label: {
+                HStack(spacing: 8) {
+                    if isBackfilling {
+                        ProgressView().controlSize(.small).tint(Theme.gold)
+                    } else {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    Text("Sync last 24 hours")
+                }
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .foregroundStyle(Theme.gold)
+            .disabled(isBackfilling)
+
+            Text(backfillNote ?? "Pushes recent sessions to Health if they didn't sync — exercise time and calories land on the day you trained.")
+                .font(.caption)
+                .foregroundStyle(Theme.textDim)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
+
         Button {
             Task { await HealthKitManager.shared.refreshTodayStats() }
         } label: {
@@ -129,6 +160,25 @@ struct HealthKitSheet: View {
                 .font(.subheadline.weight(.semibold))
         }
         .foregroundStyle(Theme.emerald)
+    }
+
+    /// Re-syncs every strength session from the last 24 hours that isn't already
+    /// in Health, deduped by the backfill pass so nothing doubles up.
+    private func runBackfill() async {
+        isBackfilling = true
+        backfillNote = nil
+        let cutoff = Date().addingTimeInterval(-24 * 3600)
+        let descriptor = FetchDescriptor<WorkoutSession>(
+            predicate: #Predicate { $0.startDate >= cutoff }
+        )
+        let sessions = (try? context.fetch(descriptor)) ?? []
+        let written = await HealthKitManager.shared.backfill(sessions: sessions)
+        isBackfilling = false
+        if HealthKitManager.shared.lastError == nil {
+            backfillNote = written == 0
+                ? "All caught up — nothing new to sync."
+                : "Synced \(written) session\(written == 1 ? "" : "s") to Health."
+        }
     }
 
     // MARK: - Body weight

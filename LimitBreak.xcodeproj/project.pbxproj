@@ -79,6 +79,13 @@
 			);
 			target = AA10000000000000000000B2 /* LimitBreakWidgets */;
 		};
+		D63E4F28301873050002A201 /* Exceptions for "LimitBreak" folder in "LimitBreak" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = D69DDCC0300F0B3000339E42 /* LimitBreak */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -102,6 +109,9 @@
 		};
 		D69DDCC3300F0B3000339E42 /* LimitBreak */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D63E4F28301873050002A201 /* Exceptions for "LimitBreak" folder in "LimitBreak" target */,
+			);
 			path = LimitBreak;
 			sourceTree = "<group>";
 		};
@@ -660,9 +670,10 @@
 				DEVELOPMENT_TEAM = SKN4A8SF67;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LimitBreak/Info.plist;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "LimitBreak reads your steps and active energy to show your daily activity alongside your training.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "LimitBreak saves your strength sessions and walks (including drawn routes) to Apple Health.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "LimitBreak uses your location to center the map on where you are so you can trace your walk route.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "LimitBreak uses your location to record your walk route live as you move, and to center the map so you can trace a route.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -674,7 +685,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.3;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = testing.app.LimitBreak;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -699,9 +710,10 @@
 				DEVELOPMENT_TEAM = SKN4A8SF67;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LimitBreak/Info.plist;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "LimitBreak reads your steps and active energy to show your daily activity alongside your training.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "LimitBreak saves your strength sessions and walks (including drawn routes) to Apple Health.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "LimitBreak uses your location to center the map on where you are so you can trace your walk route.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "LimitBreak uses your location to record your walk route live as you move, and to center the map so you can trace a route.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -713,7 +725,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.3;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = testing.app.LimitBreak;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

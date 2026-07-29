@@ -60,6 +60,7 @@ struct RewardsTimelineView: View {
         }
         .obsidianBackground()
         .toolbar(.hidden, for: .navigationBar)
+        .enableSwipeBack()
     }
 
     private var header: some View {

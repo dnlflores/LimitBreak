@@ -91,10 +91,10 @@ struct NarrativeView: View {
                     .kerning(1.5)
             }
 
-            let lines = PatchNotesFormatter.lines(from: notes)
+            let blocks = PatchNotesFormatter.blocks(from: notes)
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                    patchLine(line, index: index)
+                ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                    patchBlock(block, index: index)
                 }
             }
             .textSelection(.enabled)
@@ -107,20 +107,53 @@ struct NarrativeView: View {
         )
     }
 
-    /// One patch-note entry: a cycling accent marker plus the tinted text, so
-    /// the block reads like a color-coded RPG changelog rather than a wall of
-    /// monospace.
-    private func patchLine(_ line: String, index: Int) -> some View {
-        let accent = Self.markerAccents[index % Self.markerAccents.count]
-        return HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text("◆")
-                .font(.system(size: 9, weight: .black))
-                .foregroundStyle(accent)
-            PatchNotesFormatter.styledText(for: line)
+    /// Renders one parsed Markdown block. Headings become the week's title,
+    /// bullets get a cycling accent marker plus tinted text — so the card reads
+    /// like a color-coded RPG changelog rather than a wall of monospace.
+    @ViewBuilder
+    private func patchBlock(_ block: PatchNotesFormatter.PatchBlock, index: Int) -> some View {
+        switch block {
+        case let .heading(text, level):
+            headingView(text, level: level, isFirst: index == 0)
+        case let .bullet(text):
+            let accent = Self.markerAccents[index % Self.markerAccents.count]
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("◆")
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(accent)
+                PatchNotesFormatter.styledText(for: text)
+                    .font(.system(.subheadline, design: .monospaced))
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+        case let .paragraph(text):
+            PatchNotesFormatter.styledText(for: text)
                 .font(.system(.subheadline, design: .monospaced))
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// A Markdown header. The `## ` week title reads as a neon banner; deeper
+    /// `### ` headers fall back to a dim, kerned section label matching the
+    /// app's card headers.
+    @ViewBuilder
+    private func headingView(_ text: String, level: Int, isFirst: Bool) -> some View {
+        if level >= 3 {
+            Text(text.uppercased())
+                .font(.caption.weight(.semibold))
+                .kerning(1.5)
+                .foregroundStyle(Theme.textDim)
+                .padding(.top, isFirst ? 0 : 8)
+        } else {
+            Text(text)
+                .font(.system(.title3, design: .rounded, weight: .heavy))
+                .foregroundStyle(Theme.limitBreakGradient)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, isFirst ? 0 : 6)
+                .padding(.bottom, 2)
         }
     }
 
@@ -201,6 +234,41 @@ struct NarrativeView: View {
 /// every number in gold, and RPG signal words in their palette color.
 enum PatchNotesFormatter {
 
+    /// One parsed block of the Markdown patch notes.
+    enum PatchBlock {
+        case heading(String, level: Int)
+        case bullet(String)
+        case paragraph(String)
+    }
+
+    /// Parses the Markdown contract — a `## ` title followed by `- ` bullets —
+    /// into renderable blocks. A model that ignored the contract and returned a
+    /// prose blob (no headers or bullets) degrades gracefully into bulleted
+    /// sentences, so the Saga still reads as a list rather than a wall of text.
+    static func blocks(from notes: String) -> [PatchBlock] {
+        var parsed: [PatchBlock] = []
+        for raw in notes.split(whereSeparator: \.isNewline) {
+            let line = String(raw).trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { continue }
+            if line.hasPrefix("#") {
+                let level = line.prefix { $0 == "#" }.count
+                let text = line.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)
+                if !text.isEmpty { parsed.append(.heading(text, level: min(level, 3))) }
+            } else if line.hasPrefix("- ") || line.hasPrefix("* ") || line.hasPrefix("• ") {
+                parsed.append(.bullet(String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)))
+            } else {
+                parsed.append(.paragraph(stripMarker(line)))
+            }
+        }
+
+        let hasStructure = parsed.contains {
+            if case .paragraph = $0 { return false }
+            return true
+        }
+        if hasStructure { return parsed }
+        return lines(from: notes).map { .bullet($0) }
+    }
+
     /// Splits raw notes into display lines. Honors explicit line breaks; a
     /// single unbroken block is broken into sentences instead, so it still
     /// reads as a list. Decimal points (e.g. `133.3`) are never treated as
@@ -247,28 +315,45 @@ enum PatchNotesFormatter {
         return trimmed
     }
 
-    /// Builds the tinted, word-by-word `Text` for one line. Any word carrying a
-    /// digit is gold and bold; a recognized signal word takes its palette color
-    /// and semibold weight; everything else is left in the default foreground.
+    /// Builds the tinted, word-by-word `Text` for one line, honoring inline
+    /// `**bold**` markers. Any word carrying a digit is gold and bold; a
+    /// recognized signal word takes its palette color; text inside `**` is
+    /// bolded; everything else is left in the default foreground.
     static func styledText(for line: String) -> Text {
         var result = Text("")
-        let words = line.split(separator: " ", omittingEmptySubsequences: true)
-        for (index, word) in words.enumerated() {
-            result = result + styledWord(String(word))
-            if index < words.count - 1 { result = result + Text(" ") }
+        var firstWord = true
+        for segment in inlineSegments(line) {
+            for word in segment.text.split(separator: " ", omittingEmptySubsequences: true) {
+                if !firstWord { result = result + Text(" ") }
+                firstWord = false
+                result = result + styledWord(String(word), bold: segment.bold)
+            }
         }
         return result
     }
 
-    private static func styledWord(_ word: String) -> Text {
+    /// Splits a line on `**` markers into bold and non-bold runs. Even chunks
+    /// are normal, odd chunks are bold; an unbalanced trailing `**` leaves its
+    /// chunk normal rather than bolding the rest of the line.
+    private static func inlineSegments(_ line: String) -> [(text: String, bold: Bool)] {
+        let parts = line.components(separatedBy: "**")
+        let balanced = parts.count % 2 == 1
+        var segments: [(text: String, bold: Bool)] = []
+        for (index, part) in parts.enumerated() where !part.isEmpty {
+            segments.append((part, balanced && index % 2 == 1))
+        }
+        return segments
+    }
+
+    private static func styledWord(_ word: String, bold: Bool = false) -> Text {
         if word.contains(where: \.isNumber) {
             return Text(word).foregroundStyle(Theme.gold).fontWeight(.bold)
         }
         let key = word.lowercased().filter(\.isLetter)
         if let color = keywordColors[key] {
-            return Text(word).foregroundStyle(color).fontWeight(.semibold)
+            return Text(word).foregroundStyle(color).fontWeight(bold ? .bold : .semibold)
         }
-        return Text(word).foregroundStyle(.white.opacity(0.92))
+        return Text(word).foregroundStyle(.white.opacity(0.92)).fontWeight(bold ? .bold : .regular)
     }
 
     /// Signal words worth lighting up, mapped to the palette meaning they carry

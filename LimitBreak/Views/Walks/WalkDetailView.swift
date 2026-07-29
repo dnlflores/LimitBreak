@@ -37,6 +37,7 @@ struct WalkDetailView: View {
         }
         .obsidianBackground()
         .toolbar(.hidden, for: .navigationBar)
+        .enableSwipeBack()
         .sheet(isPresented: $showEdit) {
             EditWalkSheet(walk: walk)
         }

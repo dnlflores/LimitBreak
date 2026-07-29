@@ -117,15 +117,30 @@ enum NarrativeEngine {
 
     // MARK: - Prompt
 
-    /// The voice and rules shared by every model tier, so the Saga reads the
-    /// same whether it was composed by Claude, a self-hosted model, or Apple's
-    /// on-device model.
+    /// The voice, rules, and output format shared by every model tier, so the
+    /// Saga reads and renders the same whether it was composed by Claude, a
+    /// self-hosted model, or Apple's on-device model.
+    ///
+    /// The format is a deterministic Markdown contract — one `## ` title then a
+    /// handful of `- ` bullets — so `PatchNotesFormatter` can parse and render
+    /// headers and bullets identically regardless of which model answered.
     static let patchNotesInstructions = """
         You are the narrative engine for LimitBreak, an RPG-styled workout tracker. \
-        Write short, punchy weekly "patch notes" in the voice of a video game changelog \
-        describing the user's real training week as character upgrades. Use RPG flavor \
-        (raid bosses, ceilings expanded, damage dealt) but keep every number accurate to \
-        the telemetry provided. 4-6 lines, no markdown headers.
+        Write the user's real training week as short, punchy "patch notes" in the voice of \
+        a video-game changelog — character upgrades, raid bosses, ceilings expanded, damage \
+        dealt. Keep every number accurate to the telemetry provided; never invent stats.
+
+        Format the reply as GitHub-flavored Markdown using ONLY this structure:
+        - Exactly one level-2 header on the first line — "## " followed by a short, punchy \
+        title for the week (2 to 5 words).
+        - Then 4 to 6 bullet points, each on its own line starting with "- ", one patch note \
+        per bullet.
+        - You may wrap a key term or number in **double asterisks** to bold it. No other \
+        Markdown: no extra headers, no nested bullets, no tables, no code fences, no links, \
+        no images.
+
+        Output only the Markdown. No preamble, no explanation, nothing before the "## " title \
+        or after the last bullet.
         """
 
     /// The week's numbers, rendered as the model's input.
@@ -171,7 +186,7 @@ enum NarrativeEngine {
         "properties": [
             "patchNotes": [
                 "type": "string",
-                "description": "The 4-6 line weekly patch notes, as plain text with one line per note.",
+                "description": "The weekly patch notes as GitHub-flavored Markdown: one '## ' title line followed by 4 to 6 '- ' bullet lines. Bold key terms with **double asterisks**. No other Markdown.",
             ],
         ],
         "required": ["patchNotes"],
@@ -191,7 +206,7 @@ enum NarrativeEngine {
         guard !baseURL.isEmpty else { throw OdysseusClient.OdysseusError.notConfigured }
 
         let message = patchNotesInstructions + "\n\n" + patchNotesPrompt(telemetry)
-            + "\n\nReply with only the patch notes text — no JSON, no tool calls, no preamble."
+            + "\n\nReply with only the Markdown patch notes — no JSON, no tool calls, no preamble, no code fences."
 
         let session = try await OdysseusClient.createSession(
             baseURL: baseURL, token: token, endpointID: endpointID, model: model, name: "LimitBreak Saga"
@@ -224,14 +239,31 @@ enum NarrativeEngine {
                 guard let data = object.data(using: .utf8),
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
                 else { continue }
-                if let text = narrativeField(in: json) { return text }
+                if let text = narrativeField(in: json) { return unwrapFence(text) }
             }
         }
 
-        // No JSON envelope, or none with a usable field: if the reply is
-        // essentially prose, it's already readable — show it as-is.
-        let looksLikeJSON = cleaned.hasPrefix("{") || cleaned.hasPrefix("[") || cleaned.hasPrefix("```")
-        return looksLikeJSON ? nil : cleaned
+        // No JSON envelope, or none with a usable field. The notes are Markdown,
+        // so unwrap any code fence the model wrapped them in and hand back the
+        // prose — but still reject a bare JSON object we couldn't pull a field
+        // from, since that's never readable narrative.
+        let unwrapped = unwrapFence(cleaned)
+        let looksLikeJSON = unwrapped.hasPrefix("{") || unwrapped.hasPrefix("[")
+        return looksLikeJSON ? nil : unwrapped
+    }
+
+    /// Strips a surrounding Markdown/code fence (```` ``` ```` or ```` ```markdown ````)
+    /// so a model that wrapped its answer in a fenced block still renders as
+    /// clean Markdown rather than showing the backticks.
+    private static func unwrapFence(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("```") else { return trimmed }
+        var lines = trimmed.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        lines.removeFirst()   // drop the opening ``` (with or without a language tag)
+        if let last = lines.last, last.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+            lines.removeLast()
+        }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Keys a model is likely to put the finished narrative under, most
@@ -274,26 +306,28 @@ enum NarrativeEngine {
     }
     #endif
 
-    /// Deterministic fallback: composes patch notes locally with no model dependency.
+    /// Deterministic fallback: composes patch notes locally with no model
+    /// dependency, in the same Markdown contract the model tiers follow so the
+    /// Saga renders it identically.
     private static func templatePatchNotes(_ telemetry: WeeklyTelemetry) -> String {
         var lines: [String] = []
-        lines.append("LIMITBREAK CHARACTER UPGRADE — WEEKLY PATCH NOTES")
+        lines.append("## Weekly Character Upgrade")
 
         for record in telemetry.topRecords {
             let delta = record.delta.map { " (+\($0.cleanWeight))" } ?? " — first record set"
-            lines.append("• \(record.exercise) \(record.type) ceiling expanded to \(record.value.cleanWeight)\(delta).")
+            lines.append("- **\(record.exercise)** \(record.type) ceiling expanded to **\(record.value.cleanWeight)**\(delta).")
         }
 
         let bosses = max(1, Int(telemetry.totalVolume / 4500))
-        lines.append("• Physical volume: \(Int(telemetry.totalVolume).formatted()) lbs shifted across \(telemetry.setCount) working sets — damage dealt equivalent to defeating \(bosses) raid boss\(bosses == 1 ? "" : "es").")
+        lines.append("- Physical volume: **\(Int(telemetry.totalVolume).formatted()) lbs** shifted across **\(telemetry.setCount)** working sets — damage dealt equal to felling **\(bosses)** raid boss\(bosses == 1 ? "" : "es").")
 
         if telemetry.streakDays >= 2 {
-            lines.append("• \(telemetry.streakDays)-day active streak maintained. Momentum buff active.")
+            lines.append("- **\(telemetry.streakDays)-day** active streak maintained. Momentum buff active.")
         }
         if telemetry.prCount > 0 {
-            lines.append("• \(telemetry.prCount) LimitBreak\(telemetry.prCount == 1 ? "" : "s") triggered this week. Ceilings are meant to be shattered.")
+            lines.append("- **\(telemetry.prCount)** LimitBreak\(telemetry.prCount == 1 ? "" : "s") triggered this week. Ceilings are meant to be shattered.")
         } else {
-            lines.append("• No ceilings broken this week. The grind continues — every set charges the next LimitBreak.")
+            lines.append("- No ceilings broken this week. The grind continues — every set charges the next LimitBreak.")
         }
 
         return lines.joined(separator: "\n")

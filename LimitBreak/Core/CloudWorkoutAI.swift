@@ -245,7 +245,7 @@ enum CloudWorkoutAI {
                         ],
                         "supersetGroup": [
                             "type": "integer",
-                            "description": "Superset grouping index. Use 0 for a standalone movement. Give two (occasionally three) complementary movements the same index (1, 2, …) to pair them as a superset run back-to-back; keep grouped movements adjacent in the list.",
+                            "description": "Superset grouping index. Use 0 for a standalone movement. Give exactly two complementary movements the same index (1, 2, …) to pair them as a superset run back-to-back (never three or more); keep the pair adjacent in the list.",
                         ],
                     ],
                     "required": [

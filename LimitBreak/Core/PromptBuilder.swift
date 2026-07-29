@@ -79,13 +79,14 @@ enum PromptBuilder {
         there is no recorded ceiling, infer a sensible starting weight from their ceilings on \
         similar movements, and be conservative. Use 0 for bodyweight movements carrying no \
         added load.
-        - Where it serves the session, pair movements into supersets: give two (occasionally \
-        three) movements that run well back-to-back the same "supersetGroup" index (1 for the \
-        first pair, 2 for the next, and so on), and place them next to each other in the list. \
-        Good supersets pair an agonist with its antagonist (e.g. a press with a row), or a \
-        compound with a non-competing accessory; never superset two heavy movements that fight \
-        for the same fresh muscle. Most movements stay standalone — use 0 for those. Do not \
-        force supersets when straight sets serve the lifter better.
+        - Where it serves the session, pair movements into supersets. A superset is exactly \
+        two movements that run well back-to-back: give the pair the same "supersetGroup" index \
+        (1 for the first pair, 2 for the next, and so on) and place them next to each other in \
+        the list. Never put three or more movements in one superset. Good supersets pair an \
+        agonist with its antagonist (e.g. a press with a row), or a compound with a \
+        non-competing accessory; never superset two heavy movements that fight for the same \
+        fresh muscle. Most movements stay standalone — use 0 for those. Do not force supersets \
+        when straight sets serve the lifter better.
         - Give the session a short, punchy, video-game-themed title of 2 to 4 words.
         - The rationale is two sentences at most, addressed to the lifter. Say what this \
         session targets and which muscles you steered around and why. Plain language, no jargon.
@@ -221,13 +222,15 @@ enum PromptBuilder {
         if allowSupersets {
             lines.append("- Select \(exerciseCount) movements as the core of the session. You may add "
                          + "one or two extra movements beyond that only when it completes a strong superset.")
-            lines.append("- SUPERSETS ARE WANTED this session. Actively group movements into supersets "
-                         + "where they pair well — antagonists (a press with a row), or a compound with a "
-                         + "non-competing accessory. Aim for one to three supersets, but usually fewer than "
-                         + "half the movements are grouped; the rest stay standalone. You choose which "
-                         + "movements to bundle, and may introduce a movement specifically to complete a "
-                         + "superset. Give paired movements the same supersetGroup index (1, 2, …), keep "
-                         + "them adjacent in the list, and leave standalone movements at 0.")
+            lines.append("- SUPERSETS ARE WANTED this session. Pair movements that work well "
+                         + "back-to-back — antagonists (a press with a row), or a compound with a "
+                         + "non-competing accessory. A superset is exactly two movements; never put three "
+                         + "or more in one. Use at most half as many supersets as the movements requested "
+                         + "(up to two for five movements, three for seven, and so on), so most of the "
+                         + "session stays standalone. You choose which movements to pair, and may introduce "
+                         + "a movement specifically to complete a superset. Give each pair the same "
+                         + "supersetGroup index (1, 2, …), keep the two adjacent in the list, and leave "
+                         + "standalone movements at 0.")
         } else {
             lines.append("- Select exactly \(exerciseCount) movements.")
             lines.append("- Do not use supersets this session. Set supersetGroup to 0 for every movement.")
@@ -268,8 +271,8 @@ enum PromptBuilder {
               "targetLoadPounds": number — working weight in pounds, 0 for bodyweight,
               "restSeconds": integer — rest between sets in seconds,
               "note": string — one short sentence on why this movement is here,
-              "supersetGroup": integer — 0 for a standalone movement, or 1, 2, … to pair \
-        adjacent movements into a superset run (same number = same superset)
+              "supersetGroup": integer — 0 for a standalone movement, or 1, 2, … to pair exactly \
+        two adjacent movements into a superset (same number = same pair; never three or more)
             }
           ]
         }

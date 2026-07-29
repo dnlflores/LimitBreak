@@ -51,6 +51,7 @@ struct MasteryView: View {
         }
         .obsidianBackground()
         .toolbar(.hidden, for: .navigationBar)
+        .enableSwipeBack()
         .sheet(item: $selected) { rank in
             MasteryDetailSheet(rank: rank, log: logEntries(for: rank))
         }

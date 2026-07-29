@@ -19,29 +19,34 @@ enum Mastery {
 
     // MARK: - The ladder
 
-    /// Completions needed to *reach* a given mastery level (1-indexed). Growth is
-    /// triangular — 1, 3, 6, 10, 15, 21, 28, 36, 45, 55 … — so each rank asks for
-    /// one more session than the last increment. Level 0 is "unranked".
+    /// Completions that buy one mastery level. Every fifth time a movement is
+    /// trained in a session, its skill ranks up — a fixed, predictable cadence.
+    static let completionsPerLevel = 5
+
+    /// XP paid out each time a mastery level is crossed. A routine pays double a
+    /// single movement, since repeating a whole workout is the larger commitment.
+    static let levelUpXP = 500
+
+    /// Completions needed to *reach* a given mastery level (1-indexed). Fixed
+    /// cadence — 5, 10, 15, 20 … — so LV N lands on the (5·N)th completion.
+    /// Level 0 is "unranked".
     static func completions(toReachLevel level: Int) -> Int {
         guard level > 0 else { return 0 }
-        return level * (level + 1) / 2
+        return level * completionsPerLevel
     }
 
     /// The mastery level unlocked by `count` completions.
     static func level(forCompletions count: Int) -> Int {
         guard count > 0 else { return 0 }
-        var level = 0
-        while completions(toReachLevel: level + 1) <= count { level += 1 }
-        return level
+        return count / completionsPerLevel
     }
 
-    /// XP paid for reaching a mastery level. Scales with the level so deep
-    /// mastery stays worth chasing; a routine pays double a single movement,
-    /// since repeating a whole workout is the larger commitment.
+    /// XP paid for reaching a mastery level — a flat bonus per rank so every
+    /// fifth session of a movement lands a satisfying, predictable reward. A
+    /// routine pays double, since repeating a whole workout is the larger feat.
     static func xp(forLevel level: Int, isRoutine: Bool) -> Int {
         guard level > 0 else { return 0 }
-        let base = 30 + 20 * level
-        return isRoutine ? base * 2 : base
+        return isRoutine ? levelUpXP * 2 : levelUpXP
     }
 
     /// Flavor rank name for a mastery level band.

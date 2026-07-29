@@ -315,12 +315,14 @@ struct CoachedPlanMappingTests {
             "title": title,
             "rationale": "Chest is fresh; legs need another day.",
             "exercises": exercises.map { entry in
-                [
+                var item: [String: Any] = [
                     "name": entry.name, "sets": entry.sets,
                     "repRangeLow": entry.repRangeLow, "repRangeHigh": entry.repRangeHigh,
                     "targetLoadPounds": entry.targetLoadPounds,
                     "restSeconds": entry.restSeconds, "note": entry.note,
-                ] as [String: Any]
+                ]
+                if let group = entry.supersetGroup { item["supersetGroup"] = group }
+                return item
             },
         ]
         let data = try! JSONSerialization.data(withJSONObject: json)
@@ -329,12 +331,13 @@ struct CoachedPlanMappingTests {
 
     private func exercise(
         _ name: String, sets: Int = 3, low: Int = 6, high: Int = 10,
-        load: Double = 185, rest: Int = 120
+        load: Double = 185, rest: Int = 120, group: Int? = nil
     ) -> CoachedExercise {
-        let json: [String: Any] = [
+        var json: [String: Any] = [
             "name": name, "sets": sets, "repRangeLow": low, "repRangeHigh": high,
             "targetLoadPounds": load, "restSeconds": rest, "note": "Primary press.",
         ]
+        if let group { json["supersetGroup"] = group }
         let data = try! JSONSerialization.data(withJSONObject: json)
         return try! JSONDecoder().decode(CoachedExercise.self, from: data)
     }
@@ -344,7 +347,7 @@ struct CoachedPlanMappingTests {
         let plan = WorkoutAI.matchToCatalog(
             coached([exercise("bench press")]),                 // lowercase from the model
             catalog: [brief("Bench Press")],
-            limit: 5
+            slots: 5
         )
         let mapped = try! #require(plan)
         #expect(mapped.source == .cloud)
@@ -358,7 +361,7 @@ struct CoachedPlanMappingTests {
         let plan = WorkoutAI.matchToCatalog(
             coached([exercise("Bench Press"), exercise("Quantum Thruster")]),
             catalog: [brief("Bench Press")],
-            limit: 5
+            slots: 5
         )
         #expect(plan?.exercises.map(\.name) == ["Bench Press"])
     }
@@ -369,7 +372,7 @@ struct CoachedPlanMappingTests {
         let plan = WorkoutAI.matchToCatalog(
             coached([exercise("Quantum Thruster")]),
             catalog: [brief("Bench Press")],
-            limit: 5
+            slots: 5
         )
         #expect(plan == nil)
     }
@@ -378,7 +381,7 @@ struct CoachedPlanMappingTests {
         let plan = WorkoutAI.matchToCatalog(
             coached([exercise("Bench Press"), exercise("Bench Press"), exercise("Incline Press")]),
             catalog: [brief("Bench Press"), brief("Incline Press")],
-            limit: 1
+            slots: 1
         )
         #expect(plan?.exercises.count == 1)
     }
@@ -389,7 +392,7 @@ struct CoachedPlanMappingTests {
         let plan = WorkoutAI.matchToCatalog(
             coached([exercise("Bench Press", sets: 99, low: 12, high: 4, load: -50, rest: 9999)]),
             catalog: [brief("Bench Press")],
-            limit: 5
+            slots: 5
         )
         let rx = try! #require(plan?.exercises.first?.prescription)
         #expect(plan?.exercises.first?.sets == 8)      // capped
@@ -397,6 +400,118 @@ struct CoachedPlanMappingTests {
         #expect(rx.repRangeHigh == 12)
         #expect(rx.targetLoadPounds == 0)               // negative load floored
         #expect(rx.restSeconds == 600)                  // capped
+    }
+
+    private let sixCatalog = ["A", "B", "C", "D", "E", "F", "G", "H"]
+
+    /// With supersets allowed but none actually formed, the plan is trimmed to
+    /// exactly the requested slots — no flat headroom padding it out.
+    @Test func supersetsAllowedButNoneFormedStaysAtRequestedCount() {
+        let plan = WorkoutAI.matchToCatalog(
+            coached(["A", "B", "C", "D", "E", "F", "G"].map { exercise($0) }),
+            catalog: sixCatalog.map(brief),
+            slots: 5,
+            allowSupersets: true
+        )
+        #expect(plan?.exercises.count == 5)
+        #expect(plan?.exercises.allSatisfy { $0.supersetGroup == nil } == true)
+    }
+
+    /// One superset spends one slot but keeps both movements: five slots with a
+    /// single pair yields six movements, not seven.
+    @Test func oneSupersetAddsExactlyOneMovement() {
+        let plan = WorkoutAI.matchToCatalog(
+            coached([
+                exercise("A", group: 1), exercise("B", group: 1),   // one superset
+                exercise("C"), exercise("D"), exercise("E"), exercise("F"), exercise("G"),
+            ]),
+            catalog: sixCatalog.map(brief),
+            slots: 5,
+            allowSupersets: true
+        )
+        #expect(plan?.exercises.count == 6)
+        // The pair survives as a single group; everything else is standalone.
+        let grouped = plan?.exercises.filter { $0.supersetGroup != nil }
+        #expect(grouped?.count == 2)
+    }
+
+    /// Two supersets spend two slots and add two movements: five slots yields
+    /// seven movements — the case the lifter called out as sensible.
+    @Test func twoSupersetsYieldSevenForFiveSlots() {
+        let plan = WorkoutAI.matchToCatalog(
+            coached([
+                exercise("A", group: 1), exercise("B", group: 1),
+                exercise("C", group: 2), exercise("D", group: 2),
+                exercise("E"), exercise("F"), exercise("G"),
+            ]),
+            catalog: sixCatalog.map(brief),
+            slots: 5,
+            allowSupersets: true
+        )
+        #expect(plan?.exercises.count == 7)
+    }
+
+    /// A model that groups everything is reined in: the superset cap demotes the
+    /// excess so the session can't balloon into "a ton of supersets".
+    @Test func tooManySupersetsAreCapped() {
+        let plan = WorkoutAI.matchToCatalog(
+            coached([
+                exercise("A", group: 1), exercise("B", group: 1),
+                exercise("C", group: 2), exercise("D", group: 2),
+                exercise("E", group: 3), exercise("F", group: 3),
+                exercise("G", group: 4), exercise("H", group: 4),
+            ]),
+            catalog: sixCatalog.map(brief),
+            slots: 5,
+            allowSupersets: true
+        )
+        // 5 slots → at most 2 supersets (half the slots); the rest fall back to
+        // standalone slots, so the movement count stays bounded.
+        let kept = try! #require(plan)
+        let groups = Set(kept.exercises.compactMap(\.supersetGroup))
+        #expect(groups.count <= 2)
+        #expect(kept.exercises.count <= 7)
+    }
+
+    /// The superset cap scales with the session: seven slots may hold up to
+    /// three supersets (half of seven, rounded down).
+    @Test func supersetCapScalesToHalfTheSlots() {
+        let plan = WorkoutAI.matchToCatalog(
+            coached([
+                exercise("A", group: 1), exercise("B", group: 1),
+                exercise("C", group: 2), exercise("D", group: 2),
+                exercise("E", group: 3), exercise("F", group: 3),
+                exercise("G", group: 4), exercise("H", group: 4),
+            ]),
+            catalog: sixCatalog.map(brief),
+            slots: 7,
+            allowSupersets: true
+        )
+        let kept = try! #require(plan)
+        let groups = Set(kept.exercises.compactMap(\.supersetGroup))
+        #expect(groups.count <= 3)   // 7 / 2 == 3
+    }
+
+    /// A superset is a pair. An oversized group the model emits is trimmed to two
+    /// movements, its extras demoted to standalone, so the session can't become
+    /// two supersets of three that swallow the whole workout.
+    @Test func oversizedSupersetsAreTrimmedToPairs() {
+        let plan = WorkoutAI.matchToCatalog(
+            coached([
+                exercise("A", group: 1), exercise("B", group: 1), exercise("C", group: 1),
+                exercise("D", group: 2), exercise("E", group: 2), exercise("F", group: 2),
+            ]),
+            catalog: sixCatalog.map(brief),
+            slots: 5,
+            allowSupersets: true
+        )
+        let kept = try! #require(plan)
+        // No superset holds more than two movements.
+        let groupSizes = Dictionary(grouping: kept.exercises.compactMap(\.supersetGroup), by: { $0 })
+            .mapValues(\.count)
+        #expect(groupSizes.values.allSatisfy { $0 == 2 })
+        // The session is not entirely supersets — standalone movements remain.
+        #expect(kept.exercises.contains { $0.supersetGroup == nil })
     }
 }
 
@@ -1534,7 +1649,7 @@ struct OdysseusPlanParsingTests {
         let mapped = try #require(WorkoutAI.matchToCatalog(
             plan,
             catalog: [ExerciseBrief(name: "Bench Press", muscleGroups: ["Chest"], equipment: "Barbell")],
-            limit: 5,
+            slots: 5,
             source: .selfHosted
         ))
         #expect(mapped.source == .selfHosted)
@@ -2078,5 +2193,59 @@ struct SupersetSessionTests {
             #expect(session.exerciseGroups.count == 1)
             #expect(session.exerciseGroups.first?.count == 2)
         }
+    }
+}
+
+/// The Saga's patch notes arrive as a Markdown contract — a `## ` title then
+/// `- ` bullets — from every model tier. These pin the parsing and the
+/// self-hosted reply cleanup that make the render deterministic.
+struct SagaNarrativeTests {
+
+    @Test func blocksParseHeadingAndBullets() {
+        let markdown = """
+            ## Raid Week
+            - **Bench Press** ceiling hit **225**.
+            - 3-day streak held.
+            """
+        let blocks = PatchNotesFormatter.blocks(from: markdown)
+        #expect(blocks.count == 3)
+        guard case let .heading(title, level) = blocks[0] else {
+            Issue.record("expected a heading first"); return
+        }
+        #expect(title == "Raid Week")
+        #expect(level == 2)
+        guard case .bullet = blocks[1], case .bullet = blocks[2] else {
+            Issue.record("expected two bullets"); return
+        }
+    }
+
+    /// A model that ignores the contract and returns a prose blob still degrades
+    /// into bulleted sentences rather than a wall of text.
+    @Test func blocksFallBackToSentenceBulletsForProse() {
+        let prose = "You crushed it. Three records fell. Momentum is high."
+        let blocks = PatchNotesFormatter.blocks(from: prose)
+        #expect(blocks.count == 3)
+        #expect(blocks.allSatisfy { if case .bullet = $0 { return true } else { return false } })
+    }
+
+    /// Notes a self-hosted model wrapped in a ```markdown fence are unwrapped.
+    @Test func narrativeTextUnwrapsMarkdownFence() throws {
+        let reply = """
+            ```markdown
+            ## Boss Rush
+            - Volume up **12%**.
+            ```
+            """
+        let text = try #require(NarrativeEngine.narrativeText(from: reply))
+        #expect(text.hasPrefix("## Boss Rush"))
+        #expect(!text.contains("```"))
+    }
+
+    /// A tool-calling JSON envelope still yields just the narrative field.
+    @Test func narrativeTextExtractsFieldFromJSONEnvelope() throws {
+        let reply = "{\"eventual_response\": \"## Week\\n- Did the thing.\"}"
+        let text = try #require(NarrativeEngine.narrativeText(from: reply))
+        #expect(text.contains("## Week"))
+        #expect(!text.contains("eventual_response"))
     }
 }

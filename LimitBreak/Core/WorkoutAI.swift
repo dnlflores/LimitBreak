@@ -160,9 +160,6 @@ enum WorkoutAI {
         catalog: [ExerciseBrief]
     ) async -> WorkoutPlan {
         let count = max(1, min(exerciseCount, catalog.count))
-        // Supersets can call for a movement or two beyond the requested count, so
-        // the catalog match keeps a little headroom when they're allowed.
-        let matchLimit = allowSupersets ? min(count + 2, catalog.count) : count
 
         // Tier 1: the coached plan — the only tier that sees muscle fatigue, the
         // lifter's goal, and their recorded ceilings. Which backend answers is
@@ -196,7 +193,7 @@ enum WorkoutAI {
                 }
 
                 let source: PlanSource = backend == .claude ? .cloud : .selfHosted
-                if let plan = matchToCatalog(coached, catalog: catalog, limit: matchLimit, source: source) {
+                if let plan = matchToCatalog(coached, catalog: catalog, slots: count, allowSupersets: allowSupersets, source: source) {
                     return plan
                 }
                 cloudError = "The coach returned movements that aren't in your library."
@@ -214,6 +211,7 @@ enum WorkoutAI {
             durationMinutes: durationMinutes,
             withPartner: withPartner,
             allowSupersets: allowSupersets,
+            context: context,
             catalog: catalog
         )
         plan.cloudError = cloudError
@@ -247,12 +245,22 @@ enum WorkoutAI {
     }
 
     /// Maps the coach's picks back onto real catalog entries, dropping anything
-    /// hallucinated or duplicated. Returns nil when nothing survives.
-    /// Internal rather than private so the clamping rules can be tested.
+    /// hallucinated or duplicated, then trims the result to `slots` session
+    /// slots. Returns nil when nothing survives.
+    ///
+    /// A "slot" is one entry in the session as the lifter reads it: a standalone
+    /// movement is one slot, and a whole superset is *also* one slot even though
+    /// it holds two or three movements. So a 5-slot request with one superset
+    /// yields six movements, with two supersets yields seven, and with none
+    /// yields exactly five — the movement count only grows by what a superset
+    /// genuinely needs, never by a flat headroom the model fills for no reason.
+    ///
+    /// Internal rather than private so the slot and clamping rules can be tested.
     static func matchToCatalog(
         _ coached: CoachedPlan,
         catalog: [ExerciseBrief],
-        limit: Int,
+        slots: Int,
+        allowSupersets: Bool = false,
         source: PlanSource = .cloud
     ) -> WorkoutPlan? {
         let byName = Dictionary(catalog.map { ($0.name.lowercased(), $0.name) }) { first, _ in first }
@@ -266,7 +274,12 @@ enum WorkoutAI {
 
             let low = max(1, min(entry.repRangeLow, entry.repRangeHigh))
             let high = max(low, max(entry.repRangeLow, entry.repRangeHigh))
-            let rawGroup = entry.supersetGroup.flatMap { $0 == 0 ? nil : $0 }
+            // Superset tags only carry through when the session asked for them;
+            // otherwise every movement is standalone regardless of what the
+            // model emitted.
+            let rawGroup = allowSupersets
+                ? entry.supersetGroup.flatMap { $0 == 0 ? nil : $0 }
+                : nil
             matched.append(PlannedExercise(
                 name: realName,
                 sets: min(max(entry.sets, 1), 8),
@@ -279,16 +292,61 @@ enum WorkoutAI {
                 ),
                 supersetGroup: rawGroup
             ))
-            if matched.count == limit { break }
         }
 
-        guard !matched.isEmpty else { return nil }
+        let selected = allowSupersets
+            ? selectSlots(matched, slots: slots)
+            : Array(matched.prefix(slots))
+
+        guard !selected.isEmpty else { return nil }
         return WorkoutPlan(
             title: sanitizeName(coached.title),
-            exercises: normalizeSupersets(matched),
+            exercises: normalizeSupersets(selected),
             rationale: coached.rationale,
             source: source
         )
+    }
+
+    /// Trims matched movements to `slots` session slots, keeping supersets whole.
+    ///
+    /// Two limits work together so the session can never collapse into all
+    /// supersets. Supersets are *pairs*: an oversized group the model emitted is
+    /// trimmed to its first two movements, and the extras fall back to standalone
+    /// slots. And at most half the slots may be supersets (`slots / 2`), so at
+    /// least half the session stays standalone straight sets. Anything past
+    /// either limit fills standalone slots one movement at a time, in order,
+    /// until the slot budget runs out.
+    static func selectSlots(_ exercises: [PlannedExercise], slots: Int) -> [PlannedExercise] {
+        let maxSupersets = slots / 2
+        let runs = supersetRuns(Array(exercises.indices)) { exercises[$0].supersetGroup }
+
+        var result: [PlannedExercise] = []
+        var usedSlots = 0
+        var keptSupersets = 0
+
+        func addStandalone(_ index: Int) {
+            var exercise = exercises[index]
+            exercise.supersetGroup = nil
+            result.append(exercise)
+            usedSlots += 1
+        }
+
+        for run in runs {
+            if usedSlots >= slots { break }
+            if run.count > 1 && keptSupersets < maxSupersets {
+                // Keep the first two movements as one superset slot; a group of
+                // three or more is trimmed to a pair, its extras demoted below.
+                for index in run.prefix(2) { result.append(exercises[index]) }
+                keptSupersets += 1
+                usedSlots += 1
+                for index in run.dropFirst(2) where usedSlots < slots { addStandalone(index) }
+            } else {
+                // Standalone, or a superset past the cap — its movements each take
+                // a standalone slot until the budget runs out.
+                for index in run where usedSlots < slots { addStandalone(index) }
+            }
+        }
+        return result
     }
 
     /// Rewrites coached superset tags into clean, contiguous 1…N groups after
@@ -318,6 +376,7 @@ enum WorkoutAI {
         durationMinutes: Int?,
         withPartner: Bool,
         allowSupersets: Bool = false,
+        context: TrainingContext? = nil,
         catalog: [ExerciseBrief]
     ) async -> WorkoutPlan {
         let count = exerciseCount
@@ -327,10 +386,12 @@ enum WorkoutAI {
             do {
                 return try await generatePlanWithModel(
                     focusLabel: focusLabel,
+                    targetMuscleGroups: targetMuscleGroups,
                     exerciseCount: count,
                     durationMinutes: durationMinutes,
                     withPartner: withPartner,
                     allowSupersets: allowSupersets,
+                    context: context,
                     catalog: focusedCatalog(catalog, targetMuscleGroups: targetMuscleGroups)
                 )
             } catch {
@@ -472,107 +533,155 @@ enum WorkoutAI {
     }
 
     #if canImport(FoundationModels)
-    /// Guided-generation shape the model fills in. Names are matched back to the
-    /// real catalog afterward, so hallucinated names are simply dropped.
+    /// Guided-generation shape the model fills in. Mirrors `CoachedPlan` /
+    /// `CoachedExercise` field-for-field so the on-device tier returns the exact
+    /// same structure as the cloud and self-hosted coaches — every plan reaches
+    /// the UI through one `matchToCatalog` path and renders identically,
+    /// whichever model answered. `@Guide` descriptions are kept in sync with
+    /// `CloudWorkoutAI.planSchema` and `PromptBuilder.jsonOutputContract`.
     @available(iOS 26.0, *)
     @Generable
     struct GeneratedPlan {
-        @Guide(description: "A short, fun, video-game-themed name for this workout, 2 to 4 words")
+        @Guide(description: "Short video-game-themed session name, 2 to 4 words.")
         var title: String
-        @Guide(description: "The exercises to perform, in a sensible order (compound lifts first)")
+        @Guide(description: "At most two sentences to the lifter on what this session targets and which muscles were avoided.")
+        var rationale: String
+        @Guide(description: "The movements to perform, in the order they should be done — heaviest compounds first.")
         var exercises: [GeneratedExercise]
+
+        /// The canonical DTO the whole app renders from. Bounds aren't enforced
+        /// here — `matchToCatalog` clamps every field, exactly as it does for the
+        /// cloud and self-hosted plans.
+        var coachedPlan: CoachedPlan {
+            CoachedPlan(
+                title: title,
+                rationale: rationale,
+                exercises: exercises.map(\.coachedExercise)
+            )
+        }
     }
 
     @available(iOS 26.0, *)
     @Generable
     struct GeneratedExercise {
-        @Guide(description: "The exact exercise name, copied verbatim from the provided catalog list")
+        @Guide(description: "Exact movement name, copied verbatim from the catalog.")
         var name: String
-        @Guide(description: "Number of working sets, between 2 and 5")
+        @Guide(description: "Number of working sets, between 2 and 5.")
         var sets: Int
-        @Guide(description: "Superset group: 0 for a standalone movement, or 1, 2, … to pair adjacent movements that run back-to-back (same number = same superset)")
+        @Guide(description: "Low end of the target rep range.")
+        var repRangeLow: Int
+        @Guide(description: "High end of the target rep range.")
+        var repRangeHigh: Int
+        @Guide(description: "Suggested working weight in pounds; 0 for unloaded bodyweight movements.")
+        var targetLoadPounds: Double
+        @Guide(description: "Rest between sets in seconds.")
+        var restSeconds: Int
+        @Guide(description: "One short sentence on why this movement is in the session.")
+        var note: String
+        @Guide(description: "Superset grouping index. Use 0 for a standalone movement, or 1, 2, … to pair exactly two adjacent complementary movements into a back-to-back superset (same number = same pair; never three or more).")
         var supersetGroup: Int
+
+        var coachedExercise: CoachedExercise {
+            CoachedExercise(
+                name: name,
+                sets: sets,
+                repRangeLow: repRangeLow,
+                repRangeHigh: repRangeHigh,
+                targetLoadPounds: targetLoadPounds,
+                restSeconds: restSeconds,
+                note: note,
+                supersetGroup: supersetGroup
+            )
+        }
     }
 
     @available(iOS 26.0, *)
     private static func generatePlanWithModel(
         focusLabel: String,
+        targetMuscleGroups: [String],
         exerciseCount: Int,
         durationMinutes: Int?,
         withPartner: Bool,
         allowSupersets: Bool,
+        context: TrainingContext?,
         catalog: [ExerciseBrief]
     ) async throws -> WorkoutPlan {
-        var instructions = """
-            You are a strength coach for LimitBreak, an RPG-styled workout tracker. \
-            Design a focused workout by selecting exercises from a fixed catalog. \
-            Only ever use exercise names that appear verbatim in the catalog — never invent names. \
-            Order the exercises sensibly, leading with the biggest compound movements. \
-            Give the workout a short, fun, video-game-themed title.
-            """
-        if allowSupersets {
-            instructions += """
-                \nGroup some movements into supersets where they pair well (antagonists, or a \
-                compound with a non-competing accessory). Aim for one to three supersets — usually \
-                fewer than half the movements are grouped. Give paired movements the same \
-                supersetGroup number (1, 2, …) and keep them next to each other; leave every other \
-                movement at 0.
-                """
+        // The same coaching instructions the cloud and self-hosted tiers use, so
+        // all three models are held to one contract — full prescriptions, a
+        // rationale, and catalog-only picks.
+        let session = LanguageModelSession(instructions: PromptBuilder.coachInstructions)
+
+        // With a training context the on-device model reads the identical request
+        // block Claude and the self-hosted coach get — fatigue report, recorded
+        // ceilings, and per-lift progression targets — so its loads are informed
+        // rather than guessed. The compact budget keeps the prompt inside the
+        // on-device window. Without a context (watch quick-generate, routine
+        // editor) it gets an equivalent context-free request.
+        let request: String
+        if let context {
+            request = PromptBuilder.requestBlock(
+                focusLabel: focusLabel,
+                targetMuscleGroups: targetMuscleGroups,
+                exerciseCount: exerciseCount,
+                durationMinutes: durationMinutes,
+                context: context,
+                allowSupersets: allowSupersets,
+                budget: .compact
+            )
         } else {
-            instructions += "\nDo not use supersets: set supersetGroup to 0 for every movement."
+            request = onDeviceRequestBlock(
+                focusLabel: focusLabel,
+                exerciseCount: exerciseCount,
+                durationMinutes: durationMinutes,
+                withPartner: withPartner,
+                allowSupersets: allowSupersets
+            )
         }
-        if withPartner {
-            instructions += """
-                \nThe lifter is training with a partner who can spot them, so heavy \
-                free-weight work is safe to program. Favor barbell and dumbbell \
-                pressing and squatting movements — the lifts where a spotter lets \
-                someone push closer to failure — over machine and cable versions.
-                """
-        }
-        let session = LanguageModelSession(instructions: instructions)
 
-        let catalogList = catalog
-            .map { "- \($0.name) (\($0.muscleGroups.joined(separator: ", ")); \($0.equipment))" }
-            .joined(separator: "\n")
-
-        var prompt = allowSupersets ? """
-            Focus: \(focusLabel)
-            Pick \(exerciseCount) exercises as the core of the session; you may add one or two more \
-            only to complete a superset.
-            """ : """
-            Focus: \(focusLabel)
-            Select exactly \(exerciseCount) exercises.
-            """
-        if let durationMinutes {
-            prompt += "\nTarget workout length: about \(durationMinutes) minutes."
-        }
-        if withPartner {
-            prompt += "\nA spotter is available — lean into spottable free-weight lifts."
-        }
-        prompt += "\n\nCatalog:\n\(catalogList)"
+        let prompt = "\(PromptBuilder.catalogBlock(catalog))\n\n\(request)"
 
         let response = try await session.respond(to: prompt, generating: GeneratedPlan.self)
-        let plan = response.content
 
-        let limit = allowSupersets ? exerciseCount + 2 : exerciseCount
-        let byName = Dictionary(catalog.map { ($0.name.lowercased(), $0.name) }) { first, _ in first }
-        var seen = Set<String>()
-        var matched: [PlannedExercise] = []
-        for exercise in plan.exercises {
-            let key = exercise.name.lowercased().trimmingCharacters(in: .whitespaces)
-            guard let realName = byName[key], !seen.contains(realName) else { continue }
-            seen.insert(realName)
-            let group = allowSupersets && exercise.supersetGroup != 0 ? exercise.supersetGroup : nil
-            matched.append(PlannedExercise(name: realName, sets: min(max(exercise.sets, 2), 5), supersetGroup: group))
-            if matched.count == limit { break }
+        // Identical to the cloud/self-hosted path: map picks back to real catalog
+        // entries, clamp every field, and trim to the requested slots.
+        if let plan = matchToCatalog(response.content.coachedPlan, catalog: catalog, slots: exerciseCount, allowSupersets: allowSupersets, source: .onDevice) {
+            return plan
         }
+        return fallbackPlan(focusLabel: focusLabel, targetMuscleGroups: targetMuscleGroups, exerciseCount: exerciseCount, catalog: catalog)
+    }
 
-        guard !matched.isEmpty else {
-            return fallbackPlan(focusLabel: focusLabel, targetMuscleGroups: [], exerciseCount: exerciseCount, catalog: catalog)
+    /// The per-request block for the on-device tier when no `TrainingContext` is
+    /// available (watch quick-generate, routine editor). Mirrors the tail of
+    /// `PromptBuilder.requestBlock` so the model reads the same session
+    /// instructions, minus the fatigue report and ceilings there's no data for.
+    private static func onDeviceRequestBlock(
+        focusLabel: String,
+        exerciseCount: Int,
+        durationMinutes: Int?,
+        withPartner: Bool,
+        allowSupersets: Bool
+    ) -> String {
+        var lines = ["THIS SESSION:", "- Focus: \(focusLabel)"]
+        if allowSupersets {
+            lines.append("- Select \(exerciseCount) movements as the core of the session. You may add "
+                         + "one or two extra movements beyond that only when it completes a strong superset.")
+            lines.append("- SUPERSETS ARE WANTED this session. Pair complementary movements — antagonists "
+                         + "(a press with a row), or a compound with a non-competing accessory. A superset is "
+                         + "exactly two movements; never put three or more in one. Use at most half as many "
+                         + "supersets as movements requested so most of the session stays standalone. Give "
+                         + "each pair the same supersetGroup index (1, 2, …), keep the two adjacent, and "
+                         + "leave standalone movements at 0.")
+        } else {
+            lines.append("- Select exactly \(exerciseCount) movements.")
+            lines.append("- Do not use supersets this session. Set supersetGroup to 0 for every movement.")
         }
-
-        let title = sanitizeName(plan.title)
-        return WorkoutPlan(title: title, exercises: normalizeSupersets(matched), source: .onDevice)
+        if let durationMinutes {
+            lines.append("- Target length: about \(durationMinutes) minutes.")
+        }
+        lines.append(withPartner
+            ? "- A training partner is present to spot, so heavy free-weight work is safe to program."
+            : "- Training alone with no spotter — keep free-weight loads to what can be racked solo.")
+        return lines.joined(separator: "\n")
     }
     #endif
 

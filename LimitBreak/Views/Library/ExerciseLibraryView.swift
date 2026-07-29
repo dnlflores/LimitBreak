@@ -245,13 +245,46 @@ struct ExerciseLibraryView: View {
 struct ExerciseDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \WorkoutSession.startDate, order: .reverse) private var sessions: [WorkoutSession]
     let exercise: Exercise
 
     @State private var showEditor = false
     @State private var showDeleteConfirm = false
+    @State private var showMastery = false
 
     private var records: [PRRecord] {
         exercise.prRecords.sorted { $0.dateAchieved > $1.dateAchieved }
+    }
+
+    /// Sessions that trained this movement with real work — one completion each,
+    /// the same "showing up" rule the mastery ladder counts on.
+    private var trainingSessions: [WorkoutSession] {
+        sessions.filter { session in
+            session.sets.contains { !$0.isWarmup && $0.exercise?.id == exercise.id }
+        }
+    }
+
+    /// This movement's current mastery standing, ready to render as a rank row.
+    private var rank: Mastery.Rank {
+        Mastery.Rank(
+            kind: .exercise,
+            id: exercise.id,
+            name: exercise.name,
+            completions: trainingSessions.count
+        )
+    }
+
+    /// The training log behind this movement's rank, newest first.
+    private var masteryLog: [MasteryLogEntry] {
+        trainingSessions.map { session in
+            let working = session.sets.filter { !$0.isWarmup && $0.exercise?.id == exercise.id }
+            let volume = working.reduce(0.0) { $0 + max(0, $1.effectiveLoad) * Double($1.reps) }
+            return MasteryLogEntry(
+                date: session.startDate,
+                title: session.name,
+                detail: "\(working.count) set\(working.count == 1 ? "" : "s") · \(Int(volume).formatted()) lbs"
+            )
+        }
     }
 
     var body: some View {
@@ -264,6 +297,8 @@ struct ExerciseDetailView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.glassBorder, lineWidth: 1))
                 }
+
+                masterySection
 
                 guideSection
 
@@ -287,8 +322,12 @@ struct ExerciseDetailView: View {
         }
         .obsidianBackground()
         .toolbar(.hidden, for: .navigationBar)
+        .enableSwipeBack()
         .sheet(isPresented: $showEditor) {
             ExerciseEditorView(exercise: exercise)
+        }
+        .sheet(isPresented: $showMastery) {
+            MasteryDetailSheet(rank: rank, log: masteryLog)
         }
         .confirmationDialog(
             "Delete \(exercise.name)?",
@@ -372,6 +411,43 @@ struct ExerciseDetailView: View {
             .kerning(1.5)
             .foregroundStyle(Theme.textDim)
             .padding(.top, 6)
+    }
+
+    // MARK: Mastery
+
+    /// This movement's skill level and progress toward the next rank. Every fifth
+    /// session ranks it up for a bonus of `Mastery.levelUpXP`. Tapping opens the
+    /// full ladder and the training log that built it.
+    private var masterySection: some View {
+        Button {
+            Haptics.shared.tick()
+            showMastery = true
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("MASTERY")
+                        .font(.caption.weight(.bold))
+                        .kerning(1.5)
+                        .foregroundStyle(Theme.textDim)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.textDim)
+                }
+
+                MasteryRankRow(rank: rank)
+
+                if rank.completions == 0 {
+                    Text("Log a working set to start ranking up this skill \u{2014} every \(Mastery.completionsPerLevel) sessions levels it up for +\(Mastery.levelUpXP) XP.")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .contentShape(Rectangle())
+            .cardStyle()
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Guide

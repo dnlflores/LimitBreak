@@ -38,11 +38,19 @@ struct RootTabView: View {
             Tab("Library", systemImage: "books.vertical.fill", value: 3) {
                 ExerciseLibraryView()
             }
-            Tab("Saga", systemImage: "scroll.fill", value: 4) {
-                NarrativeView()
+            Tab("Campaign", systemImage: "map.fill", value: 4) {
+                CampaignView()
             }
         }
         .tint(Theme.emerald)
+        // Tap-to-train: a tapped campaign milestone publishes an intent on the
+        // shared workout manager, and tab selection lives here — so this is the
+        // one place that can honor it. The Train tab reads the same intent to
+        // show what the lifter came to do.
+        .onChange(of: workout.campaignIntent) { _, intent in
+            guard intent != nil else { return }
+            withAnimation { selectedTab = 1 }
+        }
         .overlay {
             if let event = workout.limitBreakEvent {
                 LimitBreakOverlay(event: event) {

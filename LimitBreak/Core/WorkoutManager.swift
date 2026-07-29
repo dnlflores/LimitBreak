@@ -60,6 +60,15 @@ final class WorkoutManager {
 
     var limitBreakEvent: LimitBreakEvent?
 
+    /// A campaign milestone the lifter tapped "train this" on.
+    ///
+    /// The campaign tab can't push a view onto the Train tab's navigation stack,
+    /// and tab selection lives in `RootTabView` — so the intent is published here,
+    /// where both tabs already look. `RootTabView` switches tabs on it and the
+    /// session launcher reads it as a banner and a pre-selected focus. Cleared
+    /// once the lifter starts a session or dismisses the banner.
+    var campaignIntent: CampaignTrainingIntent?
+
     /// Test seam for body weight; production reads Health (with manual fallback).
     var bodyWeightOverride: Double?
 

@@ -2249,3 +2249,564 @@ struct SagaNarrativeTests {
         #expect(!text.contains("eventual_response"))
     }
 }
+
+// MARK: - Campaign
+
+/// Milestones close themselves from the training log and nothing else — there
+/// is no check-off in the UI — so the evaluation is the load-bearing part of the
+/// whole feature. These pin what does and does not count.
+struct CampaignMilestoneTests {
+
+    private let arcStart = Date(timeIntervalSince1970: 1_700_000_000)
+    private func day(_ offset: Double) -> Date { arcStart.addingTimeInterval(offset * 86_400) }
+
+    private func set(
+        _ offset: Double,
+        _ name: String = "Back Squat",
+        muscles: [MuscleGroup] = [.quads],
+        load: Double = 225,
+        reps: Int = 5
+    ) -> CampaignLog.LoggedSet {
+        CampaignLog.LoggedSet(
+            date: day(offset), exerciseName: name, muscleGroups: muscles, load: load, reps: reps
+        )
+    }
+
+    private func session(_ offset: Double, _ sets: [CampaignLog.LoggedSet]) -> CampaignLog.LoggedSession {
+        CampaignLog.LoggedSession(date: day(offset), sets: sets)
+    }
+
+    /// Completion is stamped with the date of the set that earned it, not the
+    /// moment the app noticed — a milestone hit offline on Tuesday reads Tuesday.
+    @Test func liftTargetIsStampedWithTheSetThatEarnedIt() throws {
+        let spec = MilestoneSpec(
+            detail: "Back Squat 225 for 5", kind: .liftTarget,
+            exerciseName: "Back Squat", targetLoad: 225, targetReps: 5
+        )
+        let log = CampaignLog(sessions: [
+            session(1, [set(1, load: 215)]),
+            session(4, [set(4, load: 225)]),
+            session(6, [set(6, load: 245)]),
+        ])
+        let earned = try #require(
+            CampaignEngine.completionDate(for: spec, log: log, since: arcStart, now: day(9))
+        )
+        #expect(earned == day(4))
+    }
+
+    /// The weight alone isn't the milestone — the reps are part of the target.
+    @Test func liftTargetRequiresTheRepsToo() {
+        let spec = MilestoneSpec(
+            detail: "Back Squat 225 for 5", kind: .liftTarget,
+            exerciseName: "Back Squat", targetLoad: 225, targetReps: 5
+        )
+        let log = CampaignLog(sessions: [session(2, [set(2, load: 275, reps: 2)])])
+        #expect(CampaignEngine.completionDate(for: spec, log: log, since: arcStart, now: day(9)) == nil)
+    }
+
+    /// An arc measures the arc. Work done before it was charted is history, not
+    /// progress against the objective.
+    @Test func trainingBeforeTheArcDoesNotCount() {
+        let spec = MilestoneSpec(
+            detail: "Back Squat 225 for 5", kind: .liftTarget,
+            exerciseName: "Back Squat", targetLoad: 225, targetReps: 5
+        )
+        let log = CampaignLog(sessions: [session(-3, [set(-3)])])
+        #expect(CampaignEngine.completionDate(for: spec, log: log, since: arcStart, now: day(9)) == nil)
+    }
+
+    /// "Train hamstrings 3x in a week" means inside one rolling week — three
+    /// sessions a month apart is not the same habit.
+    @Test func muscleFrequencyNeedsTheHitsInsideOneWindow() throws {
+        let spec = MilestoneSpec(
+            detail: "Train Hamstrings 3x a week", kind: .muscleFrequency,
+            muscleGroup: .hamstrings, targetCount: 3, windowDays: 7
+        )
+        let tight = CampaignLog(sessions: [
+            session(0, [set(0, "RDL", muscles: [.hamstrings])]),
+            session(2, [set(2, "RDL", muscles: [.hamstrings])]),
+            session(5, [set(5, "RDL", muscles: [.hamstrings])]),
+        ])
+        let earned = try #require(
+            CampaignEngine.completionDate(for: spec, log: tight, since: arcStart, now: day(20))
+        )
+        #expect(earned == day(5))
+
+        let spread = CampaignLog(sessions: [
+            session(0, [set(0, "RDL", muscles: [.hamstrings])]),
+            session(9, [set(9, "RDL", muscles: [.hamstrings])]),
+            session(18, [set(18, "RDL", muscles: [.hamstrings])]),
+        ])
+        #expect(CampaignEngine.completionDate(for: spec, log: spread, since: arcStart, now: day(20)) == nil)
+    }
+
+    /// A secondary muscle counts — the fatigue report counts it, so the campaign
+    /// has to agree or the two screens would disagree about the same session.
+    @Test func muscleFrequencyCountsSecondaryMuscles() {
+        let spec = MilestoneSpec(
+            detail: "Train Triceps twice a week", kind: .muscleFrequency,
+            muscleGroup: .triceps, targetCount: 2, windowDays: 7
+        )
+        let log = CampaignLog(sessions: [
+            session(1, [set(1, "Bench Press", muscles: [.chest, .triceps])]),
+            session(3, [set(3, "Bench Press", muscles: [.chest, .triceps])]),
+        ])
+        #expect(CampaignEngine.completionDate(for: spec, log: log, since: arcStart, now: day(9)) != nil)
+    }
+
+    /// A window of zero means the whole arc, which is how "8 sessions this
+    /// month" is expressed.
+    @Test func sessionCountSpansTheWholeArcWhenUnwindowed() throws {
+        let spec = MilestoneSpec(detail: "Log 3 sessions", kind: .sessionCount, targetCount: 3)
+        let log = CampaignLog(sessions: [
+            session(1, [set(1)]), session(12, [set(12)]), session(25, [set(25)]),
+        ])
+        let earned = try #require(
+            CampaignEngine.completionDate(for: spec, log: log, since: arcStart, now: day(30))
+        )
+        #expect(earned == day(25))
+    }
+
+    /// Pressing start isn't training. A session with no working sets logged
+    /// can't advance an objective.
+    @Test func emptySessionsDoNotAdvanceASessionCount() {
+        let spec = MilestoneSpec(detail: "Log 2 sessions", kind: .sessionCount, targetCount: 2)
+        let log = CampaignLog(sessions: [session(1, []), session(2, [])])
+        #expect(CampaignEngine.completionDate(for: spec, log: log, since: arcStart, now: day(9)) == nil)
+    }
+
+    @Test func volumeTotalCompletesWhereTheRunningTotalCrosses() throws {
+        // 225 x 5 = 1,125 per set; the third set crosses 3,000.
+        let spec = MilestoneSpec(detail: "Move 3,000 lbs", kind: .volumeTotal, targetLoad: 3_000)
+        let log = CampaignLog(sessions: [
+            session(1, [set(1), set(1)]),
+            session(3, [set(3)]),
+        ])
+        let earned = try #require(
+            CampaignEngine.completionDate(for: spec, log: log, since: arcStart, now: day(9))
+        )
+        #expect(earned == day(3))
+    }
+
+    @Test func recordCountReadsTheLimitBreaks() throws {
+        let spec = MilestoneSpec(detail: "Trigger 2 LimitBreaks", kind: .recordCount, targetCount: 2)
+        let log = CampaignLog(
+            sessions: [],
+            records: [
+                .init(date: day(2), exerciseName: "Bench Press"),
+                .init(date: day(11), exerciseName: "Back Squat"),
+            ]
+        )
+        let earned = try #require(
+            CampaignEngine.completionDate(for: spec, log: log, since: arcStart, now: day(20))
+        )
+        #expect(earned == day(11))
+    }
+
+    /// Warmups are stripped when the log snapshot is built, so a milestone can
+    /// never be collected by accident on an empty-bar set.
+    @Test @MainActor func warmupsNeverReachTheLog() throws {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        let context = container.mainContext
+        let squat = Exercise(name: "Back Squat", muscleGroup: "Quads")
+        context.insert(squat)
+        let session = WorkoutSession(name: "Legs", startDate: arcStart)
+        context.insert(session)
+        let warmup = ExerciseSet(weight: 225, reps: 5, isWarmup: true, timestamp: arcStart)
+        warmup.exercise = squat
+        warmup.session = session
+        context.insert(warmup)
+
+        let log = CampaignLog.build(sessions: [session])
+        #expect(log.allSets.isEmpty)
+    }
+}
+
+/// A campaign that runs out of road bends. It never breaks, and it never tells
+/// the lifter they failed — that outcome doesn't exist in the type.
+struct CampaignAdaptationTests {
+
+    @Test func aQuietFirstWeekChangesNothing() {
+        let pace = CampaignPace(requiredTotal: 4, requiredComplete: 0, elapsedFraction: 0.3)
+        #expect(CampaignEngine.adaptation(pace: pace, extensionsUsed: 0) == .onTrack)
+    }
+
+    /// Past halfway and more than a milestone behind an even pace, the arc sheds
+    /// one objective rather than letting the lifter run at an impossible target.
+    @Test func midArcDriftRescopesOneObjective() {
+        let pace = CampaignPace(requiredTotal: 4, requiredComplete: 0, elapsedFraction: 0.7)
+        #expect(CampaignEngine.adaptation(pace: pace, extensionsUsed: 0) == .rescoped(demoting: 1))
+    }
+
+    /// Slightly behind is not behind. One slow week must not rewrite the plan.
+    @Test func smallShortfallsAreNoise() {
+        // Expected 2.1 of 3 banked, actually 2 — a rounding error, not a drift.
+        let pace = CampaignPace(requiredTotal: 3, requiredComplete: 2, elapsedFraction: 0.7)
+        #expect(CampaignEngine.adaptation(pace: pace, extensionsUsed: 0) == .onTrack)
+    }
+
+    @Test func aPassedDeadlineBuysMoreRoad() {
+        let pace = CampaignPace(requiredTotal: 3, requiredComplete: 1, elapsedFraction: 1.2)
+        #expect(
+            CampaignEngine.adaptation(pace: pace, extensionsUsed: 0)
+                == .extended(byDays: CampaignEngine.extensionDays)
+        )
+    }
+
+    /// Extensions can't run forever or the arc stops meaning anything — so once
+    /// they're spent the objective shrinks to what's actually in reach.
+    @Test func exhaustedExtensionsShrinkTheObjectiveInstead() {
+        let pace = CampaignPace(requiredTotal: 4, requiredComplete: 1, elapsedFraction: 1.5)
+        #expect(
+            CampaignEngine.adaptation(pace: pace, extensionsUsed: CampaignEngine.maximumExtensions)
+                == .rescoped(demoting: 2)
+        )
+    }
+
+    @Test func everythingBankedCompletesTheArc() {
+        let pace = CampaignPace(requiredTotal: 3, requiredComplete: 3, elapsedFraction: 0.4)
+        #expect(CampaignEngine.adaptation(pace: pace, extensionsUsed: 0) == .complete)
+    }
+
+    /// The property the whole design rests on: whatever the lifter's month looked
+    /// like, an overrun arc is always given road or made smaller — never left
+    /// sitting there unreachable, and never failed.
+    @Test func noPaceEverStrandsTheLifter() {
+        for total in 1...5 {
+            for complete in 0..<total {
+                for tenths in 10...25 {
+                    for used in 0...CampaignEngine.maximumExtensions {
+                        let pace = CampaignPace(
+                            requiredTotal: total,
+                            requiredComplete: complete,
+                            elapsedFraction: Double(tenths) / 10
+                        )
+                        switch CampaignEngine.adaptation(pace: pace, extensionsUsed: used) {
+                        case .extended(let days):
+                            #expect(days > 0)
+                        case .rescoped(let demoting):
+                            #expect(demoting >= 1)
+                            #expect(demoting <= pace.outstanding)
+                        case .onTrack, .complete:
+                            Issue.record("an overrun arc must adapt, not stall")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Generation must produce a real arc with no model, no key, and no network —
+/// and must not trust a model that has all three.
+struct CampaignGenerationTests {
+
+    private func context(
+        goal: TrainingGoal = .buildMuscle,
+        experience: ExperienceLevel = .intermediate,
+        ceilings: [String: Double] = ["Back Squat": 315, "Bench Press": 225],
+        statuses: [MuscleGroup: MuscleStatus] = [:]
+    ) -> TrainingContext {
+        TrainingContext(
+            goal: goal,
+            experience: experience,
+            daysPerWeek: 4,
+            muscleStatuses: statuses,
+            recentSessions: [],
+            ceilings: ceilings,
+            withPartner: false
+        )
+    }
+
+    /// The offline arc is the floor every tier falls through to, so it has to be
+    /// a campaign a lifter would actually chase — built from their own numbers.
+    @Test func templateArcComesFromTheLiftersOwnNumbers() throws {
+        let blueprint = CampaignEngine.template(context: context())
+
+        #expect(CampaignEngine.weekRange.contains(blueprint.weeks))
+        #expect(blueprint.source == .template)
+        #expect(!blueprint.title.isEmpty)
+        #expect(!blueprint.objective.isEmpty)
+
+        // The anchor lift is their strongest, and the target is above it.
+        let lift = try #require(blueprint.milestones.first { $0.kind == .liftTarget })
+        #expect(lift.exerciseName == "Back Squat")
+        #expect(lift.targetLoad > 315)
+        #expect(lift.targetReps == TrainingGoal.buildMuscle.repRange.low)
+
+        // And the arc asks them to keep showing up.
+        #expect(blueprint.milestones.contains { $0.kind == .sessionCount && $0.targetCount > 0 })
+    }
+
+    /// Strength work needs the longest runway; a beginner needs a win soonest.
+    @Test func arcLengthTracksWhoIsTraining() {
+        let beginner = CampaignEngine.template(context: context(experience: .beginner))
+        let strength = CampaignEngine.template(context: context(goal: .getStronger))
+        #expect(beginner.weeks == CampaignEngine.weekRange.lowerBound)
+        #expect(strength.weeks == CampaignEngine.weekRange.upperBound)
+    }
+
+    /// A lifter with no recorded ceilings still gets an arc — it just can't
+    /// include a load target to chase.
+    @Test func anEmptyHistoryStillYieldsACampaign() {
+        let blueprint = CampaignEngine.template(context: context(ceilings: [:]))
+        #expect(!blueprint.milestones.isEmpty)
+        #expect(!blueprint.milestones.contains { $0.kind == .liftTarget })
+    }
+
+    /// Dormant muscles become optional side quests, oldest neglect first.
+    @Test func dormantMusclesBecomeSideQuests() {
+        let now = Date()
+        let statuses: [MuscleGroup: MuscleStatus] = [
+            .chest: MuscleStatus(group: .chest, lastTrained: now.addingTimeInterval(-86_400), weeklySets: 12),
+            .calves: MuscleStatus(group: .calves, lastTrained: now.addingTimeInterval(-30 * 86_400)),
+            .core: MuscleStatus(group: .core),
+        ]
+        let quests = CampaignEngine.sideQuests(from: statuses, now: now)
+        #expect(quests.count == 2)
+        #expect(quests.allSatisfy { $0.isSideQuest })
+        #expect(quests.allSatisfy { $0.kind == .muscleFrequency })
+        // Never-trained sorts ahead of long-neglected; a fresh muscle isn't here.
+        #expect(quests.first?.muscleGroup == .core)
+        #expect(!quests.contains { $0.muscleGroup == .chest })
+    }
+
+    /// A model that invents a lift would produce a milestone that can never
+    /// complete, since evaluation matches on the stored movement name.
+    @Test func draftedLiftTargetsMustNameAMovementTheLifterHasDone() throws {
+        let draft = try #require(CampaignGenerator.decodeDraft(from: """
+            {"title": "Ghost Arc", "premise": "p", "objective": "o", "weeks": 6, "milestones": [
+              {"detail": "Zercher Snatch 400 for 3", "kind": "liftTarget", "exerciseName": "Zercher Snatch",
+               "muscleGroup": "", "targetLoad": 400, "targetReps": 3, "targetCount": 0, "windowDays": 0},
+              {"detail": "Back Squat 335 for 5", "kind": "liftTarget", "exerciseName": "Back Squat",
+               "muscleGroup": "", "targetLoad": 335, "targetReps": 5, "targetCount": 0, "windowDays": 0}
+            ]}
+            """))
+        let blueprint = try #require(
+            CampaignGenerator.blueprint(from: draft, context: context(), source: .claude)
+        )
+        let lifts = blueprint.milestones.filter { $0.kind == .liftTarget }
+        #expect(lifts.count == 1)
+        #expect(lifts.first?.exerciseName == "Back Squat")
+        #expect(blueprint.source == .claude)
+    }
+
+    /// Arc length and counts are clamped after decoding — a schema can't express
+    /// numeric bounds, so nothing downstream may assume the model respected them.
+    @Test func draftedValuesAreClampedIntoRange() throws {
+        let draft = try #require(CampaignGenerator.decodeDraft(from: """
+            {"title": "Forever", "premise": "p", "objective": "o", "weeks": 40, "milestones": [
+              {"detail": "Train Hamstrings a lot", "kind": "muscleFrequency", "exerciseName": "",
+               "muscleGroup": "Hamstrings", "targetLoad": 0, "targetReps": 0, "targetCount": 99, "windowDays": 0}
+            ]}
+            """))
+        let blueprint = try #require(
+            CampaignGenerator.blueprint(from: draft, context: context(), source: .claude)
+        )
+        #expect(blueprint.weeks == CampaignEngine.weekRange.upperBound)
+        let frequency = try #require(blueprint.milestones.first { $0.kind == .muscleFrequency })
+        #expect(frequency.targetCount <= 7)
+        // An omitted window becomes the week the phrasing implies, since
+        // "3 times, ever" isn't a plan.
+        #expect(frequency.windowDays == 7)
+    }
+
+    /// Nothing usable means nothing shipped — the caller falls through to the
+    /// deterministic arc rather than showing objectives that can't complete.
+    @Test func anUnusableDraftIsRejectedOutright() throws {
+        let draft = try #require(CampaignGenerator.decodeDraft(from: """
+            {"title": "Vibes", "premise": "p", "objective": "o", "weeks": 6, "milestones": [
+              {"detail": "Feel stronger", "kind": "vibeCheck", "exerciseName": "",
+               "muscleGroup": "", "targetLoad": 0, "targetReps": 0, "targetCount": 0, "windowDays": 0}
+            ]}
+            """))
+        #expect(CampaignGenerator.blueprint(from: draft, context: context(), source: .claude) == nil)
+    }
+
+    /// Local models fence their JSON and quote their numbers. Both survive.
+    @Test func draftDecodingToleratesWhatLocalModelsActuallySend() throws {
+        let reply = """
+            Sure! Here's the plan:
+            ```json
+            {"title": "The Long Haul", "premise": "p", "objective": "o", "weeks": "6",
+             "milestones": [{"detail": "Log 12 sessions", "kind": "sessionCount",
+              "target_count": "12", "window_days": 0}]}
+            ```
+            """
+        let draft = try #require(CampaignGenerator.decodeDraft(from: reply))
+        #expect(draft.weeks == 6)
+        #expect(draft.milestones.first?.targetCount == 12)
+
+        let blueprint = try #require(
+            CampaignGenerator.blueprint(from: draft, context: context(), source: .selfHosted)
+        )
+        #expect(blueprint.milestones.contains { $0.kind == .sessionCount && $0.targetCount == 12 })
+    }
+}
+
+/// The store side: milestones closing themselves off real logged training, and
+/// adaptations landing in the model without ever destroying progress.
+@MainActor
+struct CampaignStoreTests {
+
+    private static let schema = Schema([
+        Exercise.self, WorkoutSession.self, ExerciseSet.self, PRRecord.self,
+        Walk.self, Activity.self, Routine.self, RoutineItem.self, TrainingProfile.self,
+        Campaign.self, CampaignMilestone.self, CampaignChapter.self,
+    ])
+
+    /// The container must outlive the test body — see `PREngineTests.Harness`.
+    @MainActor
+    private struct Harness {
+        let container: ModelContainer
+        var context: ModelContext { container.mainContext }
+    }
+
+    private func makeHarness() throws -> Harness {
+        Harness(container: try ModelContainer(
+            for: Self.schema,
+            configurations: [ModelConfiguration(schema: Self.schema, isStoredInMemoryOnly: true)]
+        ))
+    }
+
+    private func blueprint(weeks: Int = 4, milestones: [MilestoneSpec]) -> CampaignBlueprint {
+        CampaignBlueprint(
+            title: "Test Arc", premise: "p", objective: "o",
+            weeks: weeks, milestones: milestones, source: .template
+        )
+    }
+
+    /// The end-to-end promise: train, and the objective closes itself.
+    @Test func loggedTrainingClosesAMilestoneWithNoInputFromTheLifter() throws {
+        let harness = try makeHarness()
+        let context = harness.context
+        let now = Date()
+
+        let squat = Exercise(name: "Back Squat", muscleGroup: "Quads")
+        context.insert(squat)
+
+        let campaign = CampaignStore.start(
+            blueprint(milestones: [
+                MilestoneSpec(
+                    detail: "Back Squat 225 for 5", kind: .liftTarget,
+                    exerciseName: "Back Squat", targetLoad: 225, targetReps: 5
+                )
+            ]),
+            in: context,
+            now: now
+        )
+        #expect(campaign.requiredMilestones.first?.isComplete == false)
+
+        let session = WorkoutSession(name: "Legs", startDate: now)
+        context.insert(session)
+        let set = ExerciseSet(weight: 225, reps: 5, timestamp: now)
+        set.exercise = squat
+        set.session = session
+        context.insert(set)
+
+        let adaptation = CampaignStore.refresh(campaign, in: context, now: now)
+        #expect(adaptation == .complete)
+        #expect(campaign.requiredMilestones.first?.isComplete == true)
+        #expect(campaign.requiredMilestones.first?.completedAt != nil)
+        #expect(campaign.status == .complete)
+    }
+
+    /// Falling behind moves the deadline. Nothing is marked failed, nothing is
+    /// removed, and the lifter keeps every objective they were given.
+    @Test func fallingBehindExtendsTheArcRatherThanEndingIt() throws {
+        let harness = try makeHarness()
+        let context = harness.context
+        let start = Date()
+        let campaign = CampaignStore.start(
+            blueprint(weeks: 4, milestones: [
+                MilestoneSpec(detail: "Log 12 sessions", kind: .sessionCount, targetCount: 12),
+                MilestoneSpec(detail: "Trigger 2 LimitBreaks", kind: .recordCount, targetCount: 2),
+            ]),
+            in: context,
+            now: start
+        )
+        let originalEnd = campaign.endDate
+
+        let adaptation = CampaignStore.refresh(
+            campaign, in: context, now: start.addingTimeInterval(30 * 86_400)
+        )
+        #expect(adaptation == .extended(byDays: CampaignEngine.extensionDays))
+        #expect(campaign.endDate > originalEnd)
+        #expect(campaign.extensionCount == 1)
+        #expect(campaign.status == .active)
+        #expect(campaign.milestones.count == 2)
+    }
+
+    /// Rescoping demotes to a side quest — it never deletes. The lifter keeps
+    /// seeing the work they did, the objective just stops depending on it.
+    @Test func rescopingDemotesInsteadOfDeleting() throws {
+        let harness = try makeHarness()
+        let context = harness.context
+        let start = Date()
+        let campaign = CampaignStore.start(
+            blueprint(weeks: 4, milestones: [
+                MilestoneSpec(detail: "Log 20 sessions", kind: .sessionCount, targetCount: 20),
+                MilestoneSpec(detail: "Trigger 5 LimitBreaks", kind: .recordCount, targetCount: 5),
+                MilestoneSpec(detail: "Move 500,000 lbs", kind: .volumeTotal, targetLoad: 500_000),
+            ]),
+            in: context,
+            now: start
+        )
+        campaign.extensionCount = CampaignEngine.maximumExtensions
+
+        let adaptation = CampaignStore.refresh(
+            campaign, in: context, now: start.addingTimeInterval(60 * 86_400)
+        )
+        #expect(adaptation == .rescoped(demoting: 2))
+        #expect(campaign.milestones.count == 3)      // nothing was destroyed
+        #expect(campaign.requiredMilestones.count == 1)
+        #expect(campaign.sideQuests.count == 2)
+        #expect(campaign.rescopeCount == 2)
+    }
+
+    /// The weekly patch notes used to be regenerated over the top of themselves
+    /// and forgotten. Now they stack up as the arc's chapters.
+    @Test func chaptersAccumulateInsteadOfOverwriting() throws {
+        let harness = try makeHarness()
+        let context = harness.context
+        let start = Date()
+        let campaign = CampaignStore.start(
+            blueprint(milestones: [
+                MilestoneSpec(detail: "Log 8 sessions", kind: .sessionCount, targetCount: 8)
+            ]),
+            in: context,
+            now: start
+        )
+
+        CampaignStore.recordChapter(
+            markdown: "## Week One\n- Showed up.", in: campaign, context: context, now: start
+        )
+        CampaignStore.recordChapter(
+            markdown: "## Week Two\n- Showed up again.",
+            in: campaign, context: context, now: start.addingTimeInterval(8 * 86_400)
+        )
+
+        #expect(campaign.chapters.count == 2)
+        #expect(campaign.orderedChapters.first?.headline == "Week Two")
+        #expect(campaign.orderedChapters.first?.weekIndex == 2)
+    }
+
+    /// One arc runs at a time, but starting a new one retires the old rather
+    /// than deleting it — the chapters written under it are the lifter's history.
+    @Test func startingANewArcRetiresTheOldOne() throws {
+        let harness = try makeHarness()
+        let context = harness.context
+        let specs = [MilestoneSpec(detail: "Log 8 sessions", kind: .sessionCount, targetCount: 8)]
+        let first = CampaignStore.start(blueprint(milestones: specs), in: context)
+        let second = CampaignStore.start(blueprint(milestones: specs), in: context)
+
+        #expect(first.status == .retired)
+        #expect(second.status == .active)
+        #expect(CampaignStore.active(in: context)?.id == second.id)
+        #expect(CampaignStore.past(in: context).count == 1)
+    }
+}

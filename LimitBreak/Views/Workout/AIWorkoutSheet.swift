@@ -11,6 +11,11 @@ struct AIWorkoutSheet: View {
     @Query(sort: \WorkoutSession.startDate, order: .reverse) private var sessions: [WorkoutSession]
     @Query private var profiles: [TrainingProfile]
 
+    /// The focus the sheet opens on. Defaults to full body; a campaign milestone
+    /// that routed the lifter here passes the muscles its objective needs, so the
+    /// generator starts pointed at the right work instead of making them re-pick it.
+    var initialFocus: WorkoutFocus = .fullBody
+
     /// Called with the generated session title, the ordered exercises to load,
     /// the superset grouping (exercise id → tag) the coach recommended, and
     /// whether the session is being trained with a partner.
@@ -72,6 +77,9 @@ struct AIWorkoutSheet: View {
                 }
             }
             .safeAreaInset(edge: .bottom) { actionBar }
+            // `focus` is @State so the lifter can change it; `initialFocus` only
+            // seeds where the picker opens.
+            .onAppear { focus = initialFocus }
             .sheet(item: $inspectedExercise) { detail in
                 PlannedExerciseSheet(
                     exercise: detail.exercise,

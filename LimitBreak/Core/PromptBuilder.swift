@@ -245,6 +245,169 @@ enum PromptBuilder {
         return lines.joined(separator: "\n")
     }
 
+    // MARK: - Campaign
+    //
+    // The forward-looking layer. Where `coachInstructions` designs one session,
+    // this designs the month and a half that session belongs to — so the rules
+    // here are about scope and measurability, not exercise selection.
+
+    /// The campaign designer's brief.
+    ///
+    /// The hard constraint is that every milestone must be *checkable against
+    /// the training log without asking the lifter anything*. The app has no
+    /// manual check-off, by design: a milestone the model phrases as "feel
+    /// stronger" can never complete, so the vocabulary of milestone kinds is
+    /// closed and stated up front.
+    static let campaignInstructions = """
+        You are the campaign designer for LimitBreak, an RPG-styled training app. \
+        A campaign is a 4 to 8 week training arc with one clear objective, built from \
+        what the lifter has actually been doing. You write the arc, not individual sessions.
+
+        Rules:
+        - Ground everything in the lifter's real numbers below. Never invent a lift they \
+        have no record of, and never set a target below what they have already done.
+        - Targets must be reachable in the time given. A milestone the lifter cannot hit \
+        is worse than one they clear early — only one of those brings them back.
+        - Every milestone is checked automatically against their logged sets and records. \
+        Never write a milestone that depends on the lifter self-reporting anything. \
+        Use only these kinds:
+          "liftTarget" — a weight for reps on one named movement (exerciseName, targetLoad, targetReps).
+          "muscleFrequency" — one muscle group trained targetCount times inside windowDays.
+          "sessionCount" — targetCount sessions logged (windowDays 0 = across the whole arc).
+          "volumeTotal" — targetLoad pounds of total volume across the arc.
+          "recordCount" — targetCount personal records broken.
+        - Write 3 to 5 milestones. Together they should form one coherent objective, not \
+        a list of unrelated chores.
+        - Prefer a load target on a lift they already train, and a frequency target on a \
+        muscle group they have been neglecting.
+        - The title is 2 to 4 words and reads like a game chapter. The premise is at most \
+        two sentences of framing, in the app's voice — a little heroic, never corny. The \
+        objective is one plain sentence saying what the arc is for, addressed to the lifter.
+        - Each milestone's "detail" is the short line the lifter reads on the card, e.g. \
+        "Squat 225 for 5" or "Train Hamstrings twice a week". No numbers in it that \
+        disagree with the target fields.
+        """
+
+    /// The lifter's state, rendered as the campaign designer's input.
+    ///
+    /// Deliberately narrower than `requestBlock`: an arc is planned off cadence,
+    /// ceilings and neglect, and none of the per-session machinery (emphasis,
+    /// superset rules, spotter presence) has any bearing on a six-week plan.
+    static func campaignRequestBlock(
+        context: TrainingContext,
+        weekRange: ClosedRange<Int>,
+        budget: Budget = .full,
+        now: Date = Date()
+    ) -> String {
+        var lines: [String] = []
+
+        lines.append("GOAL: \(context.goal.rawValue)")
+        lines.append(context.goal.coachingBrief)
+        lines.append("")
+        lines.append("EXPERIENCE: \(context.experience.rawValue)")
+        lines.append(context.experience.coachingBrief)
+        lines.append("Trains about \(context.daysPerWeek) days per week.")
+        lines.append("")
+
+        lines.append("MUSCLE COVERAGE (last 7 days):")
+        for group in MuscleGroup.allCases {
+            guard let status = context.muscleStatuses[group] else { continue }
+            let recency = status.lastTrained.map { date -> String in
+                let days = Int(now.timeIntervalSince(date) / 86_400)
+                return days <= 0 ? "today" : (days == 1 ? "1 day ago" : "\(days) days ago")
+            } ?? "not in the last week"
+            lines.append("- \(group.displayName): \(status.weeklySets) sets, last trained \(recency)")
+        }
+        lines.append("")
+
+        let ceilings = context.ceilings
+            .sorted { $0.value > $1.value }
+            .prefix(budget.ceilingCap)
+        if !ceilings.isEmpty {
+            lines.append("RECORDED CEILINGS (estimated 1RM, pounds) — the only movements you may set load targets on:")
+            for (name, value) in ceilings {
+                lines.append("- \(name): \(Int(value.rounded()))")
+            }
+            lines.append("")
+        }
+
+        let sessions = context.recentSessions.prefix(budget.recentSessionCap)
+        if !sessions.isEmpty {
+            lines.append("RECENT SESSIONS (newest first):")
+            for session in sessions {
+                let ago = session.daysAgo == 0 ? "today" : "\(session.daysAgo)d ago"
+                let groups = session.muscleGroups.isEmpty
+                    ? "no sets logged"
+                    : session.muscleGroups.joined(separator: ", ")
+                lines.append("- \(ago): \(session.name) — \(groups) (\(session.workingSets) working sets)")
+            }
+            lines.append("")
+        }
+
+        lines.append("THIS CAMPAIGN:")
+        lines.append("- Length: choose \(weekRange.lowerBound) to \(weekRange.upperBound) weeks, "
+                     + "whatever the objective actually needs.")
+        lines.append("- Starting today, running unbroken to the end date.")
+
+        return lines.joined(separator: "\n")
+    }
+
+    /// The campaign shape, spelled out for backends that can't enforce a schema.
+    static let campaignOutputContract = """
+        OUTPUT FORMAT — follow this exactly.
+
+        Reply with a single JSON object and nothing else. No prose before or after \
+        it, no explanation, no markdown code fences.
+
+        The object has exactly these keys:
+        {
+          "title": string — the arc name, 2 to 4 words,
+          "premise": string — at most two sentences of framing,
+          "objective": string — one plain sentence on what the arc is for,
+          "weeks": integer — the arc's length in weeks, 4 to 8,
+          "milestones": [
+            {
+              "detail": string — the short line the lifter reads,
+              "kind": string — one of "liftTarget", "muscleFrequency", "sessionCount", \
+        "volumeTotal", "recordCount",
+              "exerciseName": string — the movement, copied verbatim from the recorded \
+        ceilings; empty string for every kind except "liftTarget",
+              "muscleGroup": string — one of Chest, Lats, Traps, Quads, Hamstrings, Deltoids, \
+        Triceps, Biceps, Core, Calves, Glutes, Forearms; empty string except for \
+        "muscleFrequency",
+              "targetLoad": number — pounds; the bar weight for "liftTarget", the total for \
+        "volumeTotal", 0 otherwise,
+              "targetReps": integer — reps for "liftTarget", 0 otherwise,
+              "targetCount": integer — how many for the counting kinds, 0 otherwise,
+              "windowDays": integer — the rolling window the count must land in; 0 means \
+        across the whole arc
+            }
+          ]
+        }
+
+        Every key is required on every milestone. Do not add keys that are not listed \
+        here. Numbers are bare JSON numbers, not strings and not written out in words.
+        """
+
+    /// The complete single-turn campaign prompt for a schema-less backend.
+    ///
+    /// Same shape as `selfHostedPlanPrompt`: one string, with the output contract
+    /// immediately before the request so the format rules are the last thing read.
+    /// No catalog — a campaign names movements the lifter already has records on,
+    /// which the request block carries.
+    static func selfHostedCampaignPrompt(
+        context: TrainingContext,
+        weekRange: ClosedRange<Int>,
+        budget: Budget = .compact,
+        now: Date = Date()
+    ) -> String {
+        [
+            campaignInstructions,
+            campaignOutputContract,
+            campaignRequestBlock(context: context, weekRange: weekRange, budget: budget, now: now),
+        ].joined(separator: "\n\n")
+    }
+
     // MARK: - Self-hosted output contract
 
     /// The response shape, spelled out for backends that can't enforce a schema.

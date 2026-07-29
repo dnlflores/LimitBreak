@@ -22,6 +22,9 @@ struct LimitBreakApp: App {
             Routine.self,
             RoutineItem.self,
             TrainingProfile.self,
+            Campaign.self,
+            CampaignMilestone.self,
+            CampaignChapter.self,
         ])
         // "-in-memory-store" (UI tests) keeps test data off the real store.
         let inMemory = ProcessInfo.processInfo.arguments.contains("-in-memory-store")

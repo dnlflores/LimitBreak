@@ -45,6 +45,8 @@ private struct SessionLauncherView: View {
             VStack(alignment: .leading, spacing: 24) {
                 header
 
+                campaignBanner
+
                 aiWorkoutCard
 
                 routinesSection
@@ -65,7 +67,7 @@ private struct SessionLauncherView: View {
             WalkDrawView()
         }
         .sheet(isPresented: $showAIWorkout) {
-            AIWorkoutSheet { title, exercises, supersets, partnered in
+            AIWorkoutSheet(initialFocus: workout.campaignIntent?.focus ?? .fullBody) { title, exercises, supersets, partnered in
                 workout.startSession(named: title, exercises: exercises, supersets: supersets, withPartner: partnered)
             }
         }
@@ -89,6 +91,62 @@ private struct SessionLauncherView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
+    }
+
+    // MARK: Campaign hand-off
+
+    /// What the lifter tapped on the Campaign tab, echoed here.
+    ///
+    /// This is the Train end of the tap-to-train intent. A true deep link would
+    /// have to reach through the AI sheet's own state to pre-run a generation,
+    /// so instead the milestone is restated, the generator opens pre-focused on
+    /// the muscles it needs, and the lifter stays in control of what they start.
+    @ViewBuilder
+    private var campaignBanner: some View {
+        if let intent = workout.campaignIntent {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "map.fill").foregroundStyle(Theme.gold)
+                    Text("CAMPAIGN OBJECTIVE")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textDim)
+                        .kerning(1.5)
+                    Spacer()
+                    Button {
+                        withAnimation { workout.campaignIntent = nil }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Theme.textDim)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text(intent.headline)
+                    .font(.subheadline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    showAIWorkout = true
+                    Haptics.shared.tick()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                        Text("BUILD A \(intent.focus.label.uppercased()) SESSION")
+                            .font(.caption.weight(.bold))
+                            .kerning(0.8)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Theme.limitBreakGradient, in: RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(.black)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cardStyle()
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
     }
 
     // MARK: Primary start (pinned at the bottom, in thumb range)

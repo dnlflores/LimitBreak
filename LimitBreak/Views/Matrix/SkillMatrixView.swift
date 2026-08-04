@@ -13,6 +13,7 @@ struct SkillMatrixView: View {
     @Query private var routines: [Routine]
 
     @State private var selectedDay: Date?
+    @State private var selectedStat: StatInfo?
     @State private var showHealthSheet = false
     @State private var showSettings = false
     // Debug/UI-test hook: launch with "-open-timeline" to push the timeline.
@@ -55,6 +56,13 @@ struct SkillMatrixView: View {
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
+            }
+            .sheet(item: $selectedStat) { info in
+                StatInfoSheet(info: info)
+            }
+            .task {
+                // Keep today's step tile live whenever the Level tab appears.
+                await HealthKitManager.shared.refreshTodayStats()
             }
         }
     }
@@ -142,31 +150,71 @@ struct SkillMatrixView: View {
 
     private var statHeader: some View {
         let progress = xpProgress
+        let steps = HealthKitManager.shared.todaySteps
+        let hitGoal = (steps ?? 0) >= Double(StepGoals.dailyGoal)
+        let limitBreaks = sessions.reduce(0) { $0 + $1.prCount }
         return HStack(spacing: 12) {
-            statTile(value: "\(progress.currentStreak)", label: "Day Streak", color: Theme.emerald)
-                .overlay(alignment: .topTrailing) {
-                    if progress.currentMultiplier > 1 {
-                        MultiplierBadge(multiplier: progress.currentMultiplier)
-                            .offset(x: 9, y: -9)
-                    }
-                }
-            statTile(
-                value: progress.weeklyXP.formatted(.number.notation(.compactName)),
-                label: "Weekly XP",
-                color: progress.weeklyXP < 0 ? Theme.crimson : Theme.violet
+            statButton(
+                StatInfo(
+                    icon: "flame.fill", tint: Theme.emerald, title: "Day Streak",
+                    value: "\(progress.currentStreak) day\(progress.currentStreak == 1 ? "" : "s")",
+                    detail: "Consecutive days you've stayed active — a finished session, a sport, or a walk of at least a mile keeps it alive. Every full 7-day run adds a +1× multiplier to all the XP you earn."
+                ),
+                value: "\(progress.currentStreak)", label: "Day Streak", color: Theme.emerald
             )
-            statTile(
-                value: "\(sessions.reduce(0) { $0 + $1.prCount })",
-                label: "LimitBreaks",
-                color: Theme.gold
+            .overlay(alignment: .topTrailing) {
+                if progress.currentMultiplier > 1 {
+                    MultiplierBadge(multiplier: progress.currentMultiplier)
+                        .offset(x: 9, y: -9)
+                }
+            }
+            statButton(
+                StatInfo(
+                    icon: "shoeprints.fill", tint: hitGoal ? Theme.emerald : Theme.teal, title: "Steps Today",
+                    value: steps.map { Int($0).formatted() } ?? "—",
+                    detail: stepsDetail(steps: steps, hitGoal: hitGoal)
+                ),
+                value: steps.map { StepFormat.compact($0) } ?? "—",
+                label: "of 10k steps", color: hitGoal ? Theme.emerald : Theme.teal
+            )
+            statButton(
+                StatInfo(
+                    icon: "crown.fill", tint: Theme.gold, title: "LimitBreaks",
+                    value: "\(limitBreaks)",
+                    detail: "Personal records you've shattered. Every time you beat a previous best on a lift, that's a LimitBreak — worth +\(XPEngine.limitBreakXP) XP each."
+                ),
+                value: "\(limitBreaks)", label: "LimitBreaks", color: Theme.gold
             )
         }
+    }
+
+    /// A tappable header stat: shows the tile, opens its info card on tap.
+    private func statButton(_ info: StatInfo, value: String, label: String, color: Color) -> some View {
+        Button {
+            Haptics.shared.tick()
+            selectedStat = info
+        } label: {
+            statTile(value: value, label: label, color: color)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func stepsDetail(steps: Double?, hitGoal: Bool) -> String {
+        let base = "Steps counted by Apple Health today. Reach \(StepGoals.dailyGoal.formatted()) to bank +\(StepGoals.bonusXP) XP and a little fanfare."
+        guard let steps else {
+            return base + " Connect Apple Health from the heart icon to start tracking."
+        }
+        if hitGoal {
+            return base + " Goal smashed — nice work."
+        }
+        let remaining = max(0, StepGoals.dailyGoal - Int(steps))
+        return base + " You're \(remaining.formatted()) steps away."
     }
 
     // MARK: - Level & rewards
 
     private var xpProgress: XPEngine.Progress {
-        XPEngine.progress(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines)
+        XPEngine.progress(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines, stepGoalDays: StepGoalStore.achievedDays())
     }
 
     private var levelInfo: XPEngine.LevelInfo {
@@ -215,6 +263,7 @@ struct SkillMatrixView: View {
     private var rewardsSection: some View {
         let rewards = XPEngine.recentRewards(
             sessions: sessions, records: records, walks: walks, activities: activities, routines: routines,
+            stepGoalDays: StepGoalStore.achievedDays(),
             multipliers: xpProgress.multipliers
         )
         if !rewards.isEmpty {
@@ -432,6 +481,62 @@ struct SkillMatrixView: View {
 /// Lets Date drive `.sheet(item:)` for the day-detail presentation.
 extension Date: @retroactive Identifiable {
     public var id: TimeInterval { timeIntervalSince1970 }
+}
+
+// MARK: - Stat info card
+
+/// The content behind a header stat tile — its icon, current value, and a plain
+/// explanation of what the number means and how to move it.
+struct StatInfo: Identifiable {
+    let id = UUID()
+    let icon: String
+    let tint: Color
+    let title: String
+    let value: String
+    let detail: String
+}
+
+/// A compact modal that explains a tapped header stat.
+private struct StatInfoSheet: View {
+    let info: StatInfo
+
+    var body: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(info.tint.opacity(0.18))
+                    .frame(width: 72, height: 72)
+                Image(systemName: info.icon)
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundStyle(info.tint)
+            }
+            .padding(.top, 32)
+
+            VStack(spacing: 6) {
+                Text(info.value)
+                    .font(.system(size: 38, weight: .black, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                Text(info.title.uppercased())
+                    .font(.caption.weight(.bold))
+                    .kerning(1.5)
+                    .foregroundStyle(Theme.textDim)
+            }
+
+            Text(info.detail)
+                .font(.subheadline)
+                .foregroundStyle(Theme.textDim)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 28)
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity)
+        .obsidianBackground()
+        .presentationDetents([.height(340)])
+        .presentationDragIndicator(.visible)
+    }
 }
 
 // MARK: - Grid component

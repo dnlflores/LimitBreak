@@ -20,7 +20,13 @@ final class SessionSync {
 
     /// One source of truth for what remotes display, derived from the manager.
     func snapshot(from manager: WorkoutManager) -> WatchStateSnapshot {
-        guard let session = manager.activeSession else { return .idle }
+        let steps = StepGoalStore.todaySteps() ?? 0
+        guard let session = manager.activeSession else {
+            var idle = WatchStateSnapshot.idle
+            idle.todaySteps = steps
+            idle.stepGoal = StepGoals.dailyGoal
+            return idle
+        }
 
         let exercises = manager.sessionExercises.map { exercise in
             WatchExerciseSnapshot(
@@ -41,28 +47,46 @@ final class SessionSync {
             currentExerciseID: manager.currentExercise?.id,
             restEndsAt: manager.restEndsAt,
             totalVolume: session.totalVolume,
-            prCount: session.prCount
+            prCount: session.prCount,
+            todaySteps: steps,
+            stepGoal: StepGoals.dailyGoal
         )
     }
 
-    /// What one-tap logging would record for this exercise, humanized.
+    /// What one-tap logging would record for this exercise, humanized. Prefers
+    /// the set the lifter actually planned next in the log sheet (so the watch
+    /// and Live Activity mirror the plan), falling back to this session's last
+    /// set and then history when no plan has been laid out yet.
     private func nextLabel(for exercise: Exercise, manager: WorkoutManager) -> String {
+        let planned = manager.plannedSets(for: exercise)?.first
         let template = manager.lastSet(for: exercise)
             ?? exercise.sets.max(by: { $0.timestamp < $1.timestamp })
+        // Planned weights are held in the exercise's display unit; convert back
+        // to canonical pounds so the shared formatting matches every other read.
+        let plannedPounds = planned.map { exercise.weightUnit.toPounds($0.primary) }
         switch exercise.trackingType {
         case .weightAndReps:
-            return "\(exercise.displayWeightString(fromPounds: template?.weight ?? 45)) \(exercise.weightUnit.abbreviation) × \(template?.reps ?? 8)"
+            let pounds = plannedPounds ?? template?.weight ?? 45
+            let reps = planned?.reps ?? template?.reps ?? 8
+            return "\(exercise.displayWeightString(fromPounds: pounds)) \(exercise.weightUnit.abbreviation) × \(reps)"
         case .bodyweightAndReps:
-            let added = template?.weight ?? 0
-            if added > 0 { return "BW+\(exercise.displayWeightString(fromPounds: added)) × \(template?.reps ?? 8)" }
-            if added < 0 { return "BW\(exercise.displayWeightString(fromPounds: added)) × \(template?.reps ?? 8)" }
-            return "BW × \(template?.reps ?? 8)"
+            let added = plannedPounds ?? template?.weight ?? 0
+            let reps = planned?.reps ?? template?.reps ?? 8
+            if added > 0 { return "BW+\(exercise.displayWeightString(fromPounds: added)) × \(reps)" }
+            if added < 0 { return "BW\(exercise.displayWeightString(fromPounds: added)) × \(reps)" }
+            return "BW × \(reps)"
         case .durationAndReps:
-            return "\((template?.durationSeconds ?? 30).clockString) × \(template?.reps ?? 8)"
+            let seconds = planned?.primary ?? template?.durationSeconds ?? 30
+            let reps = planned?.reps ?? template?.reps ?? 8
+            return "\(seconds.clockString) × \(reps)"
+        case .durationOnly:
+            return (planned?.primary ?? template?.durationSeconds ?? 30).clockString
         case .timeAndDistance:
-            return "\(Int(template?.distanceMeters ?? 1600)) m"
+            return "\(Int(planned?.distance ?? template?.distanceMeters ?? 1600)) m"
         case .customMetric:
-            return "\((template?.weight ?? 0).cleanWeight) \(exercise.customMetricUnit ?? "") × \(template?.reps ?? 8)"
+            let value = planned?.primary ?? template?.weight ?? 0
+            let reps = planned?.reps ?? template?.reps ?? 8
+            return "\(value.cleanWeight) \(exercise.customMetricUnit ?? "") × \(reps)"
         }
     }
 
@@ -92,6 +116,7 @@ final class SessionSync {
             exerciseName: current?.name ?? "Session complete",
             exerciseDone: current?.done ?? 0,
             exerciseTarget: current?.target ?? 0,
+            nextSetLabel: current?.nextLabel ?? "",
             totalDone: remaining.reduce(0) { $0 + min($1.done, $1.target) },
             totalTarget: remaining.reduce(0) { $0 + $1.target },
             totalVolume: state.totalVolume,

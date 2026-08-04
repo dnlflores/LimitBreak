@@ -11,15 +11,15 @@ struct AIWorkoutSheet: View {
     @Query(sort: \WorkoutSession.startDate, order: .reverse) private var sessions: [WorkoutSession]
     @Query private var profiles: [TrainingProfile]
 
-    /// The focus the sheet opens on. Defaults to full body; a campaign milestone
-    /// that routed the lifter here passes the muscles its objective needs, so the
-    /// generator starts pointed at the right work instead of making them re-pick it.
+    /// The focus the sheet opens on. Defaults to full body; callers can point the
+    /// generator at specific work so the lifter doesn't have to re-pick it.
     var initialFocus: WorkoutFocus = .fullBody
 
     /// Called with the generated session title, the ordered exercises to load,
-    /// the superset grouping (exercise id → tag) the coach recommended, and
-    /// whether the session is being trained with a partner.
-    let onStart: (String, [Exercise], [UUID: Int], Bool) -> Void
+    /// the coached set/rep/weight targets keyed by exercise id, the superset
+    /// grouping (exercise id → tag) the coach recommended, and whether the
+    /// session is being trained with a partner.
+    let onStart: (String, [Exercise], [UUID: Int], [UUID: Int], [UUID: Double], [UUID: Int], Bool) -> Void
 
     @State private var focus: WorkoutFocus = .fullBody
     @State private var exerciseCount = 5
@@ -621,14 +621,22 @@ struct AIWorkoutSheet: View {
         guard let plan else { return }
         let byName = Dictionary(exercises.map { ($0.name.lowercased(), $0) }) { first, _ in first }
         var matched: [Exercise] = []
+        var setTargets: [UUID: Int] = [:]
+        var repTargets: [UUID: Int] = [:]
+        var weightTargets: [UUID: Double] = [:]
         var supersets: [UUID: Int] = [:]
         for planned in plan.exercises {
             guard let exercise = byName[planned.name.lowercased()] else { continue }
             matched.append(exercise)
+            setTargets[exercise.id] = max(1, planned.sets)
+            if let reps = planned.targetReps { repTargets[exercise.id] = reps }
+            if let load = planned.prescription?.targetLoadPounds, load > 0 {
+                weightTargets[exercise.id] = load
+            }
             if let tag = planned.supersetGroup { supersets[exercise.id] = tag }
         }
         guard !matched.isEmpty else { return }
-        onStart(plan.title, matched, supersets, withPartner)
+        onStart(plan.title, matched, setTargets, repTargets, weightTargets, supersets, withPartner)
         dismiss()
     }
 
@@ -1053,6 +1061,9 @@ struct PlannedExerciseSheet: View {
         case .durationAndReps:
             let seconds = lastWorkingSet?.durationSeconds ?? 30
             return "\(plannedSets) sets \u{00D7} \(seconds.clockString)"
+        case .durationOnly:
+            let seconds = lastWorkingSet?.durationSeconds ?? 30
+            return "\(plannedSets) sets \u{00D7} \(seconds.clockString) hold"
         case .timeAndDistance:
             return "\(plannedSets) round\(plannedSets == 1 ? "" : "s")"
         }

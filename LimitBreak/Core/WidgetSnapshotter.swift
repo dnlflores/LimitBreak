@@ -65,7 +65,8 @@ final class WidgetSnapshotter {
         // Full XP progression — the single source of truth for level and the
         // XP earned over the trailing week.
         let progress = XPEngine.progress(
-            sessions: sessions, records: records, walks: walks, activities: activities, routines: routines
+            sessions: sessions, records: records, walks: walks, activities: activities, routines: routines,
+            stepGoalDays: StepGoalStore.achievedDays()
         )
         let level = XPEngine.levelInfo(totalXP: progress.totalXP).level
 
@@ -79,7 +80,9 @@ final class WidgetSnapshotter {
             generatedAt: Date(),
             level: level,
             rankTitle: XPEngine.rankTitle(for: level),
-            weeklyXP: progress.weeklyXP
+            weeklyXP: progress.weeklyXP,
+            todaySteps: StepGoalStore.todaySteps() ?? 0,
+            stepGoal: StepGoals.dailyGoal
         )
 
         WidgetSnapshotStore.save(snapshot)

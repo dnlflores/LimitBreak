@@ -57,6 +57,8 @@ private struct ExerciseLogEditor: View {
     @State private var repsInReserve: Int?
     @State private var showHowTo = false
     @State private var target: ProgressionTarget?
+    /// Drives the full-screen hold timer for hold-for-time movements.
+    @State private var showHoldTimer = false
 
     /// One planned set. `primary` is weight (lbs) for weight-based types, seconds
     /// for duration-based types, or the custom-metric value.
@@ -96,9 +98,23 @@ private struct ExerciseLogEditor: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .obsidianBackground()
-        .safeAreaInset(edge: .bottom) { bottomBar }
+        .safeAreaInset(edge: .bottom) { bottomStack }
         .onAppear(perform: initialSetup)
-        .onChange(of: workout.sets(for: exercise).count) { adoptLoggedSets() }
+        // Capture any edits to the pending rows' values when leaving this
+        // movement, so the plan is restored intact on the way back.
+        .onDisappear { if didPrefill { persistPlan() } }
+        .onChange(of: workout.sets(for: exercise).count) {
+            adoptLoggedSets()
+            persistPlan()
+        }
+        .fullScreenCover(isPresented: $showHoldTimer) {
+            HoldTimerView(
+                exerciseName: exercise.name,
+                targetSeconds: nextPending?.primary ?? initialPrimary
+            ) { held in
+                logHold(seconds: held)
+            }
+        }
     }
 
     // MARK: - Header
@@ -310,6 +326,18 @@ private struct ExerciseLogEditor: View {
             set.isPR ? Theme.gold.opacity(0.10) : Theme.emerald.opacity(0.07),
             in: RoundedRectangle(cornerRadius: 12)
         )
+        .contextMenu {
+            Button {
+                undoSet(at: index)
+            } label: {
+                Label("Undo Set", systemImage: "arrow.uturn.backward")
+            }
+            Button(role: .destructive) {
+                deleteLoggedSet(at: index)
+            } label: {
+                Label("Delete Set", systemImage: "trash")
+            }
+        }
     }
 
     /// A planned, not-yet-logged set: every value is editable inline, with a
@@ -368,6 +396,11 @@ private struct ExerciseLogEditor: View {
             separator("x")
             BigValueField(value: repsBinding(index), step: 1, allowsNegative: false, minimum: 1)
                 .frame(maxWidth: 96)
+        case .durationOnly:
+            BigValueField(value: $drafts[index].primary, step: 5, allowsNegative: false, minimum: 1)
+            Text("sec")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.textDim)
         case .timeAndDistance:
             BigValueField(value: $drafts[index].primary, step: 15, allowsNegative: false)
             separator("·")
@@ -422,6 +455,7 @@ private struct ExerciseLogEditor: View {
             drafts[i].primary = unit.fromPounds(old.toPounds(drafts[i].primary))
         }
         workout.setWeightUnit(unit, for: exercise)
+        persistPlan()
         Haptics.shared.tick()
     }
 
@@ -475,7 +509,9 @@ private struct ExerciseLogEditor: View {
 
     @ViewBuilder
     private var repsInReserveSection: some View {
-        if nextPending == nil && hasWorkingSet {
+        // Hold-for-time movements have no reps, so the rep-based effort read
+        // doesn't apply — the timer already captures how long you lasted.
+        if exercise.trackingType.usesReps && nextPending == nil && hasWorkingSet {
             VStack(alignment: .leading, spacing: 10) {
                 Text("How many more reps could you have done?")
                     .font(.subheadline.weight(.semibold))
@@ -532,25 +568,75 @@ private struct ExerciseLogEditor: View {
 
     // MARK: - Bottom bar
 
+    /// The rest countdown (started automatically after logging a set) stacked
+    /// above the log bar, so the cooldown stays visible while the sheet is open.
+    private var bottomStack: some View {
+        VStack(spacing: 0) {
+            if workout.isResting {
+                RestTimerOverlay()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            bottomBar
+        }
+        .animation(.spring(duration: 0.35), value: workout.isResting)
+    }
+
     @ViewBuilder
     private var bottomBar: some View {
-        if nextPending != nil {
+        if let pending = nextPending {
+            if exercise.trackingType == .durationOnly {
+                holdTimerBottomBar(pending)
+            } else {
+                Button {
+                    logNextSet()
+                } label: {
+                    Text(isWarmup ? "LOG WARMUP" : "LOG SET")
+                        .font(.headline)
+                        .kerning(1.5)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .foregroundStyle(wouldLimitBreak ? .black : .white)
+                        .glassCTA(tint: wouldLimitBreak ? Theme.gold.opacity(0.9) : Theme.emerald.opacity(0.85))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal)
+                .padding(.bottom, 10)
+            }
+        }
+    }
+
+    /// For hold-for-time movements: the timer is the primary way to log — it
+    /// counts you into the target and past it — with a manual fallback below.
+    private func holdTimerBottomBar(_ pending: SetDraft) -> some View {
+        VStack(spacing: 10) {
             Button {
-                logNextSet()
+                Haptics.shared.tick()
+                showHoldTimer = true
             } label: {
-                Text(isWarmup ? "LOG WARMUP" : "LOG SET")
+                Label("START HOLD TIMER", systemImage: "timer")
                     .font(.headline)
                     .kerning(1.5)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .foregroundStyle(wouldLimitBreak ? .black : .white)
-                    .glassCTA(tint: wouldLimitBreak ? Theme.gold.opacity(0.9) : Theme.emerald.opacity(0.85))
+                    .foregroundStyle(.black)
+                    .glassCTA(tint: Theme.emerald.opacity(0.85))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.horizontal)
-            .padding(.bottom, 10)
+
+            Button {
+                logNextSet()
+            } label: {
+                Text(isWarmup ? "Log warmup manually" : "Log \(pending.primary.clockString) manually")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.textDim)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
+        .padding(.horizontal)
+        .padding(.bottom, 10)
     }
 
     // MARK: - Derived state
@@ -596,6 +682,8 @@ private struct ExerciseLogEditor: View {
             return "BW × \(set.reps)"
         case .durationAndReps:
             return "\((set.durationSeconds ?? 0).clockString) × \(set.reps)"
+        case .durationOnly:
+            return (set.durationSeconds ?? 0).clockString
         case .timeAndDistance:
             return "\(Int(set.distanceMeters ?? 0)) m in \((set.durationSeconds ?? 0).clockString)"
         case .customMetric:
@@ -605,7 +693,7 @@ private struct ExerciseLogEditor: View {
 
     private func primaryValue(from set: ExerciseSet) -> Double {
         switch exercise.trackingType {
-        case .durationAndReps, .timeAndDistance: return set.durationSeconds ?? 0
+        case .durationAndReps, .durationOnly, .timeAndDistance: return set.durationSeconds ?? 0
         case .weightAndReps, .bodyweightAndReps: return exercise.weightUnit.fromPounds(set.weight)
         case .customMetric: return set.weight
         }
@@ -621,12 +709,14 @@ private struct ExerciseLogEditor: View {
         )
         if let template { draft.distance = template.distance }
         withAnimation(.snappy) { drafts.append(draft) }
+        persistPlan()
         Haptics.shared.tick()
     }
 
     private func deleteSet(at index: Int) {
         guard canDeleteRows, drafts.indices.contains(index), !drafts[index].isLogged else { return }
         _ = withAnimation(.snappy) { drafts.remove(at: index) }
+        persistPlan()
         Haptics.shared.tick()
     }
 
@@ -641,11 +731,14 @@ private struct ExerciseLogEditor: View {
             workout.logSet(exercise: exercise, weight: draft.primary, reps: draft.reps, isWarmup: isWarmup)
         case .durationAndReps:
             workout.logSet(exercise: exercise, weight: 0, reps: draft.reps, durationSeconds: draft.primary, isWarmup: isWarmup)
+        case .durationOnly:
+            workout.logSet(exercise: exercise, weight: 0, reps: 1, durationSeconds: draft.primary, isWarmup: isWarmup)
         case .timeAndDistance:
             workout.logSet(exercise: exercise, weight: 0, reps: 1, durationSeconds: draft.primary, distanceMeters: draft.distance, isWarmup: isWarmup)
         }
 
         drafts[index].loggedSet = workout.lastSet(for: exercise)
+        persistPlan()
         let wasWarmup = isWarmup
         isWarmup = false
 
@@ -659,6 +752,24 @@ private struct ExerciseLogEditor: View {
         guard drafts.indices.contains(index), let set = drafts[index].loggedSet else { return }
         workout.undoSet(set)
         withAnimation(.snappy) { drafts[index].loggedSet = nil }
+        persistPlan()
+    }
+
+    /// Fully removes a logged set from the session and drops its row, rather
+    /// than reverting it to an editable pending row the way `undoSet` does.
+    private func deleteLoggedSet(at index: Int) {
+        guard drafts.indices.contains(index), let set = drafts[index].loggedSet else { return }
+        workout.undoSet(set)
+        _ = withAnimation(.snappy) { drafts.remove(at: index) }
+        persistPlan()
+        Haptics.shared.tick()
+    }
+
+    /// Records the seconds measured by the hold timer as the next pending set.
+    private func logHold(seconds: Double) {
+        guard let index = nextPendingIndex else { return }
+        drafts[index].primary = max(1, seconds.rounded())
+        logNextSet()
     }
 
     // MARK: - Prefill
@@ -666,7 +777,7 @@ private struct ExerciseLogEditor: View {
     private var initialPrimary: Double {
         switch exercise.trackingType {
         case .weightAndReps: return exercise.isAssisted ? 0 : exercise.weightUnit.fromPounds(45)
-        case .durationAndReps: return 30
+        case .durationAndReps, .durationOnly: return 30
         case .timeAndDistance: return 300
         default: return 0
         }
@@ -676,9 +787,46 @@ private struct ExerciseLogEditor: View {
         guard !didPrefill else { return }
         didPrefill = true
         target = workout.progressionTarget(for: exercise)
-        prefillFromHistory()
-        adoptLoggedSets()
+        // Restore the plan the lifter already laid out for this movement this
+        // session (surviving exercise switches); only seed a fresh plan from
+        // history/target the first time the sheet is opened for it.
+        if let saved = workout.plannedSets(for: exercise) {
+            restorePlan(saved)
+        } else {
+            prefillFromHistory()
+            adoptLoggedSets()
+            persistPlan()
+        }
         repsInReserve = workout.repsInReserve(for: exercise)
+    }
+
+    /// Rebuilds the set rows from the persisted plan: the sets already logged
+    /// this session (authoritative, rebuilt from the manager) followed by the
+    /// pending planned sets the lifter set up earlier.
+    private func restorePlan(_ saved: [WorkoutManager.PlannedSet]) {
+        let loggedDrafts = workout.sets(for: exercise).map(makeLoggedDraft)
+        let pending = saved.map { plan -> SetDraft in
+            var draft = SetDraft(primary: plan.primary, reps: plan.reps)
+            draft.distance = plan.distance
+            return draft
+        }
+        drafts = loggedDrafts + pending
+    }
+
+    private func makeLoggedDraft(_ set: ExerciseSet) -> SetDraft {
+        var draft = SetDraft(primary: primaryValue(from: set), reps: max(1, set.reps))
+        draft.distance = set.distanceMeters ?? 1600
+        draft.loggedSet = set
+        return draft
+    }
+
+    /// Saves the current pending (not-yet-logged) rows to the manager so the
+    /// plan — count and values — persists across exercise switches.
+    private func persistPlan() {
+        let pending = drafts.filter { !$0.isLogged }.map {
+            WorkoutManager.PlannedSet(primary: $0.primary, reps: $0.reps, distance: $0.distance)
+        }
+        workout.updatePlannedSets(pending, for: exercise)
     }
 
     private var plannedPrimary: Double? {
@@ -688,7 +836,7 @@ private struct ExerciseLogEditor: View {
             return exercise.weightUnit.fromPounds(pounds)
         case .customMetric:
             return workout.plannedWeight(for: exercise)
-        case .durationAndReps, .timeAndDistance:
+        case .durationAndReps, .durationOnly, .timeAndDistance:
             return nil
         }
     }

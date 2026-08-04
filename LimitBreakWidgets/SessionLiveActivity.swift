@@ -28,6 +28,12 @@ struct SessionLiveActivity: Widget {
                         Text(progressLine(context.state))
                             .font(.caption2)
                             .foregroundStyle(LBColor.dim)
+                        if !context.state.isComplete, !context.state.nextSetLabel.isEmpty {
+                            Text("Next · \(context.state.nextSetLabel)")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(LBColor.emerald)
+                                .lineLimit(1)
+                        }
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -124,6 +130,12 @@ private struct LockScreenView: View {
                 Text(state.exerciseName)
                     .font(.subheadline.weight(.bold))
                     .lineLimit(1)
+                if !state.isComplete, !state.nextSetLabel.isEmpty {
+                    Text("Next · \(state.nextSetLabel)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(LBColor.emerald)
+                        .lineLimit(1)
+                }
                 HStack(spacing: 5) {
                     ForEach(0..<max(state.exerciseTarget, 1), id: \.self) { index in
                         Capsule()

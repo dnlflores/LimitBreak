@@ -1,6 +1,91 @@
 import SwiftUI
 import UIKit
 
+/// A user-selectable accent theme. Recolors the app's primary interactive
+/// accent, the brand "LimitBreak" energy, and the obsidian canvas glow.
+/// The semantic status colors (rested / recovering / fatigued / PR) stay fixed
+/// across every theme so the recovery diagrams and charts remain readable.
+enum AppTheme: String, CaseIterable, Identifiable {
+    case emerald
+    case violet
+    case teal
+    case gold
+    case coral
+    case crimson
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .emerald: "Emerald"
+        case .violet:  "Solar Violet"
+        case .teal:    "Cyber Teal"
+        case .gold:    "Solar Gold"
+        case .coral:   "Coral"
+        case .crimson: "Crimson"
+        }
+    }
+
+    /// Primary interactive accent: tab bar, CTAs, and selection highlights.
+    /// (`Emerald` reproduces the app's original accent exactly.)
+    var accent: Color {
+        switch self {
+        case .emerald: Color(red: 0.20, green: 0.84, blue: 0.50)
+        case .violet:  Color(red: 0.58, green: 0.40, blue: 1.0)
+        case .teal:    Color(red: 0.16, green: 0.86, blue: 0.82)
+        case .gold:    Color(red: 1.0,  green: 0.78, blue: 0.28)
+        case .coral:   Color(red: 1.0,  green: 0.52, blue: 0.42)
+        case .crimson: Color(red: 0.92, green: 0.34, blue: 0.40)
+        }
+    }
+
+    /// Brand "LimitBreak energy": the second stop of the limit-break gradient
+    /// and other high-energy accents. Paired to complement `accent`.
+    var energy: Color {
+        switch self {
+        case .emerald: Color(red: 0.58, green: 0.40, blue: 1.0)
+        case .violet:  Color(red: 0.90, green: 0.42, blue: 0.95)
+        case .teal:    Color(red: 0.34, green: 0.62, blue: 1.0)
+        case .gold:    Color(red: 1.0,  green: 0.48, blue: 0.30)
+        case .coral:   Color(red: 1.0,  green: 0.36, blue: 0.66)
+        case .crimson: Color(red: 0.74, green: 0.24, blue: 0.86)
+        }
+    }
+
+    /// Two blooms tinted into the obsidian mesh so the glass has themed light to
+    /// refract. Kept deliberately dark so the canvas stays obsidian, not vivid.
+    var canvasBlooms: (center: Color, corner: Color) {
+        switch self {
+        case .emerald: (Color(red: 0.075, green: 0.105, blue: 0.185), Color(red: 0.085, green: 0.075, blue: 0.150))
+        case .violet:  (Color(red: 0.095, green: 0.075, blue: 0.170), Color(red: 0.110, green: 0.070, blue: 0.150))
+        case .teal:    (Color(red: 0.055, green: 0.115, blue: 0.150), Color(red: 0.060, green: 0.095, blue: 0.150))
+        case .gold:    (Color(red: 0.120, green: 0.095, blue: 0.070), Color(red: 0.110, green: 0.070, blue: 0.075))
+        case .coral:   (Color(red: 0.130, green: 0.080, blue: 0.080), Color(red: 0.110, green: 0.070, blue: 0.095))
+        case .crimson: (Color(red: 0.130, green: 0.070, blue: 0.080), Color(red: 0.105, green: 0.065, blue: 0.105))
+        }
+    }
+}
+
+/// Holds the selected accent theme and persists it. Because `Theme`'s themed
+/// colors read `ThemeManager.shared.theme` during view `body` evaluation,
+/// SwiftUI's observation invalidates exactly the views that use those colors —
+/// so changing the theme recolors the whole app live, without a tree rebuild.
+@Observable
+final class ThemeManager {
+    static let shared = ThemeManager()
+
+    private static let storageKey = "appAccentTheme"
+
+    var theme: AppTheme {
+        didSet { UserDefaults.standard.set(theme.rawValue, forKey: Self.storageKey) }
+    }
+
+    private init() {
+        let raw = UserDefaults.standard.string(forKey: Self.storageKey)
+        theme = raw.flatMap(AppTheme.init(rawValue:)) ?? .emerald
+    }
+}
+
 /// LimitBreak's visual language: "Obsidian Liquid Glass".
 /// A deep obsidian mesh canvas, floating glass surfaces with light-refracting
 /// borders, and neon accent lighting for interactive states.
@@ -13,9 +98,10 @@ enum Theme {
     static let backgroundDeep = Color(red: 0.071, green: 0.094, blue: 0.141)
 
     /// The obsidian mesh the whole app floats on: dark glass with faint
-    /// cobalt and violet blooms so the material surfaces have light to refract.
+    /// accent blooms (themed) so the material surfaces have light to refract.
     static var canvas: some View {
-        MeshGradient(
+        let blooms = ThemeManager.shared.theme.canvasBlooms
+        return MeshGradient(
             width: 3, height: 3,
             points: [
                 [0.0, 0.0], [0.5, 0.0], [1.0, 0.0],
@@ -24,8 +110,8 @@ enum Theme {
             ],
             colors: [
                 background, backgroundDeep, background,
-                backgroundDeep, Color(red: 0.075, green: 0.105, blue: 0.185), backgroundDeep,
-                Color(red: 0.085, green: 0.075, blue: 0.150), backgroundDeep, background,
+                backgroundDeep, blooms.center, backgroundDeep,
+                blooms.corner, backgroundDeep, background,
             ]
         )
     }
@@ -50,10 +136,12 @@ enum Theme {
 
     /// Cyber teal: fully rested / target muscle ready.
     static let teal = Color(red: 0.16, green: 0.86, blue: 0.82)
-    /// Emerald: activity, go-states.
-    static let emerald = Color(red: 0.20, green: 0.84, blue: 0.50)
-    /// Solar violet: LimitBreak energy.
-    static let violet = Color(red: 0.58, green: 0.40, blue: 1.0)
+    /// Primary interactive accent (tab bar, CTAs, selection). Themed — follows
+    /// the accent chosen in Settings; `Emerald` is the original app color.
+    static var emerald: Color { ThemeManager.shared.theme.accent }
+    /// Brand "LimitBreak energy". Themed — the second stop of the limit-break
+    /// gradient and other energy accents; `Emerald`'s pairing is solar violet.
+    static var violet: Color { ThemeManager.shared.theme.energy }
     /// Electric gold: PR breakthrough.
     static let gold = Color(red: 1.0, green: 0.80, blue: 0.20)
     /// Muted crimson: high muscle fatigue.
@@ -62,11 +150,13 @@ enum Theme {
     static let coral = Color(red: 1.0, green: 0.52, blue: 0.42)
     static let textDim = Color.white.opacity(0.55)
 
-    static let limitBreakGradient = LinearGradient(
-        colors: [gold, violet],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
+    static var limitBreakGradient: LinearGradient {
+        LinearGradient(
+            colors: [gold, violet],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
 }
 
 extension View {

@@ -261,6 +261,8 @@ extension ExerciseSet {
         switch exercise.trackingType {
         case .durationAndReps:
             if let duration = durationSeconds { return "\(duration.clockString) \u{00D7} \(reps)" }
+        case .durationOnly:
+            if let duration = durationSeconds { return duration.clockString }
         case .timeAndDistance:
             if let distance = distanceMeters {
                 return "\(Int(distance)) m in \((durationSeconds ?? 0).clockString)"

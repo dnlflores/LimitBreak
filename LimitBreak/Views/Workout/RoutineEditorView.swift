@@ -34,6 +34,8 @@ struct RoutineEditorView: View {
 
     @State private var showPicker = false
     @State private var showAIGenerator = false
+    /// The slot currently being swapped by the AI, so its row can show a spinner.
+    @State private var swappingID: UUID?
 
     /// New routine, optionally seeded (e.g. from a past session). Seed items may
     /// carry a superset tag so a paired past session round-trips into a routine.
@@ -202,17 +204,21 @@ struct RoutineEditorView: View {
                 }
             }
             Spacer()
-            Stepper(
-                value: item.targetSets,
-                in: 1...12
-            ) {
-                Text("\(item.wrappedValue.targetSets) set\(item.wrappedValue.targetSets == 1 ? "" : "s")")
-                    .font(.caption.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.emerald)
+            if swappingID == id {
+                ProgressView().tint(Theme.violet)
+            } else {
+                Stepper(
+                    value: item.targetSets,
+                    in: 1...12
+                ) {
+                    Text("\(item.wrappedValue.targetSets) set\(item.wrappedValue.targetSets == 1 ? "" : "s")")
+                        .font(.caption.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.emerald)
+                }
+                .labelsHidden()
+                .fixedSize()
             }
-            .labelsHidden()
-            .fixedSize()
         }
         .listRowBackground(Theme.surfaceRaised)
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
@@ -232,6 +238,52 @@ struct RoutineEditorView: View {
                 .tint(Theme.teal)
             }
         }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                if let index = items.firstIndex(where: { $0.id == id }) {
+                    items.remove(at: index)
+                }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            Button {
+                Task { await swapWithAI(id) }
+            } label: {
+                Label("Swap AI", systemImage: "sparkles")
+            }
+            .tint(Theme.violet)
+        }
+    }
+
+    /// Asks the AI for one on-muscle replacement for a single slot, keeping its
+    /// set count and superset tag. Reuses the same `replaceExercise` pipeline the
+    /// AI workout sheet uses; clears stale coached targets from the old movement.
+    private func swapWithAI(_ id: UUID) async {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        let outgoing = items[index].exercise
+        swappingID = id
+        Haptics.shared.tick()
+        let catalog = allExercises.map {
+            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType)
+        }
+        let excluding = Set(items.map { $0.exercise.name.lowercased() })
+        let replacementName = await WorkoutAI.replaceExercise(
+            focusLabel: focusLabel ?? "",
+            targetMuscleGroups: outgoing.allMuscleGroups.map(\.rawValue),
+            replacing: outgoing.name,
+            excluding: excluding,
+            catalog: catalog
+        )
+        swappingID = nil
+        guard let replacementName,
+              let replacement = allExercises.first(where: { $0.name.lowercased() == replacementName.lowercased() }),
+              let slot = items.firstIndex(where: { $0.id == id }) else { return }
+        withAnimation(.spring(duration: 0.3)) {
+            items[slot].exercise = replacement
+            items[slot].targetReps = nil
+            items[slot].targetWeight = nil
+        }
+        Haptics.shared.success()
     }
 
     /// A compact "8 reps · 185 lb" summary of a slot's coached targets, or nil

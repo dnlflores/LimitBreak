@@ -219,6 +219,7 @@ struct ActivityLogView: View {
         try? modelContext.save()
         Haptics.shared.success()
         WidgetSnapshotter.shared.refresh()
+        StepGoalMonitor.shared.refreshStreakReminder()
         dismiss()
     }
 }

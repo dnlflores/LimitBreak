@@ -250,7 +250,8 @@ struct WorkoutHistoryView: View {
         let prCount = allSessions.reduce(0) { $0 + $1.prCount }
         let totalXP = XPEngine.progress(
             sessions: allSessions, records: allRecords, walks: allWalks,
-            activities: allActivities, routines: allRoutines
+            activities: allActivities, routines: allRoutines,
+            stepGoalDays: StepGoalStore.achievedDays()
         ).totalXP
 
         return VStack(alignment: .leading, spacing: 14) {

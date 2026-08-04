@@ -294,6 +294,11 @@ struct ExerciseHistorySheet: View {
             separator("x")
             BigValueField(value: repsBinding(index), step: 1, allowsNegative: false, minimum: 1)
                 .frame(maxWidth: 96)
+        case .durationOnly:
+            BigValueField(value: $drafts[index].primary, step: 5, allowsNegative: false, minimum: 1)
+            Text("sec")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.textDim)
         case .timeAndDistance:
             BigValueField(value: $drafts[index].primary, step: 15, allowsNegative: false)
             separator("·")
@@ -418,7 +423,7 @@ struct ExerciseHistorySheet: View {
 
     private func primaryValue(from set: ExerciseSet) -> Double {
         switch exercise.trackingType {
-        case .durationAndReps, .timeAndDistance: return set.durationSeconds ?? 0
+        case .durationAndReps, .durationOnly, .timeAndDistance: return set.durationSeconds ?? 0
         case .weightAndReps, .bodyweightAndReps: return exercise.weightUnit.fromPounds(set.weight)
         case .customMetric: return set.weight
         }
@@ -461,6 +466,8 @@ struct ExerciseHistorySheet: View {
             return PastSetEntry(weight: draft.primary, reps: draft.reps, isWarmup: draft.isWarmup)
         case .durationAndReps:
             return PastSetEntry(weight: 0, reps: draft.reps, isWarmup: draft.isWarmup, durationSeconds: draft.primary)
+        case .durationOnly:
+            return PastSetEntry(weight: 0, reps: 1, isWarmup: draft.isWarmup, durationSeconds: draft.primary)
         case .timeAndDistance:
             return PastSetEntry(weight: 0, reps: 1, isWarmup: draft.isWarmup, durationSeconds: draft.primary, distanceMeters: draft.distance)
         }

@@ -187,9 +187,10 @@ enum XPEngine {
         walks: [Walk],
         activities: [Activity] = [],
         routines: [Routine] = [],
+        stepGoalDays: Set<Date> = [],
         now: Date = Date()
     ) -> Progress {
-        let rewards = allRewards(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines)
+        let rewards = allRewards(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines, stepGoalDays: stepGoalDays)
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
         let byDay = Dictionary(grouping: rewards) { calendar.startOfDay(for: $0.date) }
@@ -276,9 +277,22 @@ enum XPEngine {
         records: [PRRecord],
         walks: [Walk],
         activities: [Activity] = [],
-        routines: [Routine] = []
+        routines: [Routine] = [],
+        stepGoalDays: Set<Date> = []
     ) -> [Reward] {
         var rewards: [Reward] = []
+
+        // Days the lifter closed their 10k step goal — a side quest on its feet.
+        for day in stepGoalDays {
+            rewards.append(Reward(
+                date: day,
+                icon: "shoeprints.fill",
+                tint: Theme.teal,
+                title: "Step Goal",
+                detail: "\(StepGoals.dailyGoal.formatted()) steps",
+                xp: StepGoals.bonusXP
+            ))
+        }
 
         for record in records {
             rewards.append(Reward(
@@ -336,12 +350,13 @@ enum XPEngine {
         walks: [Walk],
         activities: [Activity] = [],
         routines: [Routine] = [],
+        stepGoalDays: Set<Date> = [],
         multipliers: [Date: Int] = [:],
         limit: Int = 6
     ) -> [Reward] {
         let calendar = Calendar.current
         return Array(
-            allRewards(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines)
+            allRewards(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines, stepGoalDays: stepGoalDays)
                 .sorted { $0.date > $1.date }
                 .prefix(limit)
                 .map { reward in
@@ -389,12 +404,13 @@ enum XPEngine {
         walks: [Walk],
         activities: [Activity] = [],
         routines: [Routine] = [],
+        stepGoalDays: Set<Date> = [],
         now: Date = Date()
     ) -> [TimelineDay] {
-        let prog = progress(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines, now: now)
+        let prog = progress(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines, stepGoalDays: stepGoalDays, now: now)
         let calendar = Calendar.current
         let rewardsByDay = Dictionary(
-            grouping: allRewards(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines)
+            grouping: allRewards(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines, stepGoalDays: stepGoalDays)
         ) { calendar.startOfDay(for: $0.date) }
 
         var events: [TimelineEvent] = []

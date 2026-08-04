@@ -24,6 +24,10 @@ struct WatchStartView: View {
         NavigationStack {
             List {
                 Section {
+                    stepsRow
+                }
+
+                Section {
                     Button {
                         store.send(.startAIWorkout, haptic: .start)
                     } label: {
@@ -87,6 +91,35 @@ struct WatchStartView: View {
             }
         }
     }
+
+    /// Today's steps against the daily goal, mirrored from the iPhone.
+    private var stepsRow: some View {
+        let steps = Int(store.state.todaySteps)
+        let goal = store.state.stepGoal
+        let hit = steps >= goal
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "shoeprints.fill")
+                    .font(.caption)
+                    .foregroundStyle(hit ? LBColor.emerald : LBColor.teal)
+                Text("\(steps.formatted()) / \(goal.formatted())")
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                Spacer()
+                if hit {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.caption)
+                        .foregroundStyle(LBColor.emerald)
+                }
+            }
+            ProgressView(value: Double(min(steps, goal)), total: Double(max(goal, 1)))
+                .tint(hit ? LBColor.emerald : LBColor.teal)
+            Text("Steps today")
+                .font(.caption2)
+                .foregroundStyle(LBColor.dim)
+        }
+        .padding(.vertical, 2)
+    }
 }
 
 // MARK: - Active session: one-tap logging
@@ -101,13 +134,13 @@ struct WatchActiveView: View {
                 VStack(spacing: 10) {
                     if let exercise = store.currentExercise {
                         exerciseCard(exercise)
+                        restBanner
                         logButton(exercise)
                         nextExerciseButton
                     } else {
                         completeCard
+                        restBanner
                     }
-
-                    restBanner
 
                     endButton
                 }

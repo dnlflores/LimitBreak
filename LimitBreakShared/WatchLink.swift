@@ -45,6 +45,9 @@ struct WatchStateSnapshot: Codable {
     var restEndsAt: Date?
     var totalVolume: Double
     var prCount: Int
+    /// Today's step count and the daily goal, mirrored from the phone.
+    var todaySteps: Double = 0
+    var stepGoal: Int = 10_000
 
     static let idle = WatchStateSnapshot(
         isActive: false, sessionName: "", exercises: [],
@@ -84,6 +87,7 @@ enum LBColor {
     static let gold = Color(red: 1.0, green: 0.80, blue: 0.20)
     static let violet = Color(red: 0.58, green: 0.40, blue: 1.0)
     static let teal = Color(red: 0.16, green: 0.86, blue: 0.82)
+    static let coral = Color(red: 1.0, green: 0.52, blue: 0.42)
     static let dim = Color.white.opacity(0.55)
 
     static let limitBreakGradient = LinearGradient(

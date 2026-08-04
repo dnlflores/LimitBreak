@@ -32,6 +32,7 @@ struct SettingsView: View {
                         frequencySection(profile)
                         aiSection(profile)
                     }
+                    appearanceSection
                 }
                 .padding()
             }
@@ -120,6 +121,71 @@ struct SettingsView: View {
                 .font(.caption2)
                 .foregroundStyle(Theme.textDim)
         }
+    }
+
+    // MARK: - Appearance
+
+    /// Lets the lifter recolor the app's accent and canvas glow. The recovery,
+    /// fatigue, and PR colors are intentionally left out so diagrams stay legible.
+    private var appearanceSection: some View {
+        section("ACCENT THEME") {
+            VStack(alignment: .leading, spacing: 12) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(AppTheme.allCases) { theme in
+                            themeSwatch(theme)
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 4)
+                }
+                Text("Personalizes the accent and canvas glow. Rested, fatigue, and PR colors stay the same so your diagrams stay readable.")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textDim)
+            }
+            .cardStyle()
+        }
+    }
+
+    private func themeSwatch(_ theme: AppTheme) -> some View {
+        let isSelected = ThemeManager.shared.theme == theme
+        return Button {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                ThemeManager.shared.theme = theme
+            }
+            Haptics.shared.tick()
+        } label: {
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [theme.accent, theme.energy],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 54, height: 54)
+                        .overlay(
+                            Circle().strokeBorder(
+                                isSelected ? Color.white : Color.white.opacity(0.15),
+                                lineWidth: isSelected ? 2.5 : 1
+                            )
+                        )
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.black)
+                    }
+                }
+                Text(theme.displayName)
+                    .font(.caption2.weight(isSelected ? .bold : .regular))
+                    .foregroundStyle(isSelected ? .white : Theme.textDim)
+            }
+            .frame(width: 68)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - AI

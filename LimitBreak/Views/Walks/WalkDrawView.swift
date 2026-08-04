@@ -341,6 +341,9 @@ struct WalkDrawView: View {
                 .padding(.vertical, 12)
                 .foregroundStyle(.black)
                 .glassEffect(.regular.tint(tint).interactive(), in: .capsule)
+                // Make the whole capsule tappable, not just the text/icon — a
+                // plain button only hit-tests its rendered content otherwise.
+                .contentShape(.capsule)
         }
         .buttonStyle(.plain)
     }
@@ -432,6 +435,7 @@ struct WalkDrawView: View {
         modelContext.insert(walk)
         try? modelContext.save()
         HealthKitManager.shared.syncIfEnabled(walk: walk)
+        StepGoalMonitor.shared.refreshStreakReminder()
         tracker.end()
         Haptics.shared.success()
         dismiss()

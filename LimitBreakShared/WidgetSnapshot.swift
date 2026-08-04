@@ -2,6 +2,18 @@ import Foundation
 
 // Shared between the iOS app (writer) and the widget extension (reader).
 
+/// Compact step formatting, shared by the phone tile and the widgets so they
+/// read identically. Thousands are truncated (never rounded up) to a single
+/// decimal — 10,690 → "10.6K", 11,000 → "11K" — while sub-1000 counts stay whole.
+enum StepFormat {
+    static func compact(_ steps: Double) -> String {
+        guard steps >= 1000 else { return Int(steps).formatted() }
+        // Truncate toward zero at the tenths place so .5+ never rounds up.
+        let thousands = (steps / 100).rounded(.down) / 10
+        return "\(thousands.formatted(.number.precision(.fractionLength(0...1))))K"
+    }
+}
+
 /// Ambient training stats the app publishes for home-screen widgets.
 struct WidgetSnapshot: Codable {
     /// Activity level per day, most recent LAST, covering `dayActivity.count`
@@ -17,6 +29,9 @@ struct WidgetSnapshot: Codable {
     var level: Int
     var rankTitle: String
     var weeklyXP: Int
+    /// Today's step count against the daily goal.
+    var todaySteps: Double
+    var stepGoal: Int
 
     struct TopRecord: Codable, Identifiable, Hashable {
         var name: String
@@ -38,14 +53,16 @@ struct WidgetSnapshot: Codable {
         weeklyPRs: 3,
         totalLimitBreaks: 24,
         topRecords: [
-            TopRecord(name: "Barbell Bench Press", value: 245, unit: "lbs"),
-            TopRecord(name: "Barbell Back Squat", value: 315, unit: "lbs"),
             TopRecord(name: "Deadlift", value: 405, unit: "lbs"),
+            TopRecord(name: "Barbell Back Squat", value: 315, unit: "lbs"),
+            TopRecord(name: "Barbell Bench Press", value: 245, unit: "lbs"),
         ],
         generatedAt: Date(),
         level: 8,
         rankTitle: "Adventurer",
-        weeklyXP: 2_450
+        weeklyXP: 2_450,
+        todaySteps: 7_240,
+        stepGoal: 10_000
     )
 }
 

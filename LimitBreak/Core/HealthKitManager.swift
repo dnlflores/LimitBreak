@@ -66,9 +66,31 @@ final class HealthKitManager {
             UserDefaults.standard.set(true, forKey: Self.connectedKey)
             lastError = nil
             await refreshTodayStats()
+            // Now that Health is connected, arm the step-goal watcher.
+            StepGoalMonitor.shared.start()
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    // MARK: - Background step monitoring
+
+    private var stepObserverQuery: HKObserverQuery?
+
+    /// Registers a long-running observer plus hourly background delivery for step
+    /// count, so HealthKit relaunches the app in the background (once per hour —
+    /// Apple's cap for steps) and calls `onUpdate`. Requires the
+    /// `healthkit.background-delivery` entitlement. Safe to call repeatedly and
+    /// on every launch; only the first call registers.
+    func startStepMonitoring(onUpdate: @escaping @Sendable () async -> Void) {
+        guard isAvailable, isConnected, stepObserverQuery == nil else { return }
+        let type = HKQuantityType(.stepCount)
+        let query = HKObserverQuery(sampleType: type, predicate: nil) { _, completion, _ in
+            Task { await onUpdate(); completion() }
+        }
+        store.execute(query)
+        stepObserverQuery = query
+        store.enableBackgroundDelivery(for: type, frequency: .hourly) { _, _ in }
     }
 
     // MARK: - Reading daily activity
@@ -78,6 +100,9 @@ final class HealthKitManager {
         todaySteps = await todaySum(for: HKQuantityType(.stepCount), unit: .count())
         todayActiveEnergy = await todaySum(for: HKQuantityType(.activeEnergyBurned), unit: .kilocalorie())
         healthBodyWeightLbs = await latestBodyWeight()
+        // Mirror the latest step count into the app group so the widget and the
+        // watch snapshot can read it without their own HealthKit access.
+        if let todaySteps { StepGoalStore.setToday(steps: todaySteps) }
     }
 
     /// Most recent body-mass sample of any age — weight changes slowly, so the

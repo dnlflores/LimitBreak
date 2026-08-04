@@ -916,7 +916,7 @@
  {
   "name": "Wall Sit",
   "muscle": "Quads",
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "equipment": "Bodyweight",
   "rest": 60,
   "desc": "An isometric hold at ninety degrees that burns out the quads.",
@@ -1950,7 +1950,7 @@
   "secondary": [
    "Core"
   ],
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "equipment": "Dumbbell",
   "rest": 90,
   "desc": "Pick up heavy things and walk — grip, traps, and core in one.",
@@ -1963,7 +1963,7 @@
  {
   "name": "Plate Pinch",
   "muscle": "Forearms",
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "rest": 60,
   "desc": "Pinch-gripping smooth plates for crushing thumb strength.",
   "steps": [
@@ -1978,7 +1978,7 @@
   "secondary": [
    "Lats"
   ],
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "equipment": "Bodyweight",
   "rest": 90,
   "desc": "Hanging from the bar for time — grip, shoulders, and spine decompression.",
@@ -2008,7 +2008,7 @@
  {
   "name": "Plank",
   "muscle": "Core",
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "equipment": "Bodyweight",
   "rest": 60,
   "desc": "The isometric baseline for a braced, rigid torso.",
@@ -2021,7 +2021,7 @@
  {
   "name": "Weighted Plank",
   "muscle": "Core",
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "equipment": "Bodyweight",
   "rest": 90,
   "desc": "A plank with plates on your back once time gets long.",
@@ -2034,7 +2034,7 @@
  {
   "name": "Side Plank",
   "muscle": "Core",
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "equipment": "Bodyweight",
   "rest": 45,
   "desc": "A lateral hold for the obliques and hip stability.",
@@ -2050,7 +2050,7 @@
   "secondary": [
    "Quads"
   ],
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "equipment": "Bodyweight",
   "rest": 60,
   "desc": "A side plank with the top leg on a bench — adductors of steel.",
@@ -2063,7 +2063,7 @@
  {
   "name": "Hollow Body Hold",
   "muscle": "Core",
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "equipment": "Bodyweight",
   "rest": 60,
   "desc": "The gymnast's dish hold that teaches total-body tension.",
@@ -2079,7 +2079,7 @@
   "secondary": [
    "Triceps"
   ],
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "equipment": "Bodyweight",
   "rest": 90,
   "desc": "Legs held at ninety on bars — compression strength for time.",
@@ -2245,7 +2245,7 @@
   "secondary": [
    "Quads"
   ],
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "equipment": "Bodyweight",
   "rest": 45,
   "desc": "Running knees in a plank — core work at conditioning pace.",
@@ -2444,7 +2444,7 @@
    "Core",
    "Forearms"
   ],
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "equipment": "Bodyweight",
   "rest": 60,
   "desc": "Violent rope waves for shoulders and conditioning.",
@@ -2461,7 +2461,7 @@
    "Forearms",
    "Core"
   ],
-  "tracking": "Duration & Reps",
+  "tracking": "Duration",
   "equipment": "Bodyweight",
   "rest": 60,
   "desc": "Skipping for footwork, calves, and cheap conditioning.",

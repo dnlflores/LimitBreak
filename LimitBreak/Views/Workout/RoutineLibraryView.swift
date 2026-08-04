@@ -7,7 +7,9 @@ import SwiftData
 struct RoutineLibraryView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(WorkoutManager.self) private var workout
-    @Query(sort: \Routine.createdAt, order: .reverse) private var routines: [Routine]
+    // Plan-owned day routines live in the Plan tab, not the Library.
+    @Query(filter: #Predicate<Routine> { !$0.isPlanDay },
+           sort: \Routine.createdAt, order: .reverse) private var routines: [Routine]
 
     @State private var showCreate = false
     @State private var routineToEdit: Routine?

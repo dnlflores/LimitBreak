@@ -5,6 +5,7 @@ import WidgetKit
 struct LimitBreakWidgetsBundle: WidgetBundle {
     var body: some Widget {
         SkillMatrixWidget()
+        DashboardWidget()
         RecordBoardWidget()
         StreakWidget()
         SessionLiveActivity()

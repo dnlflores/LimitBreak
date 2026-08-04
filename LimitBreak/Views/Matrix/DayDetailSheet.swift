@@ -218,7 +218,7 @@ struct DayDetailSheet: View {
 
     private func setDescription(_ set: ExerciseSet, exercise: Exercise) -> String {
         switch exercise.trackingType {
-        case .durationAndReps:
+        case .durationAndReps, .durationOnly:
             if let duration = set.durationSeconds { return "\(duration.clockString)" }
         case .timeAndDistance:
             if let distance = set.distanceMeters { return "\(Int(distance)) m" }

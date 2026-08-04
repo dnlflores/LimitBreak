@@ -58,5 +58,6 @@ struct RestTimerOverlay: View {
         .glassEffect(.regular, in: .rect(cornerRadius: 22))
         .padding(.horizontal)
         .padding(.bottom, 8)
+        .keepScreenAwake()
     }
 }

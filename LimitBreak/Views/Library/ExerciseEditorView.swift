@@ -585,6 +585,7 @@ private extension TrackingType {
         case .weightAndReps: "dumbbell.fill"
         case .bodyweightAndReps: "figure.core.training"
         case .durationAndReps: "timer"
+        case .durationOnly: "stopwatch.fill"
         case .timeAndDistance: "figure.run"
         case .customMetric: "slider.horizontal.3"
         }
@@ -595,6 +596,7 @@ private extension TrackingType {
         case .weightAndReps: "Weight on the bar × repetitions"
         case .bodyweightAndReps: "Reps, plus optional added weight"
         case .durationAndReps: "Time under tension × repetitions"
+        case .durationOnly: "Hold for time — no reps, with a built-in timer"
         case .timeAndDistance: "Cardio and conditioning: time + distance"
         case .customMetric: "Your own unit — RPE, band tension, tempo"
         }

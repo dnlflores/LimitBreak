@@ -38,18 +38,15 @@ struct RootTabView: View {
             Tab("Library", systemImage: "books.vertical.fill", value: 3) {
                 ExerciseLibraryView()
             }
-            Tab("Campaign", systemImage: "map.fill", value: 4) {
-                CampaignView()
+            Tab("Plan", systemImage: "calendar", value: 4) {
+                PlanTabView()
             }
         }
         .tint(Theme.emerald)
-        // Tap-to-train: a tapped campaign milestone publishes an intent on the
-        // shared workout manager, and tab selection lives here — so this is the
-        // one place that can honor it. The Train tab reads the same intent to
-        // show what the lifter came to do.
-        .onChange(of: workout.campaignIntent) { _, intent in
-            guard intent != nil else { return }
-            withAnimation { selectedTab = 1 }
+        // Starting a session from anywhere (e.g. tapping a plan day on the Plan
+        // tab) should drop the lifter into the Train tab's live logger.
+        .onChange(of: workout.activeSession == nil) { _, isIdle in
+            if !isIdle { withAnimation { selectedTab = 1 } }
         }
         .overlay {
             if let event = workout.limitBreakEvent {
@@ -63,7 +60,14 @@ struct RootTabView: View {
         }
         .task {
             ExerciseCatalog.seedIfNeeded(context: modelContext)
+            // Collapse any duplicates CloudKit mirroring may have created (the
+            // seeded catalog / singleton profile can be recreated per device),
+            // then keep reconciling as remote changes stream in this session.
+            CloudSyncDedupe.run(context: modelContext)
+            CloudSyncDedupe.startObserving(context: modelContext)
             WidgetSnapshotter.shared.refresh()
+            // Re-check the step goal on each app open (awards, reminder, tile).
+            await StepGoalMonitor.shared.evaluate()
 
             // First launch: create the profile and ask what they're training
             // for. Suppressed under "-skip-onboarding", and under

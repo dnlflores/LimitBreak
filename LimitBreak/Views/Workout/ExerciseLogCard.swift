@@ -229,9 +229,18 @@ struct ExerciseLogCard: View {
             return parts.joined(separator: " × ")
         case .customMetric, .durationAndReps:
             return "\(setsText) × \(repsText)"
+        case .durationOnly:
+            return "\(setsText) × \(holdText)"
         case .timeAndDistance:
             return setsText
         }
+    }
+
+    /// The target hold time to preview on the card — the last logged hold, else
+    /// a sensible default.
+    private var holdText: String {
+        let seconds = lastWorkingSet?.durationSeconds ?? 30
+        return "\(seconds.clockString) hold"
     }
 
     private var repsText: String {

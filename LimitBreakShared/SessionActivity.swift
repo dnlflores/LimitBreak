@@ -10,6 +10,9 @@ nonisolated struct SessionActivityAttributes: ActivityAttributes {
         var exerciseName: String
         var exerciseDone: Int
         var exerciseTarget: Int
+        /// The weight × reps (or duration/distance) the lifter planned for the
+        /// upcoming set — mirrors the log sheet's next pending row.
+        var nextSetLabel: String = ""
         var totalDone: Int
         var totalTarget: Int
         var totalVolume: Double

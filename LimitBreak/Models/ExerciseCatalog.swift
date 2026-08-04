@@ -42,14 +42,28 @@ enum ExerciseCatalog {
         for entry in entries {
             if let current = byName[entry.name.lowercased()] {
                 // Same-named movement already there (default from an older
-                // version, or a user's custom): only backfill missing guides
-                // on defaults, never touch custom exercises.
-                guard !current.isCustom, current.exerciseDescription == nil else { continue }
-                current.exerciseDescription = entry.desc
-                if current.instructions == nil {
-                    current.instructions = entry.steps.joined(separator: "\n")
+                // version, or a user's custom): reconcile defaults with the
+                // current catalog, but never touch custom exercises.
+                guard !current.isCustom else { continue }
+
+                // Backfill guides that older seeds shipped without.
+                if current.exerciseDescription == nil {
+                    current.exerciseDescription = entry.desc
+                    if current.instructions == nil {
+                        current.instructions = entry.steps.joined(separator: "\n")
+                    }
+                    changed = true
                 }
-                changed = true
+
+                // Keep a default movement's tracking type in sync with the
+                // catalog so app-update reclassifications reach users who
+                // already had the old default seeded — e.g. the isometric holds
+                // moving from "Duration & Reps" to hold-for-time "Duration".
+                let catalogTracking = entry.tracking.flatMap(TrackingType.init) ?? .weightAndReps
+                if current.trackingTypeRaw != catalogTracking.rawValue {
+                    current.trackingTypeRaw = catalogTracking.rawValue
+                    changed = true
+                }
             } else {
                 context.insert(makeExercise(from: entry))
                 changed = true

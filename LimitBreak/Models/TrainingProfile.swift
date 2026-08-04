@@ -150,24 +150,24 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
 /// `TrainingProfile.current(in:)` creates it on demand.
 @Model
 final class TrainingProfile {
-    @Attribute(.unique) var id: UUID
-    var goalRaw: String
-    var experienceRaw: String
+    var id: UUID = UUID()
+    var goalRaw: String = TrainingGoal.buildMuscle.rawValue
+    var experienceRaw: String = ExperienceLevel.intermediate.rawValue
     /// Target training days per week — context for how much recovery the coach
     /// can assume between sessions.
-    var daysPerWeek: Int
+    var daysPerWeek: Int = 4
     /// Whether the lifter has opted into sending training data to a model.
     /// Off until they explicitly turn it on; the on-device generator is used
     /// until then.
-    var cloudAIEnabled: Bool
+    var cloudAIEnabled: Bool = false
     /// Which backend coaches when `cloudAIEnabled` is on. Defaults to Claude so
     /// existing installs keep the behaviour they were set up with — SwiftData
     /// backfills this value on the lightweight migration.
     var aiProviderRaw: String = AIProvider.claude.rawValue
     /// Set once the first-launch flow has been completed or skipped, so it
     /// never reappears.
-    var hasCompletedOnboarding: Bool
-    var updatedAt: Date
+    var hasCompletedOnboarding: Bool = false
+    var updatedAt: Date = Date()
 
     init(
         goal: TrainingGoal = .buildMuscle,

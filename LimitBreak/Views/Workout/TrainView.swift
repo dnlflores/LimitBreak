@@ -23,7 +23,9 @@ struct TrainView: View {
 
 private struct SessionLauncherView: View {
     @Environment(WorkoutManager.self) private var workout
-    @Query(sort: \Routine.createdAt, order: .reverse) private var routines: [Routine]
+    // Plan-owned day routines are hidden here; they live in the Plan tab.
+    @Query(filter: #Predicate<Routine> { !$0.isPlanDay },
+           sort: \Routine.createdAt, order: .reverse) private var routines: [Routine]
     @State private var sessionName = ""
     @State private var isNaming = false
     @State private var showNameField = false
@@ -45,8 +47,6 @@ private struct SessionLauncherView: View {
             VStack(alignment: .leading, spacing: 24) {
                 header
 
-                campaignBanner
-
                 aiWorkoutCard
 
                 routinesSection
@@ -67,8 +67,16 @@ private struct SessionLauncherView: View {
             WalkDrawView()
         }
         .sheet(isPresented: $showAIWorkout) {
-            AIWorkoutSheet(initialFocus: workout.campaignIntent?.focus ?? .fullBody) { title, exercises, supersets, partnered in
-                workout.startSession(named: title, exercises: exercises, supersets: supersets, withPartner: partnered)
+            AIWorkoutSheet { title, exercises, setTargets, repTargets, weightTargets, supersets, partnered in
+                workout.startSession(
+                    named: title,
+                    exercises: exercises,
+                    targets: setTargets,
+                    repTargets: repTargets,
+                    weightTargets: weightTargets,
+                    supersets: supersets,
+                    withPartner: partnered
+                )
             }
         }
         .sheet(isPresented: $showRoutineLibrary) {
@@ -91,62 +99,6 @@ private struct SessionLauncherView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
-    }
-
-    // MARK: Campaign hand-off
-
-    /// What the lifter tapped on the Campaign tab, echoed here.
-    ///
-    /// This is the Train end of the tap-to-train intent. A true deep link would
-    /// have to reach through the AI sheet's own state to pre-run a generation,
-    /// so instead the milestone is restated, the generator opens pre-focused on
-    /// the muscles it needs, and the lifter stays in control of what they start.
-    @ViewBuilder
-    private var campaignBanner: some View {
-        if let intent = workout.campaignIntent {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "map.fill").foregroundStyle(Theme.gold)
-                    Text("CAMPAIGN OBJECTIVE")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.textDim)
-                        .kerning(1.5)
-                    Spacer()
-                    Button {
-                        withAnimation { workout.campaignIntent = nil }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(Theme.textDim)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Text(intent.headline)
-                    .font(.subheadline.weight(.semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Button {
-                    showAIWorkout = true
-                    Haptics.shared.tick()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                        Text("BUILD A \(intent.focus.label.uppercased()) SESSION")
-                            .font(.caption.weight(.bold))
-                            .kerning(0.8)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Theme.limitBreakGradient, in: RoundedRectangle(cornerRadius: 12))
-                    .foregroundStyle(.black)
-                }
-                .buttonStyle(.plain)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .cardStyle()
-            .transition(.opacity.combined(with: .move(edge: .top)))
-        }
     }
 
     // MARK: Primary start (pinned at the bottom, in thumb range)
@@ -431,7 +383,6 @@ private struct ActiveSessionView: View {
     @State private var showExercisePicker = false
     @State private var showEndConfirmation = false
     @State private var showCancelConfirmation = false
-    @State private var isEndBarVisible = true
     /// Superset-building mode: cards become checkboxes and the toolbar swaps to a
     /// Cancel/Group pair. `supersetSelection` holds the picked exercise ids.
     @State private var isSelectingSuperset = false
@@ -475,9 +426,6 @@ private struct ActiveSessionView: View {
             }
             .padding()
             .padding(.bottom, contentBottomInset)
-        }
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { oldValue, newValue in
-            updateEndBarVisibility(from: oldValue, to: newValue)
         }
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle(workout.activeSession?.name ?? "Session")
@@ -530,12 +478,9 @@ private struct ActiveSessionView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 endSessionBar
-                    .offset(y: isEndBarVisible ? 0 : 180)
-                    .opacity(isEndBarVisible ? 1 : 0)
             }
             .padding(.horizontal)
             .padding(.bottom, 10)
-            .animation(.spring(duration: 0.35), value: isEndBarVisible)
         }
         .animation(.spring(duration: 0.35), value: workout.isResting)
         .sheet(isPresented: $showExercisePicker) {
@@ -648,24 +593,9 @@ private struct ActiveSessionView: View {
     }
 
     /// Reserve room at the bottom of the scroll content so the last card is never
-    /// trapped behind the floating End Session bar (and the rest timer when active).
+    /// trapped behind the pinned End Session bar (and the rest timer when active).
     private var contentBottomInset: CGFloat {
         workout.isResting ? 168 : 84
-    }
-
-    /// Reveal-on-scroll-up: hide the End Session bar while scrolling down the log,
-    /// bring it back the moment the user scrolls up or reaches the top.
-    private func updateEndBarVisibility(from oldOffset: CGFloat, to newOffset: CGFloat) {
-        if newOffset <= 40 {
-            if !isEndBarVisible { isEndBarVisible = true }
-            return
-        }
-        let delta = newOffset - oldOffset
-        if delta > 8 {
-            if isEndBarVisible { isEndBarVisible = false }
-        } else if delta < -8 {
-            if !isEndBarVisible { isEndBarVisible = true }
-        }
     }
 
     private var sessionHeader: some View {

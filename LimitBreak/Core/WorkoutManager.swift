@@ -57,17 +57,22 @@ final class WorkoutManager {
     /// sharing a non-nil tag are one superset. Populated from a routine and
     /// editable mid-session; each logged set is stamped with its exercise's tag.
     var sessionSupersets: [UUID: Int] = [:]
+    /// The set plan the lifter laid out in the log sheet for each exercise —
+    /// the not-yet-logged sets and their values. Persisted here (rather than in
+    /// the sheet's transient state) so switching between exercises mid-session
+    /// keeps the planned set count and values instead of rebuilding them.
+    var sessionSetPlans: [UUID: [PlannedSet]] = [:]
+
+    /// One planned, not-yet-logged set carried across log-sheet re-opens.
+    /// `primary` is weight (lbs) for weight-based types, seconds for
+    /// duration-based types, or the custom-metric value — mirroring the sheet.
+    struct PlannedSet: Codable, Equatable {
+        var primary: Double
+        var reps: Int
+        var distance: Double
+    }
 
     var limitBreakEvent: LimitBreakEvent?
-
-    /// A campaign milestone the lifter tapped "train this" on.
-    ///
-    /// The campaign tab can't push a view onto the Train tab's navigation stack,
-    /// and tab selection lives in `RootTabView` — so the intent is published here,
-    /// where both tabs already look. `RootTabView` switches tabs on it and the
-    /// session launcher reads it as a banner and a pre-selected focus. Cleared
-    /// once the lifter starts a session or dismisses the banner.
-    var campaignIntent: CampaignTrainingIntent?
 
     /// Test seam for body weight; production reads Health (with manual fallback).
     var bodyWeightOverride: Double?
@@ -119,6 +124,7 @@ final class WorkoutManager {
         sessionRepTargets = repTargets
         sessionWeightTargets = weightTargets
         sessionSupersets = supersets
+        sessionSetPlans = [:]
         skippedExercises = []
         try? context.save()
         Haptics.shared.success()
@@ -140,9 +146,12 @@ final class WorkoutManager {
         sessionRepTargets = [:]
         sessionWeightTargets = [:]
         sessionSupersets = [:]
+        sessionSetPlans = [:]
         skippedExercises = []
         stopRest()
         SessionSync.shared.broadcast(from: self)
+        // Today's session secures the streak — clear any pending 7pm nudge.
+        StepGoalMonitor.shared.refreshStreakReminder()
     }
 
     /// Discards the active session entirely — deletes it and any logged sets
@@ -162,6 +171,7 @@ final class WorkoutManager {
         sessionRepTargets = [:]
         sessionWeightTargets = [:]
         sessionSupersets = [:]
+        sessionSetPlans = [:]
         skippedExercises = []
         stopRest()
         Haptics.shared.logSet()
@@ -224,6 +234,9 @@ final class WorkoutManager {
         case .durationAndReps:
             return logSet(exercise: exercise, weight: 0, reps: reps,
                           durationSeconds: template?.durationSeconds ?? 30)
+        case .durationOnly:
+            return logSet(exercise: exercise, weight: 0, reps: 1,
+                          durationSeconds: template?.durationSeconds ?? 30)
         case .timeAndDistance:
             return logSet(exercise: exercise, weight: 0, reps: 1,
                           durationSeconds: template?.durationSeconds ?? 300,
@@ -242,7 +255,19 @@ final class WorkoutManager {
     /// Removes an exercise from the active session, deleting any sets already
     /// logged for it here and rebuilding records so no ceiling is stranded.
     func removeExercise(_ exercise: Exercise) {
+        // Unbundle the superset as it leaves: drop this movement's tag and, if
+        // that strands a lone partner, dissolve the group so the survivor is free
+        // to be paired into a different superset instead of staying locked to a
+        // group that no longer exists.
+        if let tag = sessionSupersets[exercise.id] {
+            sessionSupersets[exercise.id] = nil
+            let remaining = sessionExercises.filter { $0.id != exercise.id && sessionSupersets[$0.id] == tag }
+            if remaining.count < 2 {
+                for member in remaining { sessionSupersets[member.id] = nil }
+            }
+        }
         sessionExercises.removeAll { $0.id == exercise.id }
+        sessionSetPlans[exercise.id] = nil
         let doomed = sets(for: exercise)
         guard !doomed.isEmpty else {
             Haptics.shared.logSet()
@@ -665,7 +690,7 @@ final class WorkoutManager {
                 return ("1RM", set.estimatedOneRepMax, "lbs added")
             }
             return set.reps > 0 ? ("Max Reps", Double(set.reps), "reps") : nil
-        case .durationAndReps:
+        case .durationAndReps, .durationOnly:
             guard let duration = set.durationSeconds, duration > 0 else { return nil }
             return ("Max Duration", duration, "sec")
         case .timeAndDistance:
@@ -769,13 +794,15 @@ final class WorkoutManager {
         notes: String? = nil,
         isAIGenerated: Bool = false,
         focusLabel: String? = nil,
+        isPlanDay: Bool = false,
         items: [RoutineDraftItem]
     ) -> Routine {
         let routine = Routine(
             name: name.isEmpty ? "Routine" : name,
             notes: notes?.isEmpty == true ? nil : notes,
             isAIGenerated: isAIGenerated,
-            focusLabel: focusLabel
+            focusLabel: focusLabel,
+            isPlanDay: isPlanDay
         )
         context.insert(routine)
         applyItems(items, to: routine)
@@ -867,6 +894,92 @@ final class WorkoutManager {
         )
     }
 
+    // MARK: - Weekly plan
+
+    /// The single active weekly plan, if the lifter has built one. Most recent
+    /// wins if CloudKit mirroring ever produced more than one.
+    func activeWeeklyPlan() -> WeeklyPlan? {
+        let descriptor = FetchDescriptor<WeeklyPlan>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        return (try? context.fetch(descriptor))?.first
+    }
+
+    /// Replaces any existing plan with a new one built from the given days. Each
+    /// day carries a weekday, a focus, and the ordered draft items for its
+    /// generated workout — persisted as a plan-owned `Routine`.
+    @discardableResult
+    func buildWeeklyPlan(
+        name: String,
+        exercisesPerDay: Int,
+        duration: WorkoutLength,
+        withPartner: Bool,
+        allowSupersets: Bool,
+        days: [(weekday: Int, focus: WorkoutFocus, title: String, items: [RoutineDraftItem])]
+    ) -> WeeklyPlan {
+        clearWeeklyPlan()
+
+        let plan = WeeklyPlan(
+            name: name.isEmpty ? "My Week" : name,
+            exercisesPerDay: exercisesPerDay,
+            durationRaw: duration.rawValue,
+            withPartner: withPartner,
+            allowSupersets: allowSupersets
+        )
+        context.insert(plan)
+
+        for day in days.sorted(by: { $0.weekday < $1.weekday }) {
+            let routine = createRoutine(
+                name: day.title,
+                isAIGenerated: true,
+                focusLabel: day.focus.label,
+                isPlanDay: true,
+                items: day.items
+            )
+            let planned = PlannedDay(weekday: day.weekday, focus: day.focus, routine: routine)
+            planned.plan = plan
+            context.insert(planned)
+        }
+        plan.updatedAt = Date()
+        try? context.save()
+        Haptics.shared.success()
+        return plan
+    }
+
+    /// Rewrites a single plan day's workout in place from fresh draft items,
+    /// keeping it plan-owned and preserving its weekday/focus.
+    func replacePlanDayRoutine(
+        _ day: PlannedDay,
+        title: String,
+        items: [RoutineDraftItem]
+    ) {
+        if let routine = day.routine {
+            updateRoutine(routine, name: title, items: items)
+        } else {
+            let routine = createRoutine(
+                name: title,
+                isAIGenerated: true,
+                focusLabel: day.focus.label,
+                isPlanDay: true,
+                items: items
+            )
+            day.routine = routine
+        }
+        day.plan?.updatedAt = Date()
+        try? context.save()
+    }
+
+    /// Deletes the active weekly plan and its plan-owned day routines.
+    func clearWeeklyPlan() {
+        for plan in (try? context.fetch(FetchDescriptor<WeeklyPlan>())) ?? [] {
+            for day in plan.days {
+                if let routine = day.routine { context.delete(routine) }
+            }
+            context.delete(plan)
+        }
+        try? context.save()
+    }
+
     /// The coached rep target for an exercise in the live session, if the
     /// routine that started it prescribed one.
     func plannedReps(for exercise: Exercise) -> Int? {
@@ -877,6 +990,27 @@ final class WorkoutManager {
     /// live session, if the routine that started it prescribed one.
     func plannedWeight(for exercise: Exercise) -> Double? {
         sessionWeightTargets[exercise.id]
+    }
+
+    // MARK: - Live set plan
+
+    /// The set plan the lifter laid out in the log sheet for this movement — the
+    /// pending (not-yet-logged) sets and their values. Nil until a plan has been
+    /// captured, so the log sheet knows to seed a fresh one from history/target.
+    func plannedSets(for exercise: Exercise) -> [PlannedSet]? {
+        sessionSetPlans[exercise.id]
+    }
+
+    /// Stores the pending set plan the lifter has laid out for a movement so it
+    /// survives switching between exercises. Also keeps the ordered-logging
+    /// target (session card, watch, Live Activity) aligned with the plan: the
+    /// sets already logged plus whatever is still pending.
+    func updatePlannedSets(_ pending: [PlannedSet], for exercise: Exercise) {
+        guard activeSession != nil,
+              sessionExercises.contains(where: { $0.id == exercise.id }) else { return }
+        sessionSetPlans[exercise.id] = pending
+        sessionTargets[exercise.id] = max(1, sets(for: exercise).count + pending.count)
+        SessionSync.shared.broadcast(from: self)
     }
 
     // MARK: - Progressive overload

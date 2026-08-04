@@ -13,7 +13,7 @@ struct RewardsTimelineView: View {
     @Query private var routines: [Routine]
 
     private var timeline: [XPEngine.TimelineDay] {
-        XPEngine.timeline(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines)
+        XPEngine.timeline(sessions: sessions, records: records, walks: walks, activities: activities, routines: routines, stepGoalDays: StepGoalStore.achievedDays())
     }
 
     /// Days grouped under "JULY 2026"-style month banners.

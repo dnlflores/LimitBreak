@@ -12,23 +12,17 @@ struct LimitBreakApp: App {
     @State private var workout: WorkoutManager
 
     init() {
-        let schema = Schema([
-            Exercise.self,
-            WorkoutSession.self,
-            ExerciseSet.self,
-            PRRecord.self,
-            Walk.self,
-            Activity.self,
-            Routine.self,
-            RoutineItem.self,
-            TrainingProfile.self,
-            Campaign.self,
-            CampaignMilestone.self,
-            CampaignChapter.self,
-        ])
+        let schema = LimitBreakSchema.all
         // "-in-memory-store" (UI tests) keeps test data off the real store.
         let inMemory = ProcessInfo.processInfo.arguments.contains("-in-memory-store")
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory)
+        // Mirror the store to the user's private CloudKit database so their
+        // training log follows them onto a new iPhone (same iCloud account).
+        // In-memory test stores can't sync, so CloudKit is off for those.
+        let configuration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: inMemory,
+            cloudKitDatabase: inMemory ? .none : .automatic
+        )
         do {
             container = try ModelContainer(for: schema, configurations: [configuration])
         } catch {
@@ -43,6 +37,16 @@ struct LimitBreakApp: App {
             WorkoutManager.shared?.logNextSetInOrder()
         }
         WidgetSnapshotter.shared.configure(context: container.mainContext)
+
+        // Siri / Shortcuts read the training log through this container.
+        LimitBreakStats.injectedContainer = container
+
+        // Daily step goal + streak: ask for notification permission and arm the
+        // watchers (HealthKit background delivery, plus the 7pm step and streak
+        // reminders — the latter reads the training log through this context).
+        StepGoalMonitor.shared.configure(context: container.mainContext)
+        StepGoalMonitor.shared.requestAuthorization()
+        StepGoalMonitor.shared.start()
     }
 
     // "-skip-splash" (UI tests) jumps straight into the app.

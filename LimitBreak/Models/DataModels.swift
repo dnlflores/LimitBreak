@@ -7,10 +7,29 @@ enum TrackingType: String, Codable, CaseIterable, Identifiable {
     case weightAndReps = "Weight & Reps"
     case bodyweightAndReps = "Bodyweight + Reps"
     case durationAndReps = "Duration & Reps"
+    /// A hold-for-time movement (plank, wall sit, dead hang): each set is a
+    /// target duration to reach, with no reps. Logged with the built-in hold
+    /// timer or by entering the seconds held directly.
+    case durationOnly = "Duration"
     case timeAndDistance = "Time & Distance"
     case customMetric = "Custom Metric"
 
     var id: String { rawValue }
+
+    /// Whether a set of this type carries a rep count. Hold-for-time and
+    /// time/distance movements are described fully by their duration, so their
+    /// logging UI hides reps entirely.
+    var usesReps: Bool {
+        switch self {
+        case .durationOnly, .timeAndDistance: return false
+        default: return true
+        }
+    }
+
+    /// Whether the set's primary value is a duration in seconds.
+    var isTimed: Bool {
+        self == .durationOnly || self == .durationAndReps || self == .timeAndDistance
+    }
 }
 
 enum OneRMFormula: String, Codable, CaseIterable, Identifiable {
@@ -98,20 +117,20 @@ enum WeightUnit: String, Codable, CaseIterable, Identifiable {
 
 @Model
 final class Exercise {
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var muscleGroupRaw: String
-    var secondaryMuscles: [String]
-    var trackingTypeRaw: String
-    var equipmentType: String
-    var defaultIncrement: Double
-    var defaultRestSeconds: Int
-    var formulaRaw: String
+    var id: UUID = UUID()
+    var name: String = ""
+    var muscleGroupRaw: String = MuscleGroup.chest.rawValue
+    var secondaryMuscles: [String] = []
+    var trackingTypeRaw: String = TrackingType.weightAndReps.rawValue
+    var equipmentType: String = EquipmentType.barbell.rawValue
+    var defaultIncrement: Double = 5.0
+    var defaultRestSeconds: Int = 90
+    var formulaRaw: String = OneRMFormula.epley.rawValue
     var customMetricUnit: String?
     /// The unit this movement's weights are entered and shown in. Defaults to
     /// pounds so existing data (all stored in pounds) is unaffected.
     var weightUnitRaw: String = WeightUnit.pounds.rawValue
-    var isCustom: Bool
+    var isCustom: Bool = false
     /// Assisted movements (e.g. assisted pull-ups) accept negative weight:
     /// the value is assistance provided, so more negative = easier.
     var isAssisted: Bool = false
@@ -119,18 +138,33 @@ final class Exercise {
     var exerciseDescription: String? = nil
     /// Optional how-to, one step per line.
     var instructions: String? = nil
-    var createdAt: Date
+    var createdAt: Date = Date()
 
-    @Relationship(deleteRule: .cascade, inverse: \ExerciseSet.exercise)
-    var sets: [ExerciseSet]
+    // CloudKit requires to-many relationships be optional, so each is stored as
+    // an optional and surfaced through a non-optional computed accessor of the
+    // same name — every call site keeps treating it as a plain [T].
+    @Relationship(deleteRule: .cascade, originalName: "sets", inverse: \ExerciseSet.exercise)
+    private var setsStore: [ExerciseSet]? = []
+    var sets: [ExerciseSet] {
+        get { setsStore ?? [] }
+        set { setsStore = newValue }
+    }
 
-    @Relationship(deleteRule: .cascade, inverse: \PRRecord.exercise)
-    var prRecords: [PRRecord]
+    @Relationship(deleteRule: .cascade, originalName: "prRecords", inverse: \PRRecord.exercise)
+    private var prRecordsStore: [PRRecord]? = []
+    var prRecords: [PRRecord] {
+        get { prRecordsStore ?? [] }
+        set { prRecordsStore = newValue }
+    }
 
     /// Routine slots that reference this exercise. Nullified (not cascaded) when
     /// the exercise is deleted so a routine simply drops the missing movement.
-    @Relationship(deleteRule: .nullify, inverse: \RoutineItem.exercise)
-    var routineItems: [RoutineItem] = []
+    @Relationship(deleteRule: .nullify, originalName: "routineItems", inverse: \RoutineItem.exercise)
+    private var routineItemsStore: [RoutineItem]? = []
+    var routineItems: [RoutineItem] {
+        get { routineItemsStore ?? [] }
+        set { routineItemsStore = newValue }
+    }
 
     init(
         name: String,
@@ -160,8 +194,6 @@ final class Exercise {
         self.isCustom = isCustom
         self.isAssisted = isAssisted
         self.createdAt = Date()
-        self.sets = []
-        self.prRecords = []
     }
 
     var trackingType: TrackingType { TrackingType(rawValue: trackingTypeRaw) ?? .weightAndReps }
@@ -246,9 +278,9 @@ final class Exercise {
 
 @Model
 final class WorkoutSession {
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var startDate: Date
+    var id: UUID = UUID()
+    var name: String = ""
+    var startDate: Date = Date()
     var endDate: Date?
     var notes: String?
 
@@ -261,15 +293,20 @@ final class WorkoutSession {
     /// ad-hoc sessions and every session logged before this existed.
     var startedFromRoutineID: UUID? = nil
 
-    @Relationship(deleteRule: .cascade, inverse: \ExerciseSet.session)
-    var sets: [ExerciseSet]
+    // Optional storage for CloudKit; non-optional `sets` accessor keeps call
+    // sites unchanged.
+    @Relationship(deleteRule: .cascade, originalName: "sets", inverse: \ExerciseSet.session)
+    private var setsStore: [ExerciseSet]? = []
+    var sets: [ExerciseSet] {
+        get { setsStore ?? [] }
+        set { setsStore = newValue }
+    }
 
     init(name: String, startDate: Date = Date(), trainedWithPartner: Bool = false) {
         self.id = UUID()
         self.name = name
         self.startDate = startDate
         self.trainedWithPartner = trainedWithPartner
-        self.sets = []
     }
 
     var totalVolume: Double {
@@ -361,14 +398,14 @@ func supersetRuns<ID: Hashable>(_ ids: [ID], tag: (ID) -> Int?) -> [[ID]] {
 
 @Model
 final class ExerciseSet {
-    @Attribute(.unique) var id: UUID
-    var timestamp: Date
-    var weight: Double
-    var reps: Int
+    var id: UUID = UUID()
+    var timestamp: Date = Date()
+    var weight: Double = 0
+    var reps: Int = 0
     var durationSeconds: Double?
     var distanceMeters: Double?
-    var isWarmup: Bool
-    var isPR: Bool
+    var isWarmup: Bool = false
+    var isPR: Bool = false
 
     /// Per-rep values captured with the expanding rep-row logging UX. For
     /// weight-based types these are the weight lifted on each rep (lbs); for
@@ -471,11 +508,11 @@ enum SportType: String, Codable, CaseIterable, Identifiable {
 /// Time played converts to XP so cross-training feeds the level curve.
 @Model
 final class Activity {
-    @Attribute(.unique) var id: UUID
-    var sportRaw: String
-    var date: Date
-    var durationMinutes: Int
-    var createdAt: Date
+    var id: UUID = UUID()
+    var sportRaw: String = SportType.other.rawValue
+    var date: Date = Date()
+    var durationMinutes: Int = 0
+    var createdAt: Date = Date()
 
     init(sport: SportType, date: Date = Date(), durationMinutes: Int) {
         self.id = UUID()
@@ -492,11 +529,11 @@ final class Activity {
 
 @Model
 final class PRRecord {
-    @Attribute(.unique) var id: UUID
-    var dateAchieved: Date
-    var recordType: String // "1RM", "Max Reps", "Max Duration", "Max Distance", "Max Value"
-    var numericValue: Double
-    var repsAchieved: Int
+    var id: UUID = UUID()
+    var dateAchieved: Date = Date()
+    var recordType: String = "" // "1RM", "Max Reps", "Max Duration", "Max Distance", "Max Value"
+    var numericValue: Double = 0
+    var repsAchieved: Int = 0
 
     var exercise: Exercise?
 
@@ -526,11 +563,11 @@ struct RoutePoint: Codable, Equatable {
 
 @Model
 final class Walk {
-    @Attribute(.unique) var id: UUID
-    var date: Date
-    var durationSeconds: Double
-    var distanceMeters: Double
-    var routePoints: [RoutePoint]
+    var id: UUID = UUID()
+    var date: Date = Date()
+    var durationSeconds: Double = 0
+    var distanceMeters: Double = 0
+    var routePoints: [RoutePoint] = []
     var notes: String?
 
     init(
@@ -575,22 +612,38 @@ final class Walk {
 /// generated by the on-device AI. This is the "curation" the user builds up.
 @Model
 final class Routine {
-    @Attribute(.unique) var id: UUID
-    var name: String
+    var id: UUID = UUID()
+    var name: String = ""
     var notes: String?
-    var createdAt: Date
-    var isAIGenerated: Bool
+    var createdAt: Date = Date()
+    var isAIGenerated: Bool = false
     /// Optional focus tag (e.g. "Push", "Legs") for AI-generated routines.
     var focusLabel: String?
+    /// True when this routine is owned by a `WeeklyPlan` day. Plan-owned routines
+    /// are kept out of the Routine Library and the Train routine strip so they
+    /// don't clutter the lifter's hand-built curation.
+    var isPlanDay: Bool = false
 
-    @Relationship(deleteRule: .cascade, inverse: \RoutineItem.routine)
-    var items: [RoutineItem]
+    // Optional storage for CloudKit; non-optional `items` accessor keeps call
+    // sites unchanged.
+    @Relationship(deleteRule: .cascade, originalName: "items", inverse: \RoutineItem.routine)
+    private var itemsStore: [RoutineItem]? = []
+    var items: [RoutineItem] {
+        get { itemsStore ?? [] }
+        set { itemsStore = newValue }
+    }
+
+    /// Back-reference to the plan day that owns this routine (nil for ordinary
+    /// routines). Exists only to give `PlannedDay.routine` a CloudKit-required
+    /// inverse; SwiftData keeps it in sync automatically.
+    var plannedDay: PlannedDay?
 
     init(
         name: String,
         notes: String? = nil,
         isAIGenerated: Bool = false,
         focusLabel: String? = nil,
+        isPlanDay: Bool = false,
         createdAt: Date = Date()
     ) {
         self.id = UUID()
@@ -598,8 +651,8 @@ final class Routine {
         self.notes = notes
         self.isAIGenerated = isAIGenerated
         self.focusLabel = focusLabel
+        self.isPlanDay = isPlanDay
         self.createdAt = createdAt
-        self.items = []
     }
 
     /// Items in their curated order.
@@ -627,9 +680,9 @@ final class Routine {
 /// One slot in a `Routine`: an exercise plus how many working sets to aim for.
 @Model
 final class RoutineItem {
-    @Attribute(.unique) var id: UUID
-    var order: Int
-    var targetSets: Int
+    var id: UUID = UUID()
+    var order: Int = 0
+    var targetSets: Int = 3
     /// The single resolved rep target carried over from a coached plan. Nil for
     /// hand-built routines that only track a set count.
     var targetReps: Int?
@@ -659,5 +712,104 @@ final class RoutineItem {
         self.targetWeight = targetWeight
         self.supersetGroup = supersetGroup
         self.exercise = exercise
+    }
+}
+
+// MARK: - Weekly plan (day-by-day programming)
+
+/// The lifter's repeating training week: which weekdays they train and the
+/// focus/workout for each. There is at most one active plan; rebuilding it
+/// replaces the old one. Each training day owns a generated `Routine`, so a day
+/// can be started as a session or edited with the standard routine tools.
+@Model
+final class WeeklyPlan {
+    var id: UUID = UUID()
+    var name: String = "My Week"
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
+
+    /// Generation defaults captured from the builder, reused when a single day
+    /// is regenerated so it matches how the week was originally built.
+    var exercisesPerDay: Int = 5
+    var durationRaw: String = WorkoutLength.any.rawValue
+    var withPartner: Bool = false
+    var allowSupersets: Bool = true
+
+    // Optional storage for CloudKit; non-optional `days` accessor keeps call
+    // sites unchanged.
+    @Relationship(deleteRule: .cascade, originalName: "days", inverse: \PlannedDay.plan)
+    private var daysStore: [PlannedDay]? = []
+    var days: [PlannedDay] {
+        get { daysStore ?? [] }
+        set { daysStore = newValue }
+    }
+
+    init(
+        name: String = "My Week",
+        exercisesPerDay: Int = 5,
+        durationRaw: String = WorkoutLength.any.rawValue,
+        withPartner: Bool = false,
+        allowSupersets: Bool = true,
+        createdAt: Date = Date()
+    ) {
+        self.id = UUID()
+        self.name = name
+        self.exercisesPerDay = exercisesPerDay
+        self.durationRaw = durationRaw
+        self.withPartner = withPartner
+        self.allowSupersets = allowSupersets
+        self.createdAt = createdAt
+        self.updatedAt = createdAt
+    }
+
+    /// The training days in weekday order (Sun … Sat). Weekdays with no
+    /// `PlannedDay` are rest days.
+    var orderedDays: [PlannedDay] {
+        days.sorted { $0.weekday < $1.weekday }
+    }
+
+    var duration: WorkoutLength {
+        WorkoutLength(rawValue: durationRaw) ?? .any
+    }
+
+    /// The plan day scheduled for a given date's weekday, if any.
+    func day(on date: Date, calendar: Calendar = .current) -> PlannedDay? {
+        let weekday = calendar.component(.weekday, from: date)
+        return days.first { $0.weekday == weekday }
+    }
+}
+
+/// One training day in a `WeeklyPlan`: a weekday, a focus, and the generated
+/// workout to run that day.
+@Model
+final class PlannedDay {
+    var id: UUID = UUID()
+    /// `Calendar` weekday: 1 = Sunday … 7 = Saturday.
+    var weekday: Int = 2
+    var focusRaw: String = WorkoutFocus.fullBody.rawValue
+
+    /// The workout for this day. Cascade-owned so clearing the plan or the day
+    /// removes its routine too. Kept out of the Library via `Routine.isPlanDay`.
+    /// CloudKit requires every relationship to have an inverse — see
+    /// `Routine.plannedDay`.
+    @Relationship(deleteRule: .cascade, inverse: \Routine.plannedDay)
+    var routine: Routine?
+
+    var plan: WeeklyPlan?
+
+    init(
+        weekday: Int,
+        focus: WorkoutFocus = .fullBody,
+        routine: Routine? = nil
+    ) {
+        self.id = UUID()
+        self.weekday = weekday
+        self.focusRaw = focus.rawValue
+        self.routine = routine
+    }
+
+    var focus: WorkoutFocus {
+        get { WorkoutFocus(rawValue: focusRaw) ?? .fullBody }
+        set { focusRaw = newValue.rawValue }
     }
 }

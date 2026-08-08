@@ -217,6 +217,54 @@ struct StreakWidgetView: View {
     }
 }
 
+// MARK: - Steps widget (minimal)
+
+/// The smallest possible widget: today's step count and nothing else.
+struct StepsWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "StepsWidget", provider: SnapshotProvider()) { entry in
+            StepsWidgetView(snapshot: entry.snapshot)
+                .containerBackground(LBColor.background, for: .widget)
+        }
+        .configurationDisplayName("Steps")
+        .description("Today's step count — nothing else.")
+        .supportedFamilies([.systemSmall, .accessoryCircular])
+    }
+}
+
+struct StepsWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    let snapshot: WidgetSnapshot
+
+    var body: some View {
+        switch family {
+        case .accessoryCircular:
+            VStack(spacing: 0) {
+                Image(systemName: "shoeprints.fill")
+                    .font(.caption2)
+                Text(StepFormat.compact(snapshot.todaySteps))
+                    .font(.system(.headline, design: .rounded, weight: .black))
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.6)
+            }
+
+        default:
+            VStack(spacing: 8) {
+                Image(systemName: "shoeprints.fill")
+                    .font(.title2)
+                    .foregroundStyle(LBColor.teal)
+                Text(StepFormat.compact(snapshot.todaySteps))
+                    .font(.system(size: 40, weight: .black, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
 // MARK: - Training Dashboard widget (extra large)
 
 /// The screen-filling board: a stat rail with the activity history and record

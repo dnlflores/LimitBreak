@@ -92,7 +92,7 @@ struct AIWorkoutSheet: View {
             }
             .sheet(item: $manualReplaceTarget) { target in
                 ExercisePickerSheet { picked in
-                    replaceManually(at: target.index, with: picked)
+                    Task { await replaceManually(at: target.index, with: picked) }
                 }
             }
         }
@@ -591,30 +591,62 @@ struct AIWorkoutSheet: View {
             excluding: existing,
             catalog: catalog
         )
+        guard let replacement else { swappingIndex = nil; return }
+        // Regenerate the incoming movement's sets/reps/load from its own history
+        // so the swapped-in slot carries informed numbers rather than inheriting
+        // the outgoing movement's set count with no prescription.
+        let regenerated = await regeneratedTargets(forExerciseNamed: replacement)
         swappingIndex = nil
-        guard let replacement,
-              var updated = plan,
-              updated.exercises.indices.contains(index) else { return }
+        guard var updated = plan, updated.exercises.indices.contains(index) else { return }
         // Keep the same row id so the swiped row stays put and animates in place
         // instead of being torn down and reinserted (which kills the slide).
         updated.exercises[index] = PlannedExercise(
-            id: outgoing.id, name: replacement, sets: outgoing.sets, supersetGroup: outgoing.supersetGroup
+            id: outgoing.id,
+            name: replacement,
+            sets: regenerated?.sets ?? outgoing.sets,
+            prescription: regenerated?.prescription,
+            supersetGroup: outgoing.supersetGroup
         )
         didSaveRoutine = false
         withAnimation(.spring(duration: 0.3)) { plan = updated }
         Haptics.shared.success()
     }
 
-    /// Swaps in a movement the user hand-picked, preserving the slot's set count.
-    private func replaceManually(at index: Int, with exercise: Exercise) {
+    /// Swaps in a movement the user hand-picked, regenerating its sets/reps/load
+    /// from its own history (deterministic fallback) just like the AI swap.
+    private func replaceManually(at index: Int, with exercise: Exercise) async {
+        let regenerated = await regeneratedTargets(forExerciseNamed: exercise.name)
         guard var updated = plan, updated.exercises.indices.contains(index) else { return }
         let outgoing = updated.exercises[index]
         // Preserve the row id (see swapWithAI) so the update animates in place.
         updated.exercises[index] = PlannedExercise(
-            id: outgoing.id, name: exercise.name, sets: outgoing.sets, supersetGroup: outgoing.supersetGroup
+            id: outgoing.id,
+            name: exercise.name,
+            sets: regenerated?.sets ?? outgoing.sets,
+            prescription: regenerated?.prescription,
+            supersetGroup: outgoing.supersetGroup
         )
         didSaveRoutine = false
         withAnimation(.spring(duration: 0.3)) { plan = updated }
+    }
+
+    /// Regenerated set count plus a single-target prescription for a swapped-in
+    /// movement, drawn from its own history via AI (deterministic fallback), so a
+    /// replaced slot opens on informed reps/load. Nil when the movement isn't in
+    /// the catalog or its tracking type has no progression to model.
+    private func regeneratedTargets(forExerciseNamed name: String) async -> (sets: Int, prescription: Prescription)? {
+        guard let exercise = exercises.first(where: { $0.name.lowercased() == name.lowercased() }),
+              let rx = await workout.aiTargets(for: exercise) else { return nil }
+        return (
+            max(1, rx.sets),
+            Prescription(
+                repRangeLow: rx.targetReps,
+                repRangeHigh: rx.targetReps,
+                targetLoadPounds: rx.targetWeightPounds ?? 0,
+                restSeconds: 90,
+                note: ""
+            )
+        )
     }
 
     private func startWorkout() {

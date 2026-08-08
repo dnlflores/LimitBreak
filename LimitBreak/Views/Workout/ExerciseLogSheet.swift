@@ -384,7 +384,7 @@ private struct ExerciseLogEditor: View {
         switch exercise.trackingType {
         case .weightAndReps, .bodyweightAndReps, .customMetric:
             BigValueField(
-                value: $drafts[index].primary,
+                value: primaryBinding(index),
                 step: exercise.defaultIncrement,
                 allowsNegative: exercise.isAssisted
             )
@@ -392,19 +392,19 @@ private struct ExerciseLogEditor: View {
             BigValueField(value: repsBinding(index), step: 1, allowsNegative: false, minimum: 1)
                 .frame(maxWidth: 96)
         case .durationAndReps:
-            BigValueField(value: $drafts[index].primary, step: 5, allowsNegative: false)
+            BigValueField(value: primaryBinding(index), step: 5, allowsNegative: false)
             separator("x")
             BigValueField(value: repsBinding(index), step: 1, allowsNegative: false, minimum: 1)
                 .frame(maxWidth: 96)
         case .durationOnly:
-            BigValueField(value: $drafts[index].primary, step: 5, allowsNegative: false, minimum: 1)
+            BigValueField(value: primaryBinding(index), step: 5, allowsNegative: false, minimum: 1)
             Text("sec")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.textDim)
         case .timeAndDistance:
-            BigValueField(value: $drafts[index].primary, step: 15, allowsNegative: false)
+            BigValueField(value: primaryBinding(index), step: 15, allowsNegative: false)
             separator("·")
-            BigValueField(value: $drafts[index].distance, step: 100, allowsNegative: false)
+            BigValueField(value: distanceBinding(index), step: 100, allowsNegative: false)
         }
     }
 
@@ -414,11 +414,47 @@ private struct ExerciseLogEditor: View {
             .foregroundStyle(Theme.textDim)
     }
 
+    /// The primary value (weight/duration) editor for a row. Editing a pending
+    /// set carries the new value through to every later, not-yet-logged set so
+    /// tuning an early set updates the remaining sets for this session.
+    private func primaryBinding(_ index: Int) -> Binding<Double> {
+        Binding(
+            get: { drafts[index].primary },
+            set: { newValue in
+                drafts[index].primary = newValue
+                cascadeToLaterPending(from: index) { $0.primary = newValue }
+            }
+        )
+    }
+
     private func repsBinding(_ index: Int) -> Binding<Double> {
         Binding(
             get: { Double(drafts[index].reps) },
-            set: { drafts[index].reps = max(1, Int($0)) }
+            set: { newValue in
+                let reps = max(1, Int(newValue))
+                drafts[index].reps = reps
+                cascadeToLaterPending(from: index) { $0.reps = reps }
+            }
         )
+    }
+
+    private func distanceBinding(_ index: Int) -> Binding<Double> {
+        Binding(
+            get: { drafts[index].distance },
+            set: { newValue in
+                drafts[index].distance = newValue
+                cascadeToLaterPending(from: index) { $0.distance = newValue }
+            }
+        )
+    }
+
+    /// Apply an edit to every set after `index` that hasn't been logged yet,
+    /// leaving already-logged sets and the edited row's predecessors untouched.
+    private func cascadeToLaterPending(from index: Int, _ apply: (inout SetDraft) -> Void) {
+        guard index + 1 < drafts.count else { return }
+        for j in (index + 1)..<drafts.count where !drafts[j].isLogged {
+            apply(&drafts[j])
+        }
     }
 
     private var unitToggle: some View {

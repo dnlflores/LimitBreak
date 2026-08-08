@@ -36,7 +36,7 @@ struct RootTabView: View {
                 WorkoutHistoryView()
             }
             Tab("Library", systemImage: "books.vertical.fill", value: 3) {
-                ExerciseLibraryView()
+                LibraryView()
             }
             Tab("Plan", systemImage: "calendar", value: 4) {
                 PlanTabView()

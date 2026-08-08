@@ -19,6 +19,33 @@ enum PlanWeekday {
     static var today: Int { Calendar.current.component(.weekday, from: Date()) }
 }
 
+// MARK: - Plan completion
+
+/// Works out which plan days have been trained this week by reading the training
+/// log directly. A plan day counts as done when *any* workout was logged on that
+/// weekday during the current week — no matter how the session was started — and
+/// the matching session is linked so the lifter can open its report. Completion
+/// resets automatically when a new calendar week begins.
+enum PlanCompletion {
+    /// The most-recent finished session logged on each weekday of the current
+    /// week, keyed by `Calendar` weekday (1 = Sunday … 7 = Saturday).
+    static func sessionsByWeekday(
+        from sessions: [WorkoutSession],
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [Int: WorkoutSession] {
+        guard let week = calendar.dateInterval(of: .weekOfYear, for: now) else { return [:] }
+        var map: [Int: WorkoutSession] = [:]
+        for session in sessions where session.endDate != nil {
+            guard week.contains(session.startDate) else { continue }
+            let weekday = calendar.component(.weekday, from: session.startDate)
+            if let existing = map[weekday], existing.startDate >= session.startDate { continue }
+            map[weekday] = session
+        }
+        return map
+    }
+}
+
 // MARK: - Plan tab root
 
 /// The Plan tab: build a repeating training week, then view it, start any day's
@@ -39,9 +66,12 @@ struct PlanTabView: View {
                 }
             }
             .obsidianBackground()
-            .navigationTitle("Plan")
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: PlannedDay.self) { day in
                 PlannedDayDetailView(day: day)
+            }
+            .navigationDestination(for: WorkoutSession.self) { session in
+                WorkoutDetailView(session: session)
             }
         }
         .sheet(isPresented: $showBuilder) {
@@ -51,6 +81,13 @@ struct PlanTabView: View {
 
     private var emptyState: some View {
         ScrollView {
+            HStack(alignment: .center) {
+                Text("Plan")
+                    .font(.largeTitle.bold())
+                Spacer()
+            }
+            .padding([.horizontal, .top])
+
             VStack(spacing: 20) {
                 Image(systemName: "calendar")
                     .font(.system(size: 60))

@@ -1,27 +1,36 @@
 import SwiftUI
 import SwiftData
 
-/// One plan day: an image-forward list of its exercises. Tap any exercise to
-/// edit its sets, reps, and working weight (or swap it with AI). If a workout
-/// was already logged on this weekday, the session is linked at the top and the
-/// day reads as completed.
-struct PlannedDayDetailView: View {
+/// Rich, day-view-parity editor for a single saved routine. Image-forward
+/// exercise cards, tap-to-edit sets / reps / weight (or AI-swap), drag-to-reorder,
+/// add-exercise, whole-routine AI generation, inline rename, and a Start button.
+/// Every edit persists in place through `WorkoutManager`.
+///
+/// Note: the exercise card and per-exercise editor here mirror
+/// `PlannedDayDetailView`'s `PlanExerciseCard` / `PlanExerciseEditorSheet`. They're
+/// intentionally duplicated rather than shared, to keep this view decoupled from
+/// the actively-evolving Plan tab; a future cleanup could extract one shared card.
+struct RoutineDetailView: View {
     @Environment(WorkoutManager.self) private var workout
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
-    @Query(sort: \WorkoutSession.startDate, order: .reverse) private var sessions: [WorkoutSession]
-    @Query private var profiles: [TrainingProfile]
 
-    let day: PlannedDay
+    let routine: Routine
 
+    @State private var name: String
     @State private var editing: EditTarget?
     @State private var showPicker = false
-    @State private var isRegenerating = false
+    @State private var showAIGenerator = false
     /// Stable in-memory mirror of the slots that the reorder stack reads and
     /// writes. The native drag container can't resolve item identities against a
     /// freshly-recomputed collection (`routine.orderedItems` re-sorts the live
     /// SwiftData relationship on every access) — that traps at drag lift. Seeded
     /// from the routine and reseeded when the set of slots changes.
     @State private var rows: [RoutineItem] = []
+
+    init(routine: Routine) {
+        self.routine = routine
+        _name = State(initialValue: routine.name)
+    }
 
     /// Identifiable wrapper so a tapped slot can drive `.sheet(item:)`.
     private struct EditTarget: Identifiable {
@@ -30,14 +39,12 @@ struct PlannedDayDetailView: View {
     }
 
     /// The current set of slot ids — drives reseeding when membership changes.
-    private var membership: Set<UUID> {
-        Set(day.routine?.items.map(\.id) ?? [])
-    }
+    private var membership: Set<UUID> { Set(routine.items.map(\.id)) }
 
     /// Rebuilds the stable mirror from the routine's persisted order, dropping any
     /// slot whose exercise was deleted so every reorder row renders a real card.
     private func reseed() {
-        rows = (day.routine?.orderedItems ?? []).filter { $0.exercise != nil }
+        rows = routine.orderedItems.filter { $0.exercise != nil }
     }
 
     /// Binding the reorder stack reads and writes; each drop persists the new
@@ -53,26 +60,15 @@ struct PlannedDayDetailView: View {
         )
     }
 
-    /// The workout logged on this weekday this week, if any.
-    private var loggedSession: WorkoutSession? {
-        PlanCompletion.sessionsByWeekday(from: sessions)[day.weekday]
-    }
-
-    private var isDone: Bool { loggedSession != nil }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
 
-                if let session = loggedSession {
-                    loggedWorkoutCard(session)
-                }
-
-                if let routine = day.routine, !routine.orderedItems.isEmpty {
-                    exerciseList(routine)
+                if !routine.orderedItems.isEmpty {
+                    exerciseList
                 } else {
-                    Text("This day has no exercises yet. Add some, or regenerate with AI.")
+                    Text("This routine has no exercises yet. Add some, or generate one with AI.")
                         .font(.subheadline)
                         .foregroundStyle(Theme.textDim)
                 }
@@ -82,18 +78,22 @@ struct PlannedDayDetailView: View {
             .padding()
         }
         .obsidianBackground()
-        .navigationTitle(PlanWeekday.name(day.weekday))
+        .navigationTitle("Routine")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: reseed)
         .onChange(of: membership) { _, _ in reseed() }
+        .onDisappear(perform: commitName)
         .sheet(item: $editing) { target in
-            PlanExerciseEditorSheet(item: target.item, catalog: exercises)
+            RoutineItemEditorSheet(item: target.item, catalog: exercises)
         }
         .sheet(isPresented: $showPicker) {
             ExercisePickerSheet { exercise in
-                if let routine = day.routine {
-                    workout.addExercise(exercise, to: routine)
-                }
+                workout.addExercise(exercise, to: routine)
+            }
+        }
+        .sheet(isPresented: $showAIGenerator) {
+            RoutineAIGeneratorSheet(catalog: exercises) { title, focus, generated in
+                applyAI(title: title, focus: focus, generated: generated)
             }
         }
     }
@@ -101,63 +101,46 @@ struct PlannedDayDetailView: View {
     // MARK: Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(day.focus.label)
+        VStack(alignment: .leading, spacing: 6) {
+            TextField("Routine name", text: $name)
                 .font(.largeTitle.weight(.bold))
-                .foregroundStyle(Theme.limitBreakGradient)
-            if isDone {
-                Label("Completed this week", systemImage: "checkmark.seal.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.emerald)
-            } else if let routine = day.routine {
+                .tint(Theme.emerald)
+                .submitLabel(.done)
+                .onSubmit(commitName)
+
+            HStack(spacing: 8) {
                 Text("\(routine.exerciseCount) movement\(routine.exerciseCount == 1 ? "" : "s")")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textDim)
+                if routine.isAIGenerated {
+                    Label("AI", systemImage: "sparkles")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.violet)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: Logged workout link
-
-    private func loggedWorkoutCard(_ session: WorkoutSession) -> some View {
-        NavigationLink(value: session) {
-            HStack(spacing: 12) {
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.title3)
-                    .foregroundStyle(Theme.emerald)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(session.name)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text("Trained \(session.startDate.formatted(date: .abbreviated, time: .shortened)) · view report")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.textDim)
-                }
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textDim)
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.emerald.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.emerald.opacity(0.3), lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 16))
+    /// Persists the edited name (falling back to "Routine" when blank).
+    private func commitName() {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let resolved = trimmed.isEmpty ? "Routine" : trimmed
+        if resolved != routine.name {
+            workout.renameRoutine(routine, to: resolved)
         }
-        .buttonStyle(.plain)
+        if name != resolved { name = resolved }
     }
 
     // MARK: Exercises
 
-    private func exerciseList(_ routine: Routine) -> some View {
+    private var exerciseList: some View {
         VStack(alignment: .leading, spacing: 10) {
             ReorderableVStack(itemsBinding, spacing: 14) { $item, grip in
                 reorderableCard(item, grip: grip)
             }
 
-            Text("Drag \u{2261} to reorder · tap an exercise to edit")
+            Text("Drag \u{2261} to reorder \u{00B7} tap an exercise to edit")
                 .font(.caption2)
                 .foregroundStyle(Theme.textDim)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -188,16 +171,16 @@ struct PlannedDayDetailView: View {
     @ViewBuilder
     private func cardLabel(_ item: RoutineItem) -> some View {
         if let exercise = item.exercise {
-            PlanExerciseCard(exercise: exercise, target: targetText(item))
+            RoutineExerciseCard(exercise: exercise, target: targetText(item))
         } else {
             Color.clear.frame(height: 1)
         }
     }
 
     private func targetText(_ item: RoutineItem) -> String {
-        var text = "\(item.targetSets) × \(item.targetReps.map(String.init) ?? "—")"
+        var text = "\(item.targetSets) \u{00D7} \(item.targetReps.map(String.init) ?? "\u{2014}")"
         if let weight = item.targetWeight, weight > 0 {
-            text += "  ·  \(Int(weight)) lb"
+            text += "  \u{00B7}  \(Int(weight)) lb"
         }
         return text
     }
@@ -207,16 +190,13 @@ struct PlannedDayDetailView: View {
     private var actions: some View {
         VStack(spacing: 12) {
             Button {
-                guard let routine = day.routine else { return }
                 Haptics.shared.tick()
-                workout.startSession(from: routine, withPartner: day.plan?.withPartner ?? false)
+                workout.startSession(from: routine)
             } label: {
-                actionLabel(isDone ? "TRAIN AGAIN" : "START SESSION",
-                            icon: isDone ? "arrow.clockwise" : "play.fill",
-                            filled: true)
+                actionLabel("START SESSION", icon: "play.fill", filled: true)
             }
             .buttonStyle(.plain)
-            .disabled(day.routine?.orderedItems.isEmpty ?? true)
+            .disabled(routine.orderedItems.isEmpty)
 
             Button {
                 Haptics.shared.tick()
@@ -227,15 +207,12 @@ struct PlannedDayDetailView: View {
             .buttonStyle(.plain)
 
             Button {
-                Task { await regenerate() }
+                Haptics.shared.tick()
+                showAIGenerator = true
             } label: {
                 HStack(spacing: 8) {
-                    if isRegenerating {
-                        ProgressView().tint(Theme.violet)
-                    } else {
-                        Image(systemName: "sparkles")
-                    }
-                    Text(isRegenerating ? "REGENERATING…" : "REGENERATE WITH AI")
+                    Image(systemName: "sparkles")
+                    Text("GENERATE WITH AI")
                         .font(.subheadline.weight(.semibold))
                         .kerning(0.8)
                 }
@@ -246,7 +223,6 @@ struct PlannedDayDetailView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(isRegenerating)
         }
     }
 
@@ -273,35 +249,34 @@ struct PlannedDayDetailView: View {
         }
     }
 
-    // MARK: Regenerate
+    // MARK: AI generation
 
-    private func regenerate() async {
-        isRegenerating = true
-        Haptics.shared.tick()
-        let plan = day.plan
-        let generated = await PlanBuilding.generateDay(
-            focus: day.focus,
-            exercisesPerDay: plan?.exercisesPerDay ?? 5,
-            duration: plan?.duration ?? .any,
-            withPartner: plan?.withPartner ?? false,
-            allowSupersets: plan?.allowSupersets ?? true,
-            exercises: exercises,
-            sessions: sessions,
-            profile: profiles.first
-        )
-        isRegenerating = false
-        guard let generated, !generated.items.isEmpty else { return }
-        workout.replacePlanDayRoutine(day, title: generated.title, items: generated.items)
+    /// Replaces the routine's contents with an AI-generated plan, mapping planned
+    /// exercise names back to real catalog entries (unknown names are dropped).
+    private func applyAI(title: String, focus: WorkoutFocus, generated: [PlannedExercise]) {
+        let byName = Dictionary(exercises.map { ($0.name.lowercased(), $0) }) { first, _ in first }
+        let items: [WorkoutManager.RoutineDraftItem] = generated.compactMap { planned in
+            guard let exercise = byName[planned.name.lowercased()] else { return nil }
+            let weight: Double? = {
+                guard let load = planned.prescription?.targetLoadPounds, load > 0 else { return nil }
+                return load
+            }()
+            return (exercise, planned.sets, planned.targetReps, weight, planned.supersetGroup)
+        }
+        guard !items.isEmpty else { return }
+        let resolvedName = name.trimmingCharacters(in: .whitespaces).isEmpty ? title : name
+        workout.updateRoutine(routine, name: resolvedName, items: items)
+        name = routine.name
         Haptics.shared.success()
     }
 }
 
 // MARK: - Exercise card
 
-/// Image-forward card for one planned exercise, matching the history detail
-/// look: a full-width illustration, muscle badge, name, and the set/rep/weight
-/// target. Tapping it opens the per-exercise editor.
-private struct PlanExerciseCard: View {
+/// Image-forward card for one routine exercise: a full-width illustration, muscle
+/// badge, name, and the set/rep/weight target. Tapping it opens the per-exercise
+/// editor. Mirrors the Plan tab's `PlanExerciseCard`.
+private struct RoutineExerciseCard: View {
     let exercise: Exercise
     let target: String
 
@@ -345,10 +320,11 @@ private struct PlanExerciseCard: View {
 
 // MARK: - Per-exercise editor
 
-/// Edits a single planned slot: its set count, target reps, and working weight,
+/// Edits a single routine slot: its set count, target reps, and working weight,
 /// with an option to swap the movement for an AI-picked alternative. Writes back
-/// to the routine item in place on save.
-private struct PlanExerciseEditorSheet: View {
+/// to the routine item in place on save. Mirrors the Plan tab's
+/// `PlanExerciseEditorSheet`.
+private struct RoutineItemEditorSheet: View {
     @Environment(WorkoutManager.self) private var workout
     @Environment(\.dismiss) private var dismiss
 
@@ -510,7 +486,7 @@ private struct PlanExerciseEditorSheet: View {
             .buttonStyle(.plain)
             .foregroundStyle(Theme.textDim)
 
-            Text(weight > 0 ? "\(Int(weight)) lb" : "—")
+            Text(weight > 0 ? "\(Int(weight)) lb" : "\u{2014}")
                 .font(.headline.monospacedDigit())
                 .foregroundStyle(Theme.emerald)
                 .frame(minWidth: 68)
@@ -538,7 +514,7 @@ private struct PlanExerciseEditorSheet: View {
                 } else {
                     Image(systemName: "sparkles")
                 }
-                Text(isSwapping ? "SWAPPING…" : "SWAP WITH AI")
+                Text(isSwapping ? "SWAPPING\u{2026}" : "SWAP WITH AI")
                     .font(.subheadline.weight(.semibold))
                     .kerning(0.8)
             }

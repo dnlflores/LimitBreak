@@ -74,6 +74,11 @@ enum PromptBuilder {
         - Pair muscle groups that work well together in one session (push muscles together, \
         pull muscles together, hinge and squat patterns together). Do not scatter unrelated \
         muscle groups across a session just to hit the requested count.
+        - Give every movement a unique primary muscle: each exercise should cover a muscle no \
+        other movement in the session has claimed yet, so the work spreads across as many \
+        distinct muscles as the count allows. Only double up on a muscle once every muscle in \
+        scope already has a movement — that is, when the requested movement count exceeds the \
+        muscles available to hit.
         - Prescribe a real working weight in pounds for every movement, derived from the \
         lifter's recorded ceiling for that movement and the goal's target percentage. When \
         there is no recorded ceiling, infer a sensible starting weight from their ceilings on \

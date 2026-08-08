@@ -126,12 +126,15 @@ enum WorkoutAI {
     #endif
 
     private static func sanitizeName(_ raw: String) -> String {
-        var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Take only the first line in case the model rambled.
-        if let firstLine = name.split(separator: "\n").first {
-            name = String(firstLine)
-        }
-        name = name.trimmingCharacters(in: CharacterSet(charactersIn: "\"'.“”‘’ "))
+        // Pick the first meaningful line, skipping markdown code-fence lines like
+        // ``` or ```json that the model sometimes wraps its reply in.
+        let lines = raw
+            .replacingOccurrences(of: "`", with: "")
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "\"'.“”‘’ ")) }
+        let name = lines.first(where: { line in
+            !line.isEmpty && line.lowercased() != "json"
+        }) ?? ""
         return name.isEmpty ? fallbackName() : name
     }
 
@@ -500,6 +503,135 @@ enum WorkoutAI {
         let byName = Dictionary(catalog.map { ($0.name.lowercased(), $0.name) }) { first, _ in first }
         let key = response.content.name.lowercased().trimmingCharacters(in: .whitespaces)
         return byName[key]
+    }
+    #endif
+
+    // MARK: - Single-exercise prescription
+
+    /// A regenerated set / rep / load prescription for one movement, produced
+    /// when a new exercise is swapped into a routine, plan day, or live session.
+    /// Always grounded in that movement's own logged history: the on-device model
+    /// reads the history and proposes the next progression, and the deterministic
+    /// engine is both its seed and the fallback when no model is available.
+    struct ExercisePrescription {
+        let sets: Int
+        let targetReps: Int
+        /// Working weight in canonical pounds. Nil for unloaded bodyweight
+        /// movements, where reps are the only lever.
+        let targetWeightPounds: Double?
+    }
+
+    /// Regenerates sets, reps, and working weight for a single movement from its
+    /// own history. Returns nil only for tracking types progression doesn't model
+    /// (duration/distance/custom), where the caller should leave targets untouched.
+    static func prescribeExercise(
+        for exercise: Exercise,
+        goal: TrainingGoal,
+        withPartner: Bool = false
+    ) async -> ExercisePrescription? {
+        // The deterministic engine already derives the next target from history
+        // (double progression + heavy/volume undulation) — it's the guaranteed
+        // fallback and the anchor the model is asked to refine.
+        guard let baseline = ProgressionEngine.nextTarget(
+            for: exercise, goal: goal, withPartner: withPartner
+        ) else { return nil }
+
+        let deterministic = ExercisePrescription(
+            sets: baseline.sets,
+            targetReps: baseline.targetReps,
+            targetWeightPounds: baseline.targetWeightPounds
+        )
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *), SystemLanguageModel.default.availability == .available {
+            do {
+                if let refined = try await prescribeExerciseWithModel(
+                    exercise: exercise, goal: goal, baseline: baseline
+                ) {
+                    return refined
+                }
+            } catch {
+                return deterministic
+            }
+        }
+        #endif
+        return deterministic
+    }
+
+    #if canImport(FoundationModels)
+    /// Guided-generation shape for a single movement's next prescription.
+    @available(iOS 26.0, *)
+    @Generable
+    struct GeneratedPrescription {
+        @Guide(description: "Number of working sets, between 2 and 5.")
+        var sets: Int
+        @Guide(description: "The single rep count to aim for this session.")
+        var targetReps: Int
+        @Guide(description: "Suggested working weight in pounds; 0 for unloaded bodyweight movements.")
+        var targetLoadPounds: Double
+    }
+
+    @available(iOS 26.0, *)
+    private static func prescribeExerciseWithModel(
+        exercise: Exercise,
+        goal: TrainingGoal,
+        baseline: ProgressionTarget
+    ) async throws -> ExercisePrescription? {
+        // The lifter's last few working sessions on this movement, newest first,
+        // reduced to the top set of each — enough for the model to read the trend
+        // without overrunning the on-device context.
+        var groups: [UUID: (date: Date, sets: [ExerciseSet])] = [:]
+        for set in exercise.sets where !set.isWarmup {
+            guard let session = set.session else { continue }
+            groups[session.id, default: (session.startDate, [])].sets.append(set)
+        }
+        let recent = groups.values
+            .sorted { $0.date > $1.date }
+            .prefix(5)
+            .map { grp -> String in
+                let topWeight = grp.sets.map(\.weight).max() ?? 0
+                let topReps = grp.sets.map(\.reps).max() ?? 0
+                return topWeight > 0
+                    ? "\(grp.sets.count)×\(topReps) @ \(Int(topWeight.rounded())) lb"
+                    : "\(grp.sets.count)×\(topReps) bodyweight"
+            }
+
+        // No weight in the deterministic target means an unloaded bodyweight
+        // movement — reps are the only lever, so the model's load is ignored.
+        let isBodyweight = baseline.targetWeightPounds == nil
+        let historyText = recent.isEmpty
+            ? "No prior history for this movement — start conservatively."
+            : recent.joined(separator: "; ")
+
+        let session = LanguageModelSession(instructions: """
+            You are a strength coach for LimitBreak. Prescribe the next set count, \
+            rep target, and working weight for ONE movement the lifter just swapped \
+            in. Apply progressive overload: stay close to what they have actually \
+            been lifting and move only one small step past their last session — add \
+            a rep or a small load bump, never a big jump. Keep reps inside the \
+            goal's range. For unloaded bodyweight movements, set the weight to 0.
+            """)
+
+        let prompt = """
+            Movement: \(exercise.name)
+            Goal rep range: \(goal.repRange.low)–\(goal.repRange.high)
+            Recent history (newest first): \(historyText)
+            Deterministic suggestion to refine: \(baseline.promptLine(exerciseName: exercise.name))
+            \(isBodyweight ? "This is an unloaded bodyweight movement — set the weight to 0." : "")
+            """
+
+        let response = try await session.respond(to: prompt, generating: GeneratedPrescription.self)
+        let content = response.content
+
+        let sets = min(max(content.sets, 1), 8)
+        let reps = max(1, content.targetReps)
+        let weight: Double?
+        if isBodyweight {
+            weight = nil
+        } else {
+            weight = content.targetLoadPounds > 0 ? content.targetLoadPounds : baseline.targetWeightPounds
+        }
+        return ExercisePrescription(sets: sets, targetReps: reps, targetWeightPounds: weight)
     }
     #endif
 

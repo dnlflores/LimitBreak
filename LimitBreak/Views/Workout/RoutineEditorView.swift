@@ -274,14 +274,25 @@ struct RoutineEditorView: View {
             excluding: excluding,
             catalog: catalog
         )
-        swappingID = nil
         guard let replacementName,
-              let replacement = allExercises.first(where: { $0.name.lowercased() == replacementName.lowercased() }),
-              let slot = items.firstIndex(where: { $0.id == id }) else { return }
+              let replacement = allExercises.first(where: { $0.name.lowercased() == replacementName.lowercased() })
+        else { swappingID = nil; return }
+        // Regenerate the incoming movement's sets/reps/load from its own history
+        // so the swapped-in exercise carries informed numbers rather than the
+        // previous movement's stale prescription.
+        let rx = await workout.aiTargets(for: replacement)
+        swappingID = nil
+        guard let slot = items.firstIndex(where: { $0.id == id }) else { return }
         withAnimation(.spring(duration: 0.3)) {
             items[slot].exercise = replacement
-            items[slot].targetReps = nil
-            items[slot].targetWeight = nil
+            if let rx {
+                items[slot].targetSets = max(1, rx.sets)
+                items[slot].targetReps = rx.targetReps
+                items[slot].targetWeight = (rx.targetWeightPounds ?? 0) > 0 ? rx.targetWeightPounds : nil
+            } else {
+                items[slot].targetReps = nil
+                items[slot].targetWeight = nil
+            }
         }
         Haptics.shared.success()
     }
@@ -422,8 +433,8 @@ struct RoutineEditorView: View {
 // MARK: - AI generator sheet
 
 /// Compact focus/length picker that runs the on-device workout AI and hands the
-/// resulting plan back to the routine editor.
-private struct RoutineAIGeneratorSheet: View {
+/// resulting plan back to the routine editor. Shared with `RoutineDetailView`.
+struct RoutineAIGeneratorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let catalog: [Exercise]

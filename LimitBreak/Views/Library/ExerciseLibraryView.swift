@@ -1,21 +1,20 @@
 import SwiftUI
 import SwiftData
 
-/// Browsable exercise catalog with per-movement record ledgers.
-struct ExerciseLibraryView: View {
+/// Browsable exercise catalog with per-movement record ledgers. Embedded as the
+/// "Exercises" section of `LibraryView`, which owns the navigation stack, title,
+/// and the "+" creator entry point.
+struct ExerciseLibraryContent: View {
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
     @State private var searchText = ""
     @State private var muscleFilter: MuscleGroup?
-    // Debug/UI-test hook: launch with "-open-forge" to present the creator sheet.
-    @State private var showCreator = ProcessInfo.processInfo.arguments.contains("-open-forge")
     // Debug/UI-test hook: launch with "-open-first-exercise" to push the first
     // movement's detail page.
     @State private var debugOpenFirst = ProcessInfo.processInfo.arguments.contains("-open-first-exercise")
 
     private var filtered: [Exercise] {
         exercises.filter { exercise in
-            let matchesSearch = searchText.isEmpty
-                || exercise.name.localizedCaseInsensitiveContains(searchText)
+            let matchesSearch = FuzzySearch.matches(searchText, in: exercise.name)
             let matchesMuscle = muscleFilter == nil
                 || exercise.muscleGroupRaw == muscleFilter?.rawValue
             return matchesSearch && matchesMuscle
@@ -23,46 +22,33 @@ struct ExerciseLibraryView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    titleHeader
+        LazyVStack(alignment: .leading, spacing: 14) {
+            searchField
 
-                    searchField
+            filterBar
 
-                    filterBar
+            summaryHeader
 
-                    summaryHeader
-
-                    ForEach(filtered, id: \.id) { exercise in
-                        NavigationLink {
-                            ExerciseDetailView(exercise: exercise)
-                        } label: {
-                            exerciseCard(exercise)
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    if filtered.isEmpty {
-                        Text(emptyMessage)
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.textDim)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .cardStyle()
-                    }
+            ForEach(filtered, id: \.id) { exercise in
+                NavigationLink {
+                    ExerciseDetailView(exercise: exercise)
+                } label: {
+                    exerciseCard(exercise)
                 }
-                .padding()
+                .buttonStyle(.plain)
             }
-            .obsidianBackground()
-            .toolbar(.hidden, for: .navigationBar)
-            .scrollDismissesKeyboard(.interactively)
-            .sheet(isPresented: $showCreator) {
-                ExerciseEditorView()
+
+            if filtered.isEmpty {
+                Text(emptyMessage)
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textDim)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .cardStyle()
             }
-            .navigationDestination(isPresented: $debugOpenFirst) {
-                if let first = exercises.first {
-                    ExerciseDetailView(exercise: first)
-                }
+        }
+        .navigationDestination(isPresented: $debugOpenFirst) {
+            if let first = exercises.first {
+                ExerciseDetailView(exercise: first)
             }
         }
     }
@@ -73,25 +59,7 @@ struct ExerciseLibraryView: View {
             : "No movements match \u{201C}\(searchText)\u{201D}."
     }
 
-    // MARK: - Title & search
-
-    private var titleHeader: some View {
-        HStack(alignment: .center) {
-            Text("Library")
-                .font(.largeTitle.bold())
-            Spacer()
-            Button {
-                Haptics.shared.tick()
-                showCreator = true
-            } label: {
-                Image(systemName: "plus")
-                    .font(.title2)
-                    .glassCircle()
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.bottom, 8)
-    }
+    // MARK: - Search
 
     private var searchField: some View {
         HStack(spacing: 8) {

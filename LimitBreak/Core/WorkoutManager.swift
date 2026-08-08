@@ -296,15 +296,58 @@ final class WorkoutManager {
     /// Sets already logged on the old movement stay in the session history.
     func replaceExercise(_ old: Exercise, with new: Exercise) {
         guard let index = sessionExercises.firstIndex(where: { $0.id == old.id }) else { return }
-        if sessionExercises.contains(where: { $0.id == new.id }) {
+        let alreadyPresent = sessionExercises.contains(where: { $0.id == new.id })
+        let supersetTag = sessionSupersets[old.id]
+        if alreadyPresent {
             sessionExercises.remove(at: index)
+            // The outgoing movement leaves the session entirely, so free any lone
+            // partner its exit strands — same superset cleanup as removeExercise.
+            if let supersetTag {
+                let remaining = sessionExercises.filter { sessionSupersets[$0.id] == supersetTag }
+                if remaining.count < 2 {
+                    for member in remaining { sessionSupersets[member.id] = nil }
+                }
+            }
         } else {
             sessionExercises[index] = new
             sessionTargets[new.id] = sessionTargets[old.id] ?? 3
+            // Carry the outgoing movement's superset membership onto the swapped-in
+            // one so replacing a paired exercise keeps the superset intact.
+            sessionSupersets[new.id] = supersetTag
         }
+        // The outgoing movement's coached rep/load targets no longer apply, and its
+        // superset tag must clear so it isn't left locked to a group it has left.
+        sessionSupersets[old.id] = nil
         sessionTargets[old.id] = nil
+        sessionRepTargets[old.id] = nil
+        sessionWeightTargets[old.id] = nil
         Haptics.shared.logSet()
         SessionSync.shared.broadcast(from: self)
+        // Regenerate the incoming movement's sets/reps/load from its own history
+        // so the swapped-in exercise opens on informed numbers, not the previous
+        // movement's prescription. Runs after the swap so the card updates now
+        // and the coached numbers land a moment later.
+        if !alreadyPresent { regenerateSessionTargets(for: new) }
+    }
+
+    /// Fills the live session's coached set/rep/load targets for a movement from
+    /// its own history via AI (deterministic fallback), after a swap. Detached so
+    /// the swap animates immediately; guards against the lifter swapping again
+    /// while the prescription is in flight.
+    private func regenerateSessionTargets(for exercise: Exercise) {
+        let goal = TrainingProfile.current(in: context).goal
+        let withPartner = isTrainingWithPartner
+        Task { [weak self] in
+            guard let rx = await WorkoutAI.prescribeExercise(
+                for: exercise, goal: goal, withPartner: withPartner
+            ) else { return }
+            guard let self,
+                  self.sessionExercises.contains(where: { $0.id == exercise.id }) else { return }
+            self.sessionRepTargets[exercise.id] = rx.targetReps
+            if let weight = rx.targetWeightPounds { self.sessionWeightTargets[exercise.id] = weight }
+            self.sessionTargets[exercise.id] = max(rx.sets, self.sets(for: exercise).count)
+            SessionSync.shared.broadcast(from: self)
+        }
     }
 
     /// Switches a movement's display/entry unit (lb/kg). Stored weights are
@@ -855,6 +898,12 @@ final class WorkoutManager {
         Haptics.shared.logSet()
     }
 
+    /// Renames a routine in place, falling back to "Routine" when left blank.
+    func renameRoutine(_ routine: Routine, to name: String) {
+        routine.name = name.isEmpty ? "Routine" : name
+        try? context.save()
+    }
+
     /// Builds a routine from a completed session: one slot per exercise, with
     /// the target set count taken from how many working sets were logged.
     @discardableResult
@@ -969,6 +1018,72 @@ final class WorkoutManager {
         try? context.save()
     }
 
+    // MARK: - Plan-day exercise editing
+
+    /// Updates one routine slot's targets in place (sets, reps, working weight)
+    /// and stamps the owning plan. A non-positive weight clears the target.
+    func updateRoutineItem(
+        _ item: RoutineItem,
+        targetSets: Int,
+        targetReps: Int?,
+        targetWeight: Double?
+    ) {
+        item.targetSets = max(1, targetSets)
+        item.targetReps = targetReps
+        item.targetWeight = (targetWeight ?? 0) > 0 ? targetWeight : nil
+        item.routine?.plannedDay?.plan?.updatedAt = Date()
+        try? context.save()
+        Haptics.shared.success()
+    }
+
+    /// Swaps the exercise behind a routine slot and regenerates its coached
+    /// set/rep/load targets from the new movement's own history via AI (with a
+    /// deterministic fallback), so the replacement opens with informed numbers
+    /// instead of the previous movement's now-stale prescription.
+    func setRoutineItemExercise(_ item: RoutineItem, to exercise: Exercise) async {
+        item.exercise = exercise
+        if let rx = await aiTargets(for: exercise) {
+            item.targetSets = max(1, rx.sets)
+            item.targetReps = rx.targetReps
+            item.targetWeight = (rx.targetWeightPounds ?? 0) > 0 ? rx.targetWeightPounds : nil
+        } else {
+            item.targetReps = nil
+            item.targetWeight = nil
+        }
+        item.routine?.plannedDay?.plan?.updatedAt = Date()
+        try? context.save()
+        Haptics.shared.success()
+    }
+
+    /// Appends an exercise to a routine as a new slot at the end of the order.
+    func addExercise(_ exercise: Exercise, to routine: Routine, targetSets: Int = 3) {
+        guard !routine.items.contains(where: { $0.exercise?.id == exercise.id }) else { return }
+        let order = (routine.items.map(\.order).max() ?? -1) + 1
+        let item = RoutineItem(order: order, targetSets: targetSets, exercise: exercise)
+        item.routine = routine
+        context.insert(item)
+        routine.plannedDay?.plan?.updatedAt = Date()
+        try? context.save()
+        Haptics.shared.success()
+    }
+
+    /// Persists a new order for a routine's slots from the given ordered list,
+    /// rewriting each slot's `order` to match its position.
+    func reorderRoutineItems(_ items: [RoutineItem]) {
+        for (index, item) in items.enumerated() { item.order = index }
+        items.first?.routine?.plannedDay?.plan?.updatedAt = Date()
+        try? context.save()
+    }
+
+    /// Removes one slot from a routine.
+    func removeRoutineItem(_ item: RoutineItem) {
+        let plan = item.routine?.plannedDay?.plan
+        context.delete(item)
+        plan?.updatedAt = Date()
+        try? context.save()
+        Haptics.shared.logSet()
+    }
+
     /// Deletes the active weekly plan and its plan-owned day routines.
     func clearWeeklyPlan() {
         for plan in (try? context.fetch(FetchDescriptor<WeeklyPlan>())) ?? [] {
@@ -1023,6 +1138,20 @@ final class WorkoutManager {
     func progressionTarget(for exercise: Exercise) -> ProgressionTarget? {
         let goal = TrainingProfile.current(in: context).goal
         return ProgressionEngine.nextTarget(
+            for: exercise,
+            goal: goal,
+            withPartner: isTrainingWithPartner
+        )
+    }
+
+    /// AI-regenerated sets/reps/load for a movement from its own history (with a
+    /// deterministic fallback), for callers editing routine drafts outside the
+    /// persisted `RoutineItem` path — e.g. the routine editor. Reads the lifter's
+    /// goal from the store so the view doesn't have to. Nil for tracking types
+    /// progression doesn't model.
+    func aiTargets(for exercise: Exercise) async -> WorkoutAI.ExercisePrescription? {
+        let goal = TrainingProfile.current(in: context).goal
+        return await WorkoutAI.prescribeExercise(
             for: exercise,
             goal: goal,
             withPartner: isTrainingWithPartner

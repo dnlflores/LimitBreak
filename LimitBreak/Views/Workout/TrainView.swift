@@ -23,24 +23,20 @@ struct TrainView: View {
 
 private struct SessionLauncherView: View {
     @Environment(WorkoutManager.self) private var workout
-    // Plan-owned day routines are hidden here; they live in the Plan tab.
-    @Query(filter: #Predicate<Routine> { !$0.isPlanDay },
-           sort: \Routine.createdAt, order: .reverse) private var routines: [Routine]
-    @State private var sessionName = ""
     @State private var isNaming = false
-    @State private var showNameField = false
-    @State private var showPastWorkout = false
     @State private var showWalkDraw = false
     @State private var showAIWorkout = false
-    @State private var showRoutineLibrary = false
     /// Answered before the session starts and carried into it — routines, AI
     /// plans and plain sessions all launch with whatever is selected here.
     @State private var withPartner = false
     // Debug/UI-test hook: launch with "-open-activity" to present the logger.
     @State private var showActivityLog = ProcessInfo.processInfo.arguments.contains("-open-activity")
-    @FocusState private var nameFieldFocused: Bool
 
-    private let suggestions = ["Push Day", "Pull Day", "Leg Day", "Upper Body", "Full Body"]
+    // Live totals feeding the Walk & Activity tiles so they read as glanceable
+    // widgets rather than plain launch buttons.
+    @Query(sort: \Walk.date, order: .reverse) private var walks: [Walk]
+    @Query(sort: \Activity.date, order: .reverse) private var activities: [Activity]
+    private let health = HealthKitManager.shared
 
     var body: some View {
         ScrollView {
@@ -49,19 +45,15 @@ private struct SessionLauncherView: View {
 
                 aiWorkoutCard
 
-                routinesSection
-
                 secondaryActions
             }
             .padding()
             .padding(.top, 8)
         }
         .scrollDismissesKeyboard(.interactively)
+        .task { await health.refreshTodayStats() }
         .safeAreaInset(edge: .bottom) {
             startCluster
-        }
-        .sheet(isPresented: $showPastWorkout) {
-            PastWorkoutView()
         }
         .sheet(isPresented: $showWalkDraw) {
             WalkDrawView()
@@ -78,9 +70,6 @@ private struct SessionLauncherView: View {
                     withPartner: partnered
                 )
             }
-        }
-        .sheet(isPresented: $showRoutineLibrary) {
-            RoutineLibraryView()
         }
         .sheet(isPresented: $showActivityLog) {
             ActivityLogView()
@@ -103,89 +92,36 @@ private struct SessionLauncherView: View {
 
     // MARK: Primary start (pinned at the bottom, in thumb range)
 
-    /// The one big action, docked at the bottom. The pencil button reveals an
-    /// optional name field; an empty name gets an AI-invented one on the way in.
+    /// The one big action, docked at the bottom. Every session gets an
+    /// AI-invented name on the way in.
     private var startCluster: some View {
         VStack(spacing: 10) {
-            if showNameField {
-                VStack(spacing: 10) {
-                    TextField("Session name", text: $sessionName)
-                        .textFieldStyle(.plain)
-                        .focused($nameFieldFocused)
-                        .submitLabel(.go)
-                        .onSubmit { Task { await start() } }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.glassBorder, lineWidth: 1))
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(suggestions, id: \.self) { suggestion in
-                                Button(suggestion) {
-                                    sessionName = suggestion
-                                    Haptics.shared.tick()
-                                }
-                                .font(.caption.weight(.medium))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(Theme.surfaceRaised, in: Capsule())
-                                .foregroundStyle(.primary)
-                            }
-                        }
-                        .padding(.horizontal, 2)
-                    }
-
-                    Text("Leave it blank and I\u{2019}ll invent a fun one.")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.textDim)
-                }
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
-
             // Asked right where the session begins, so it's answered before the
             // first set rather than reconstructed afterward.
             PartnerToggle(isOn: $withPartner)
 
-            HStack(spacing: 12) {
-                Button {
-                    Task { await start() }
-                } label: {
-                    HStack(spacing: 10) {
-                        if isNaming {
-                            ProgressView().tint(.white)
-                            Text("NAMING\u{2026}")
-                        } else {
-                            Image(systemName: "bolt.fill")
-                            Text("START SESSION")
-                        }
+            Button {
+                Task { await start() }
+            } label: {
+                HStack(spacing: 10) {
+                    if isNaming {
+                        ProgressView().tint(.white)
+                        Text("NAMING\u{2026}")
+                    } else {
+                        Image(systemName: "bolt.fill")
+                        Text("START SESSION")
                     }
-                    .font(.headline)
-                    .kerning(1.5)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 17)
-                    .foregroundStyle(.white)
-                    .glassCTA(tint: Theme.emerald.opacity(0.85))
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .disabled(isNaming)
-
-                Button {
-                    withAnimation(.snappy) { showNameField.toggle() }
-                    nameFieldFocused = showNameField
-                    if !showNameField { sessionName = "" }
-                    Haptics.shared.tick()
-                } label: {
-                    Image(systemName: showNameField ? "xmark" : "pencil")
-                        .font(.headline)
-                        .foregroundStyle(showNameField ? Theme.textDim : Theme.emerald)
-                        .glassCircle(diameter: 54)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(showNameField ? "Hide name field" : "Name this session")
+                .font(.headline)
+                .kerning(1.5)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 17)
+                .foregroundStyle(.white)
+                .glassCTA(tint: Theme.emerald.opacity(0.85))
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .disabled(isNaming)
         }
         .padding(.horizontal)
         .padding(.top, 8)
@@ -231,148 +167,178 @@ private struct SessionLauncherView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: Routines
+    // MARK: Movement tiles (Walk & Activity)
 
-    /// Saved curations as compact quick-start cards. Tap to launch; the
-    /// slider icon opens the full library for editing.
-    private var routinesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("ROUTINES")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Theme.textDim)
-                    .kerning(1.5)
-                Spacer()
-                Button {
-                    Haptics.shared.tick()
-                    showRoutineLibrary = true
-                } label: {
-                    Image(systemName: routines.isEmpty ? "plus" : "slider.horizontal.3")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.emerald)
-                        .frame(width: 30, height: 30)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(routines.isEmpty ? "New routine" : "Manage routines")
-            }
-
-            if routines.isEmpty {
-                Button {
-                    Haptics.shared.tick()
-                    showRoutineLibrary = true
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "square.stack.3d.up.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.emerald)
-                        Text("Save a routine to quick-start it here.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.textDim)
-                        Spacer()
-                    }
-                    .padding(12)
-                    .glassControl(cornerRadius: 14)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(routines, id: \.id) { routine in
-                            routineCard(routine)
-                        }
-                    }
-                    .padding(.horizontal, 2)
-                    .padding(.vertical, 2)
-                }
-            }
-        }
-    }
-
-    private func routineCard(_ routine: Routine) -> some View {
-        Button {
-            Haptics.shared.tick()
-            workout.startSession(from: routine, withPartner: withPartner)
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top) {
-                    Text(routine.name)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    Spacer(minLength: 4)
-                    if routine.isAIGenerated {
-                        Image(systemName: "sparkles")
-                            .font(.caption2)
-                            .foregroundStyle(Theme.violet)
-                    }
-                }
-                Spacer(minLength: 0)
-                HStack(spacing: 5) {
-                    Image(systemName: "play.circle.fill")
-                        .font(.subheadline)
-                    Text("\(routine.exerciseCount) movement\(routine.exerciseCount == 1 ? "" : "s")")
-                        .font(.caption2.weight(.semibold))
-                }
-                .foregroundStyle(Theme.emerald)
-            }
-            .padding(12)
-            .frame(width: 150, height: 92, alignment: .topLeading)
-            .glassControl(cornerRadius: 16)
-            .contentShape(RoundedRectangle(cornerRadius: 16))
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: Utilities
-
+    /// The two cross-training entries, rendered as glanceable widgets: the Walk
+    /// tile carries a live steps ring toward the daily goal, the Activity tile a
+    /// weekly cross-training tally. Both double as the launcher for their sheet.
     private var secondaryActions: some View {
         HStack(spacing: 12) {
-            launcherSecondaryButton(title: "Past Workout", icon: "calendar.badge.plus") {
-                showPastWorkout = true
+            walkTile
+            activityTile
+        }
+    }
+
+    private var walkTile: some View {
+        let steps = health.todaySteps ?? StepGoalStore.todaySteps() ?? 0
+        let progress = min(1, steps / Double(StepGoals.dailyGoal))
+        return movementTile(
+            title: "WALK",
+            accent: Theme.teal,
+            action: { showWalkDraw = true }
+        ) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .stroke(Theme.teal.opacity(0.15), lineWidth: 6)
+                    Circle()
+                        .trim(from: 0, to: progress)
+                        .stroke(Theme.teal, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    Image(systemName: "figure.walk")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(Theme.teal)
+                }
+                .frame(width: 52, height: 52)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(steps > 0 ? steps.formatted(.number.notation(.compactName)) : "\u{2014}")
+                        .font(.title3.weight(.bold))
+                        .monospacedDigit()
+                        .foregroundStyle(.primary)
+                    Text("steps")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textDim)
+                }
+                Spacer(minLength: 0)
             }
-            launcherSecondaryButton(title: "Walk", icon: "figure.walk") {
-                showWalkDraw = true
-            }
-            launcherSecondaryButton(title: "Activity", icon: "basketball.fill") {
-                showActivityLog = true
+        } footer: {
+            if todayWalkMiles > 0 {
+                tileFooter(value: String(format: "%.2f mi", todayWalkMiles), caption: "logged today", accent: Theme.teal)
+            } else {
+                tileFooter(value: "Draw a route", caption: "Map a walk", accent: nil)
             }
         }
     }
 
-    private func launcherSecondaryButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
+    private var activityTile: some View {
+        movementTile(
+            title: "ACTIVITY",
+            accent: Theme.coral,
+            action: { showActivityLog = true }
+        ) {
+            HStack(spacing: 12) {
+                Image(systemName: recentSport.icon)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(Theme.coral)
+                    .frame(width: 52, height: 52)
+                    .background(Theme.coral.opacity(0.12), in: Circle())
+                    .overlay(Circle().strokeBorder(Theme.coral.opacity(0.25), lineWidth: 1))
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(weekActivities.count)")
+                        .font(.title3.weight(.bold))
+                        .monospacedDigit()
+                        .foregroundStyle(.primary)
+                    Text("this week")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textDim)
+                }
+                Spacer(minLength: 0)
+            }
+        } footer: {
+            if weekMinutes > 0 {
+                tileFooter(value: "\(weekMinutes) min", caption: "cross-training", accent: Theme.coral)
+            } else {
+                tileFooter(value: "Log a sport", caption: "Basketball, tennis\u{2026}", accent: nil)
+            }
+        }
+    }
+
+    /// Shared chrome for the two movement tiles: a titled glass card with an
+    /// accent-tinted border, a body (ring/icon + stat) and a footer line.
+    private func movementTile<Body: View, Footer: View>(
+        title: String,
+        accent: Color,
+        action: @escaping () -> Void,
+        @ViewBuilder body: () -> Body,
+        @ViewBuilder footer: () -> Footer
+    ) -> some View {
         Button {
             Haptics.shared.tick()
             action()
         } label: {
-            Label(title, systemImage: icon)
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .foregroundStyle(Theme.emerald)
-                .glassControl()
-                .contentShape(Rectangle())
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text(title)
+                        .font(.caption2.weight(.bold))
+                        .kerning(1.5)
+                        .foregroundStyle(Theme.textDim)
+                    Spacer()
+                    Image(systemName: "plus.circle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(accent)
+                }
+
+                body()
+
+                footer()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cardStyle()
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(accent.opacity(0.25), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 20))
         }
         .buttonStyle(.plain)
     }
 
+    private func tileFooter(value: String, caption: String, accent: Color?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(accent ?? .primary)
+            Text(caption)
+                .font(.caption2)
+                .foregroundStyle(Theme.textDim)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Tile data
+
+    private var todayWalkMiles: Double {
+        walks.filter { Calendar.current.isDateInToday($0.date) }
+            .reduce(0) { $0 + $1.distanceMiles }
+    }
+
+    /// Activities logged since the start of the current week.
+    private var weekActivities: [Activity] {
+        let calendar = Calendar.current
+        guard let weekStart = calendar.date(
+            from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: .now)
+        ) else { return [] }
+        return activities.filter { $0.date >= weekStart }
+    }
+
+    private var weekMinutes: Int {
+        weekActivities.reduce(0) { $0 + $1.durationMinutes }
+    }
+
+    /// The sport shown on the Activity tile — the most recently logged, or a
+    /// sensible default before anything is logged.
+    private var recentSport: SportType {
+        activities.first?.sport ?? .basketball
+    }
+
     // MARK: Actions
 
-    /// Starts a session, auto-generating a game-themed name when none was typed.
+    /// Starts a session, always letting the AI invent a game-themed name.
     private func start() async {
-        let trimmed = sessionName.trimmingCharacters(in: .whitespaces)
         guard !isNaming else { return }
-        if trimmed.isEmpty {
-            isNaming = true
-            let name = await WorkoutAI.generateSessionName()
-            isNaming = false
-            workout.startSession(named: name, withPartner: withPartner)
-        } else {
-            workout.startSession(named: trimmed, withPartner: withPartner)
-        }
-        sessionName = ""
+        isNaming = true
+        let name = await WorkoutAI.generateSessionName()
+        isNaming = false
+        workout.startSession(named: name, withPartner: withPartner)
     }
 }
 

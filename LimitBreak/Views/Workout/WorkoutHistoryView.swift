@@ -23,6 +23,7 @@ struct WorkoutHistoryView: View {
     @State private var walkToDelete: Walk?
     @State private var activityToEdit: Activity?
     @State private var activityToDelete: Activity?
+    @State private var showPastWorkout = false
     // Debug/UI-test hook: launch with "-open-first-workout" to push the newest
     // workout's detail view.
     @State private var debugOpenFirst = ProcessInfo.processInfo.arguments.contains("-open-first-workout")
@@ -144,6 +145,9 @@ struct WorkoutHistoryView: View {
             .obsidianBackground()
             .toolbar(.hidden, for: .navigationBar)
             .scrollDismissesKeyboard(.interactively)
+            .sheet(isPresented: $showPastWorkout) {
+                PastWorkoutView()
+            }
             .sheet(item: $sessionToEdit) { session in
                 EditWorkoutView(session: session)
             }
@@ -217,6 +221,16 @@ struct WorkoutHistoryView: View {
             Text("History")
                 .font(.largeTitle.bold())
             Spacer()
+            Button {
+                Haptics.shared.tick()
+                showPastWorkout = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.headline)
+                    .glassCircle()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Log a past workout")
         }
         .padding(.bottom, 8)
     }

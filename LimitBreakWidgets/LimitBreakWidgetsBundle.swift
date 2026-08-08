@@ -8,6 +8,7 @@ struct LimitBreakWidgetsBundle: WidgetBundle {
         DashboardWidget()
         RecordBoardWidget()
         StreakWidget()
+        StepsWidget()
         SessionLiveActivity()
     }
 }

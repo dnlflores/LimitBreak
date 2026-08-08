@@ -4,8 +4,13 @@ import SwiftData
 struct RootTabView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(WorkoutManager.self) private var workout
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     @Query private var profiles: [TrainingProfile]
+
+    /// iPad-class room to work with. Every tab swaps to a purpose-built
+    /// multi-column layout; a narrow Split View window keeps the phone one.
+    private var isRegular: Bool { sizeClass == .regular }
 
     @State private var selectedTab: Int
     @State private var onboardingProfile: TrainingProfile?
@@ -27,21 +32,24 @@ struct RootTabView: View {
 
         TabView(selection: $selectedTab) {
             Tab("Level", systemImage: "star.circle.fill", value: 0) {
-                SkillMatrixView()
+                if isRegular { LevelDashboardPadView() } else { SkillMatrixView() }
             }
             Tab("Train", systemImage: "bolt.fill", value: 1) {
-                TrainView()
+                if isRegular { TrainPadView() } else { TrainView() }
             }
             Tab("History", systemImage: "clock.arrow.circlepath", value: 2) {
-                WorkoutHistoryView()
+                if isRegular { HistoryPadView() } else { WorkoutHistoryView() }
             }
             Tab("Library", systemImage: "books.vertical.fill", value: 3) {
-                LibraryView()
+                if isRegular { LibraryPadView() } else { LibraryView() }
             }
             Tab("Plan", systemImage: "calendar", value: 4) {
-                PlanTabView()
+                if isRegular { PlanPadView() } else { PlanTabView() }
             }
         }
+        // On iPad the tab bar floats at the top and can expand into a sidebar;
+        // the phone keeps its bottom bar.
+        .modifier(AdaptiveTabViewStyle(isRegular: isRegular))
         .tint(Theme.emerald)
         // Starting a session from anywhere (e.g. tapping a plan day on the Plan
         // tab) should drop the lifter into the Train tab's live logger.

@@ -212,36 +212,81 @@ final class WorkoutManager {
         }
     }
 
-    /// One-tap logging: checks off the next planned set in exercise order,
-    /// quick-filling values from this session (or history, or defaults).
-    @discardableResult
-    func logNextSetInOrder() -> LimitBreakEvent? {
-        guard activeSession != nil, let exercise = currentExercise else { return nil }
+    /// The concrete values one-tap logging will record next for an exercise:
+    /// weight in canonical pounds (or the raw custom-metric value), reps, and
+    /// any duration/distance. Both the ordered-logging action (watch & Live
+    /// Activity) and the remote "next set" labels resolve through this one
+    /// function, so what the lifter sees on the watch or lock screen is exactly
+    /// what a tap logs.
+    struct ResolvedSet {
+        var weightPounds: Double
+        var reps: Int
+        var durationSeconds: Double?
+        var distanceMeters: Double?
+    }
+
+    /// Resolves the next set to log for an exercise, in priority order: the live
+    /// plan the lifter laid out in the log sheet (`sessionSetPlans`, values in
+    /// the exercise's display unit) → the coached routine prescription → the
+    /// progression target → this session's / history's last set → a generic
+    /// default. Reading the live plan first is what keeps edits made in the log
+    /// sheet flowing through to one-tap logging and the remote labels.
+    func resolvedNextSet(for exercise: Exercise) -> ResolvedSet {
+        let planned = plannedSets(for: exercise)?.first
         let template = lastSet(for: exercise)
             ?? exercise.sets.max(by: { $0.timestamp < $1.timestamp })
-        // A coached routine's prescription wins; failing that, the progression
-        // target advances on last session (add a rep, or cash in for load);
-        // history and the generic default are the last resorts.
         let target = progressionTarget(for: exercise)
-        let reps = plannedReps(for: exercise) ?? target?.targetReps ?? template?.reps ?? 8
-        let plannedLoad = plannedWeight(for: exercise) ?? target?.targetWeightPounds
+        // Planned weights are held in the exercise's display unit; convert back
+        // to canonical pounds so everything downstream reads the same scale.
+        let plannedPounds = planned.map { exercise.weightUnit.toPounds($0.primary) }
+        let reps = planned?.reps ?? plannedReps(for: exercise) ?? target?.targetReps ?? template?.reps ?? 8
 
         switch exercise.trackingType {
         case .weightAndReps:
-            return logSet(exercise: exercise, weight: plannedLoad ?? template?.weight ?? 45, reps: reps)
-        case .bodyweightAndReps, .customMetric:
-            return logSet(exercise: exercise, weight: plannedLoad ?? template?.weight ?? 0, reps: reps)
+            let w = plannedPounds ?? plannedWeight(for: exercise) ?? target?.targetWeightPounds ?? template?.weight ?? 45
+            return ResolvedSet(weightPounds: w, reps: reps, durationSeconds: nil, distanceMeters: nil)
+        case .bodyweightAndReps:
+            let w = plannedPounds ?? plannedWeight(for: exercise) ?? target?.targetWeightPounds ?? template?.weight ?? 0
+            return ResolvedSet(weightPounds: w, reps: reps, durationSeconds: nil, distanceMeters: nil)
+        case .customMetric:
+            // A custom-metric primary is a raw value, not a weight — never unit-converted.
+            let w = planned?.primary ?? plannedWeight(for: exercise) ?? template?.weight ?? 0
+            return ResolvedSet(weightPounds: w, reps: reps, durationSeconds: nil, distanceMeters: nil)
         case .durationAndReps:
-            return logSet(exercise: exercise, weight: 0, reps: reps,
-                          durationSeconds: template?.durationSeconds ?? 30)
+            let secs = planned?.primary ?? template?.durationSeconds ?? 30
+            return ResolvedSet(weightPounds: 0, reps: reps, durationSeconds: secs, distanceMeters: nil)
         case .durationOnly:
-            return logSet(exercise: exercise, weight: 0, reps: 1,
-                          durationSeconds: template?.durationSeconds ?? 30)
+            let secs = planned?.primary ?? template?.durationSeconds ?? 30
+            return ResolvedSet(weightPounds: 0, reps: 1, durationSeconds: secs, distanceMeters: nil)
         case .timeAndDistance:
-            return logSet(exercise: exercise, weight: 0, reps: 1,
-                          durationSeconds: template?.durationSeconds ?? 300,
-                          distanceMeters: template?.distanceMeters ?? 1600)
+            let secs = planned?.primary ?? template?.durationSeconds ?? 300
+            let dist = planned?.distance ?? template?.distanceMeters ?? 1600
+            return ResolvedSet(weightPounds: 0, reps: 1, durationSeconds: secs, distanceMeters: dist)
         }
+    }
+
+    /// One-tap logging: checks off the next planned set in exercise order,
+    /// recording exactly the values the watch / Live Activity previewed.
+    @discardableResult
+    func logNextSetInOrder() -> LimitBreakEvent? {
+        guard activeSession != nil, let exercise = currentExercise else { return nil }
+        let next = resolvedNextSet(for: exercise)
+        // Consume the planned set this tap fulfills so the next tap — and the
+        // remote labels — advance to the following planned set instead of
+        // repeating it, mirroring the log sheet dropping a row once it's logged.
+        // Done before logging so the broadcast `logSet` fires already reflects
+        // the shrunken plan.
+        if var plan = sessionSetPlans[exercise.id], !plan.isEmpty {
+            plan.removeFirst()
+            sessionSetPlans[exercise.id] = plan
+        }
+        return logSet(
+            exercise: exercise,
+            weight: next.weightPounds,
+            reps: next.reps,
+            durationSeconds: next.durationSeconds,
+            distanceMeters: next.distanceMeters
+        )
     }
 
     /// Skips what's left of the current exercise and moves to the next one.
@@ -335,11 +380,15 @@ final class WorkoutManager {
     /// the swap animates immediately; guards against the lifter swapping again
     /// while the prescription is in flight.
     private func regenerateSessionTargets(for exercise: Exercise) {
-        let goal = TrainingProfile.current(in: context).goal
+        let profile = TrainingProfile.current(in: context)
+        let goal = profile.goal
+        let experience = profile.experience
         let withPartner = isTrainingWithPartner
+        let bodyWeight = HealthKitManager.shared.currentBodyWeightLbs
         Task { [weak self] in
             guard let rx = await WorkoutAI.prescribeExercise(
-                for: exercise, goal: goal, withPartner: withPartner
+                for: exercise, goal: goal, withPartner: withPartner,
+                experience: experience, bodyWeightLbs: bodyWeight
             ) else { return }
             guard let self,
                   self.sessionExercises.contains(where: { $0.id == exercise.id }) else { return }
@@ -1136,11 +1185,13 @@ final class WorkoutManager {
     /// nothing to suggest. Drives the log card's target banner, its prefill, and
     /// ordered one-tap logging.
     func progressionTarget(for exercise: Exercise) -> ProgressionTarget? {
-        let goal = TrainingProfile.current(in: context).goal
+        let profile = TrainingProfile.current(in: context)
         return ProgressionEngine.nextTarget(
             for: exercise,
-            goal: goal,
-            withPartner: isTrainingWithPartner
+            goal: profile.goal,
+            withPartner: isTrainingWithPartner,
+            experience: profile.experience,
+            bodyWeightLbs: HealthKitManager.shared.currentBodyWeightLbs
         )
     }
 
@@ -1150,11 +1201,13 @@ final class WorkoutManager {
     /// goal from the store so the view doesn't have to. Nil for tracking types
     /// progression doesn't model.
     func aiTargets(for exercise: Exercise) async -> WorkoutAI.ExercisePrescription? {
-        let goal = TrainingProfile.current(in: context).goal
+        let profile = TrainingProfile.current(in: context)
         return await WorkoutAI.prescribeExercise(
             for: exercise,
-            goal: goal,
-            withPartner: isTrainingWithPartner
+            goal: profile.goal,
+            withPartner: isTrainingWithPartner,
+            experience: profile.experience,
+            bodyWeightLbs: HealthKitManager.shared.currentBodyWeightLbs
         )
     }
 }

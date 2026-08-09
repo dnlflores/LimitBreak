@@ -56,26 +56,24 @@ private struct SessionLauncherPadView: View {
 
                 if wide {
                     HStack(alignment: .top, spacing: PadLayout.gutter) {
-                        // The launch controls are a fixed set, so they ride the
-                        // middle of the pane instead of clinging to the top —
-                        // and still scroll if the window is short.
-                        GeometryReader { column in
-                            ScrollView(showsIndicators: false) {
-                                launchStack
-                                    .frame(minHeight: column.size.height, alignment: .center)
-                            }
+                        // Both columns are top-aligned so the hero lines up with
+                        // Today's plan across the gutter, and the quick-start grid
+                        // grows downward to fill the height instead of leaving the
+                        // pane centered in a sea of empty space.
+                        ScrollView(showsIndicators: false) {
+                            mainColumn.padding(.bottom, PadLayout.scrollBottomInset)
                         }
 
                         ScrollView(showsIndicators: false) {
-                            railStack.padding(.bottom, PadLayout.scrollBottomInset)
+                            railColumn.padding(.bottom, PadLayout.scrollBottomInset)
                         }
                         .frame(width: PadLayout.railWidth)
                     }
                 } else {
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: PadLayout.gutter) {
-                            launchStack
-                            railStack
+                            mainColumn
+                            railColumn
                         }
                         .padding(.bottom, PadLayout.scrollBottomInset)
                     }
@@ -104,13 +102,14 @@ private struct SessionLauncherPadView: View {
 
     // MARK: Main pane
 
-    private var launchStack: some View {
+    private var mainColumn: some View {
         VStack(spacing: PadLayout.gutter) {
             heroCard
             HStack(alignment: .top, spacing: PadLayout.gutter) {
                 walkTile
                 activityTile
             }
+            quickStartPanel
         }
     }
 
@@ -284,14 +283,38 @@ private struct SessionLauncherPadView: View {
 
     // MARK: Rail
 
-    /// The rail turns the launcher into a real console: today's planned
-    /// workout, every saved routine one tap from starting, and the last few
-    /// sessions for context — all of which the phone hides on other tabs.
-    private var railStack: some View {
+    /// The rail carries the session context the main column doesn't: today's
+    /// scheduled focus (or a nudge to plan one) and the last few sessions.
+    private var railColumn: some View {
         VStack(spacing: PadLayout.gutter) {
-            todayPanel
-            quickStartPanel
+            if hasTodayPlan {
+                todayPanel
+            } else {
+                planNudgePanel
+            }
             recentPanel
+        }
+    }
+
+    /// True when the active plan has a routine scheduled for today.
+    private var hasTodayPlan: Bool {
+        let today = PlanWeekday.today
+        guard let plan = plans.first,
+              let day = plan.days.first(where: { $0.weekday == today }) else { return false }
+        return day.routine != nil
+    }
+
+    /// Shown in the rail when nothing is scheduled, so it never reads as a blank
+    /// slab for someone who hasn't built a weekly plan yet.
+    private var planNudgePanel: some View {
+        PadPanel("TODAY") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("No session scheduled")
+                    .font(.title3.weight(.bold))
+                Text("Build a weekly plan and your day's focus shows up here, ready to start with one tap.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textDim)
+            }
         }
     }
 
@@ -333,48 +356,73 @@ private struct SessionLauncherPadView: View {
         }
     }
 
-    @ViewBuilder
+    /// Saved routines as a two-column grid of start cards. In the main pane it
+    /// grows downward to carry the height, and an empty state keeps the panel
+    /// present (and inviting) before any routine is saved.
     private var quickStartPanel: some View {
-        if !routines.isEmpty {
-            PadPanel("QUICK START") {
-                VStack(spacing: 10) {
+        PadPanel("QUICK START") {
+            if routines.isEmpty {
+                quickStartEmptyState
+            } else {
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+                    spacing: 12
+                ) {
                     ForEach(routines.prefix(8), id: \.id) { routine in
-                        Button {
-                            Haptics.shared.tick()
-                            workout.startSession(from: routine, withPartner: withPartner)
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: routine.isAIGenerated ? "sparkles" : "square.stack.3d.up.fill")
-                                    .font(.subheadline)
-                                    .foregroundStyle(routine.isAIGenerated ? Theme.violet : Theme.teal)
-                                    .frame(width: 34, height: 34)
-                                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(routine.name)
-                                        .font(.subheadline.weight(.semibold))
-                                        .lineLimit(1)
-                                    Text("\(routine.exerciseCount) movement\(routine.exerciseCount == 1 ? "" : "s")")
-                                        .font(.caption)
-                                        .foregroundStyle(Theme.textDim)
-                                }
-
-                                Spacer(minLength: 4)
-
-                                Image(systemName: "play.circle.fill")
-                                    .font(.title3)
-                                    .foregroundStyle(Theme.emerald)
-                            }
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
-                            .glassControl(cornerRadius: 14)
-                            .contentShape(RoundedRectangle(cornerRadius: 14))
-                        }
-                        .buttonStyle(.plain)
+                        routineCard(routine)
                     }
                 }
             }
         }
+    }
+
+    private func routineCard(_ routine: Routine) -> some View {
+        Button {
+            Haptics.shared.tick()
+            workout.startSession(from: routine, withPartner: withPartner)
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Image(systemName: routine.isAIGenerated ? "sparkles" : "square.stack.3d.up.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(routine.isAIGenerated ? Theme.violet : Theme.teal)
+                        .frame(width: 34, height: 34)
+                        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+                    Spacer(minLength: 4)
+                    Image(systemName: "play.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(Theme.emerald)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(routine.name)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Text("\(routine.exerciseCount) movement\(routine.exerciseCount == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textDim)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .glassControl(cornerRadius: 16)
+            .contentShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var quickStartEmptyState: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "square.stack.3d.up")
+                .font(.title)
+                .foregroundStyle(Theme.teal)
+            Text("Save a routine in the Library and it lands here — one tap to start it.")
+                .font(.subheadline)
+                .foregroundStyle(Theme.textDim)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder

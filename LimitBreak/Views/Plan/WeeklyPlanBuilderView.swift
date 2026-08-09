@@ -44,8 +44,20 @@ enum PlanBuilding {
             catalog: catalog
         )
 
+        // Anchor every load and rep target to the lifter's own history (or, with
+        // no history, a conservative bodyweight-based start) rather than trusting
+        // the model's numbers — which the on-device tier no longer even produces.
+        let grounded = WorkoutAI.groundInHistory(
+            plan.exercises,
+            catalog: exercises,
+            goal: profile?.goal ?? .buildMuscle,
+            experience: profile?.experience ?? .intermediate,
+            withPartner: withPartner,
+            bodyWeightLbs: HealthKitManager.shared.currentBodyWeightLbs
+        )
+
         let byName = Dictionary(exercises.map { ($0.name.lowercased(), $0) }) { first, _ in first }
-        let items = plan.exercises.compactMap { planned -> WorkoutManager.RoutineDraftItem? in
+        let items = grounded.compactMap { planned -> WorkoutManager.RoutineDraftItem? in
             guard let exercise = byName[planned.name.lowercased()] else { return nil }
             let weight: Double? = {
                 guard let load = planned.prescription?.targetLoadPounds, load > 0 else { return nil }

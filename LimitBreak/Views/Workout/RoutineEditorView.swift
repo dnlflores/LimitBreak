@@ -8,6 +8,7 @@ struct RoutineEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(WorkoutManager.self) private var workout
     @Query(sort: \Exercise.name) private var allExercises: [Exercise]
+    @Query private var profiles: [TrainingProfile]
 
     /// One editable slot in the routine being built.
     private struct DraftItem: Identifiable {
@@ -381,8 +382,19 @@ struct RoutineEditorView: View {
     /// Replaces the current draft with an AI-generated plan, mapping planned
     /// exercise names back to real catalog entries (unknown names are dropped).
     private func apply(title: String, focus: WorkoutFocus, generated: [PlannedExercise]) {
+        // Anchor loads and reps to the lifter's own history (or a conservative
+        // bodyweight-based start when there's none) rather than the model's
+        // numbers — the on-device tier no longer prescribes weight at all.
+        let grounded = WorkoutAI.groundInHistory(
+            generated,
+            catalog: allExercises,
+            goal: profiles.first?.goal ?? .buildMuscle,
+            experience: profiles.first?.experience ?? .intermediate,
+            withPartner: false,
+            bodyWeightLbs: HealthKitManager.shared.currentBodyWeightLbs
+        )
         let byName = Dictionary(allExercises.map { ($0.name.lowercased(), $0) }) { first, _ in first }
-        let mapped = generated.compactMap { planned -> DraftItem? in
+        let mapped = grounded.compactMap { planned -> DraftItem? in
             guard let exercise = byName[planned.name.lowercased()] else { return nil }
             let weight: Double? = {
                 guard let load = planned.prescription?.targetLoadPounds, load > 0 else { return nil }

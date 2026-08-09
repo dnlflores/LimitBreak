@@ -898,8 +898,15 @@ private struct ExerciseLogEditor: View {
         let plannedReps = workout.plannedReps(for: exercise)
         if plannedReps != nil || plannedPrimary != nil {
             let count = max(1, workout.targetSets(for: exercise))
+            // A routine can pin reps without pinning a weight (its stored load was
+            // 0, or it never had one). Don't fall straight to the empty-bar 45 lb
+            // default in that case — reach for this lift's own history first, via
+            // the progression target (which reads its logged sets), so the load
+            // reflects what the lifter has actually done.
+            let primary = plannedPrimary ?? target.map(targetPrimary) ?? initialPrimary
+            let reps = plannedReps ?? target?.targetReps ?? 8
             drafts = (0..<count).map { _ in
-                SetDraft(primary: plannedPrimary ?? initialPrimary, reps: plannedReps ?? 8)
+                SetDraft(primary: primary, reps: reps)
             }
             return
         }

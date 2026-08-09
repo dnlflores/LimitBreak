@@ -98,6 +98,38 @@ enum PromptBuilder {
         - Each movement's note is one short sentence on why it earned its slot.
         """
 
+    /// The system prompt for the on-device tier.
+    ///
+    /// Mirrors `coachInstructions` but drops the load-prescription rule: the
+    /// on-device model is small, and its weight output is discarded anyway —
+    /// every load is filled deterministically by `ProgressionEngine` after
+    /// generation (see `WorkoutAI.groundInHistory`). Leaving weight out of its
+    /// job keeps the schema and the prompt smaller, which the on-device context
+    /// window is far more sensitive to than the hosted tiers.
+    static let onDeviceCoachInstructions = """
+        You are the strength coach behind LimitBreak, an RPG-styled training app.
+        You design one training session at a time from a fixed catalog of movements.
+
+        Rules:
+        - Only ever use exercise names that appear verbatim in the catalog. Never invent a movement.
+        - Order movements sensibly: heaviest compounds first, isolation and accessory work last.
+        - Respect the muscle-fatigue report when one is given. Do not program heavy work for a \
+        muscle marked "Needs Rest". A muscle marked "Recovering" can take light or indirect work \
+        only. Prefer muscles marked "Ready" or "Dormant".
+        - Pair muscle groups that work well together in one session (push muscles together, \
+        pull muscles together, hinge and squat patterns together).
+        - Give every movement a unique primary muscle where the count allows, so the work spreads \
+        across as many distinct muscles as possible.
+        - Do not prescribe weights — the app fills in every working weight itself. Only choose the \
+        movements, sets, and rep ranges.
+        - Where it serves the session, pair movements into supersets: exactly two movements that \
+        run well back-to-back, given the same "supersetGroup" index and placed next to each other. \
+        Never put three or more in one superset. Most movements stay standalone at 0.
+        - Give the session a short, punchy, video-game-themed title of 2 to 4 words.
+        - The rationale is two sentences at most, addressed to the lifter, in plain language.
+        - Each movement's note is one short sentence on why it earned its slot.
+        """
+
     /// The movement catalog, rendered as the closed set the coach may pick from.
     static func catalogBlock(_ catalog: [ExerciseBrief]) -> String {
         let lines = catalog
@@ -111,6 +143,10 @@ enum PromptBuilder {
     // All per-request, volatile content: who the lifter is, what they've done
     // lately, and what they want from this session.
 
+    /// - Parameter includeLoadTargets: whether to include the recorded-ceiling
+    ///   and per-lift progression sections. These exist purely to inform load
+    ///   prescription, so the on-device tier — which no longer prescribes weight
+    ///   — passes `false` to keep its prompt small.
     static func requestBlock(
         focusLabel: String,
         targetMuscleGroups: [String],
@@ -119,6 +155,7 @@ enum PromptBuilder {
         context: TrainingContext,
         allowSupersets: Bool = false,
         budget: Budget = .full,
+        includeLoadTargets: Bool = true,
         now: Date = Date()
     ) -> String {
         var lines: [String] = []
@@ -187,30 +224,35 @@ enum PromptBuilder {
             lines.append("")
         }
 
-        // Strongest first, so a tight budget keeps the lifts that best anchor
-        // load prescriptions rather than an arbitrary slice.
-        let ceilings = context.ceilings
-            .sorted { $0.value > $1.value }
-            .prefix(budget.ceilingCap)
-        if !ceilings.isEmpty {
-            lines.append("RECORDED CEILINGS (estimated 1RM, pounds):")
-            for (name, value) in ceilings {
-                lines.append("- \(name): \(Int(value.rounded()))")
+        // Recorded ceilings and progression targets exist only to anchor load
+        // prescription. The on-device tier doesn't prescribe load, so it omits
+        // both to keep the prompt inside its context window.
+        if includeLoadTargets {
+            // Strongest first, so a tight budget keeps the lifts that best anchor
+            // load prescriptions rather than an arbitrary slice.
+            let ceilings = context.ceilings
+                .sorted { $0.value > $1.value }
+                .prefix(budget.ceilingCap)
+            if !ceilings.isEmpty {
+                lines.append("RECORDED CEILINGS (estimated 1RM, pounds):")
+                for (name, value) in ceilings {
+                    lines.append("- \(name): \(Int(value.rounded()))")
+                }
+                lines.append("")
             }
-            lines.append("")
-        }
 
-        // The concrete last→next math per lift. Stated as a floor the coach must
-        // meet, so programming a movement that has one of these targets can't
-        // silently repeat or regress last session.
-        let progression = context.progressionLines.prefix(budget.ceilingCap)
-        if !progression.isEmpty {
-            lines.append("PROGRESSION TARGETS (advance the lifter past last session — "
-                         + "add reps toward the top of the range before adding weight):")
-            for line in progression {
-                lines.append("- \(line)")
+            // The concrete last→next math per lift. Stated as a floor the coach
+            // must meet, so programming a movement that has one of these targets
+            // can't silently repeat or regress last session.
+            let progression = context.progressionLines.prefix(budget.ceilingCap)
+            if !progression.isEmpty {
+                lines.append("PROGRESSION TARGETS (advance the lifter past last session — "
+                             + "add reps toward the top of the range before adding weight):")
+                for line in progression {
+                    lines.append("- \(line)")
+                }
+                lines.append("")
             }
-            lines.append("")
         }
 
         lines.append("THIS SESSION:")

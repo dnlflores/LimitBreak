@@ -6,6 +6,7 @@ import UIKit
 /// tappable workout on-device and hands it back to start a session.
 struct AIWorkoutSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(WorkoutManager.self) private var workout
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
     @Query(sort: \WorkoutSession.startDate, order: .reverse) private var sessions: [WorkoutSession]
@@ -23,6 +24,8 @@ struct AIWorkoutSheet: View {
 
     @State private var focus: WorkoutFocus = .fullBody
     @State private var exerciseCount = 5
+    /// Focus for the typable exercise-count field, so its keyboard can be dismissed.
+    @FocusState private var countFieldFocused: Bool
     @State private var duration: WorkoutLength = .any
     @State private var withPartner = false
     /// Whether the coach may bundle some movements into supersets. On by default
@@ -136,13 +139,11 @@ struct AIWorkoutSheet: View {
                         countChip(count)
                     }
                     Spacer()
-                    Stepper("", value: $exerciseCount, in: 3...8)
-                        .labelsHidden()
-                        .tint(Theme.emerald)
                 }
-                Text("\(exerciseCount) exercise\(exerciseCount == 1 ? "" : "s")")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.emerald)
+                countStepper
+                Text("Tap the number to type a custom amount.")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textDim)
 
                 supersetToggle
             }
@@ -203,6 +204,73 @@ struct AIWorkoutSheet: View {
                 .kerning(1)
             content()
         }
+    }
+
+    /// Allowed range for the exercise count, whether picked from a chip, nudged
+    /// with the steppers, or typed directly into the field.
+    private let exerciseCountRange = 1...12
+
+    /// A clear -/+ counter with the current number front and center. The number
+    /// doubles as a text field so a lifter can tap it and type a custom amount
+    /// instead of tapping the plus button many times.
+    private var countStepper: some View {
+        HStack(spacing: 14) {
+            countStepButton(systemName: "minus", enabled: exerciseCount > exerciseCountRange.lowerBound) {
+                exerciseCount = max(exerciseCountRange.lowerBound, exerciseCount - 1)
+            }
+
+            VStack(spacing: 0) {
+                TextField("", value: $exerciseCount, format: .number)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.center)
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.emerald)
+                    .focused($countFieldFocused)
+                    .frame(maxWidth: .infinity)
+                Text("exercise\(exerciseCount == 1 ? "" : "s")")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Theme.textDim)
+            }
+
+            countStepButton(systemName: "plus", enabled: exerciseCount < exerciseCountRange.upperBound) {
+                exerciseCount = min(exerciseCountRange.upperBound, exerciseCount + 1)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 14))
+        // Snap any typed value back into range once the field loses focus, so an
+        // out-of-bounds entry can't reach the generator.
+        .onChange(of: countFieldFocused) { _, focused in
+            if !focused {
+                exerciseCount = min(max(exerciseCount, exerciseCountRange.lowerBound), exerciseCountRange.upperBound)
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { countFieldFocused = false }
+            }
+        }
+    }
+
+    /// One end of the counter: a themed circular +/- button.
+    private func countStepButton(systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            Haptics.shared.tick()
+        } label: {
+            Image(systemName: systemName)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(enabled ? Theme.emerald : Theme.textDim)
+                .frame(width: 40, height: 40)
+                .background(Theme.surface, in: Circle())
+                .overlay(Circle().strokeBorder(Theme.glassBorder, lineWidth: 1))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
     }
 
     private func countChip(_ count: Int) -> some View {
@@ -479,51 +547,21 @@ struct AIWorkoutSheet: View {
                 .buttonStyle(.plain)
                 .disabled(isGenerating)
             } else {
-                HStack(spacing: 12) {
-                    Button {
-                        Task { await generate() }
-                    } label: {
-                        Label("Regenerate", systemImage: "arrow.triangle.2.circlepath")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .foregroundStyle(Theme.violet)
-                            .glassControl()
-                            .contentShape(Rectangle())
+                // At accessibility text sizes three labeled buttons can't share a
+                // row without truncating, so they stack full-width — START on top
+                // as the primary action, the two secondary controls beneath it.
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: 10) {
+                        startButton
+                        regenerateButton
+                        saveRoutineButton
                     }
-                    .buttonStyle(.plain)
-                    .disabled(isGenerating)
-
-                    Button {
-                        saveAsRoutine()
-                    } label: {
-                        Label(
-                            didSaveRoutine ? "Saved" : "Save Routine",
-                            systemImage: didSaveRoutine ? "checkmark.seal.fill" : "square.stack.3d.up"
-                        )
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .foregroundStyle(didSaveRoutine ? Theme.textDim : Theme.emerald)
-                        .glassControl()
-                        .contentShape(Rectangle())
+                } else {
+                    HStack(spacing: 12) {
+                        regenerateButton
+                        saveRoutineButton
+                        startButton
                     }
-                    .buttonStyle(.plain)
-                    .disabled(didSaveRoutine || isGenerating)
-
-                    Button {
-                        startWorkout()
-                    } label: {
-                        Text("START")
-                            .font(.headline)
-                            .kerning(1)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .foregroundStyle(.white)
-                            .glassCTA(tint: Theme.emerald.opacity(0.85))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
                 }
 
                 if didSaveRoutine {
@@ -537,11 +575,71 @@ struct AIWorkoutSheet: View {
         .background(.ultraThinMaterial)
     }
 
+    private var regenerateButton: some View {
+        Button {
+            Task { await generate() }
+        } label: {
+            Label("Regenerate", systemImage: "arrow.triangle.2.circlepath")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .foregroundStyle(Theme.violet)
+                .glassControl()
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isGenerating)
+    }
+
+    private var saveRoutineButton: some View {
+        Button {
+            saveAsRoutine()
+        } label: {
+            Label(
+                didSaveRoutine ? "Saved" : "Save Routine",
+                systemImage: didSaveRoutine ? "checkmark.seal.fill" : "square.stack.3d.up"
+            )
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .foregroundStyle(didSaveRoutine ? Theme.textDim : Theme.emerald)
+            .glassControl()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(didSaveRoutine || isGenerating)
+    }
+
+    private var startButton: some View {
+        Button {
+            startWorkout()
+        } label: {
+            Text("START")
+                .font(.headline)
+                .kerning(1)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .foregroundStyle(.white)
+                .glassCTA(tint: Theme.emerald.opacity(0.85))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Generation
 
     private func generate() async {
         isGenerating = true
         didSaveRoutine = false
+        // Dismiss the count keyboard and snap any typed value back into range.
+        countFieldFocused = false
+        exerciseCount = min(max(exerciseCount, exerciseCountRange.lowerBound), exerciseCountRange.upperBound)
         Haptics.shared.tick()
         let catalog = exercises.map {
             ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType)
@@ -569,8 +667,27 @@ struct AIWorkoutSheet: View {
             catalog: catalog
         )
         isGenerating = false
-        withAnimation(.spring(duration: 0.35)) { plan = result }
+        withAnimation(.spring(duration: 0.35)) { plan = groundInHistory(result) }
         Haptics.shared.success()
+    }
+
+    /// Re-anchors every planned movement's numbers to the lifter's own logged
+    /// history via the shared `WorkoutAI.groundInHistory`: the AI chooses the
+    /// movements and the session's shape, but the concrete weight and reps come
+    /// from the deterministic progression engine, so a plan never assumes
+    /// strength the lifter hasn't actually shown — and a brand-new lifter still
+    /// gets a conservative bodyweight-based starting load rather than a blank.
+    private func groundInHistory(_ plan: WorkoutPlan) -> WorkoutPlan {
+        var grounded = plan
+        grounded.exercises = WorkoutAI.groundInHistory(
+            plan.exercises,
+            catalog: exercises,
+            goal: profiles.first?.goal ?? .buildMuscle,
+            experience: profiles.first?.experience ?? .intermediate,
+            withPartner: withPartner,
+            bodyWeightLbs: HealthKitManager.shared.currentBodyWeightLbs
+        )
+        return grounded
     }
 
     /// Asks the AI for a single replacement movement for one slot, keeping the

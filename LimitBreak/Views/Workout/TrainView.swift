@@ -36,6 +36,11 @@ private struct SessionLauncherView: View {
     // widgets rather than plain launch buttons.
     @Query(sort: \Walk.date, order: .reverse) private var walks: [Walk]
     @Query(sort: \Activity.date, order: .reverse) private var activities: [Activity]
+    // Context that fills the launcher with one-tap entry points: today's planned
+    // focus and every saved routine, matching what the iPad console shows.
+    @Query(filter: #Predicate<Routine> { !$0.isPlanDay },
+           sort: \Routine.createdAt, order: .reverse) private var routines: [Routine]
+    @Query(sort: \WeeklyPlan.createdAt, order: .reverse) private var plans: [WeeklyPlan]
     private let health = HealthKitManager.shared
 
     var body: some View {
@@ -43,9 +48,13 @@ private struct SessionLauncherView: View {
             VStack(alignment: .leading, spacing: 24) {
                 header
 
+                todayCard
+
                 aiWorkoutCard
 
                 secondaryActions
+
+                if !routines.isEmpty { quickStartSection }
             }
             .padding()
             .padding(.top, 8)
@@ -88,6 +97,107 @@ private struct SessionLauncherView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
+    }
+
+    // MARK: Today's scheduled session
+
+    /// If the active plan has a routine for today, surface it as the headline
+    /// entry point — one tap starts exactly what's on the calendar.
+    @ViewBuilder
+    private var todayCard: some View {
+        let today = PlanWeekday.today
+        if let plan = plans.first,
+           let day = plan.days.first(where: { $0.weekday == today }),
+           let routine = day.routine {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("TODAY \u{2014} \(PlanWeekday.name(today).uppercased())")
+                    .font(.caption2.weight(.bold))
+                    .kerning(1.4)
+                    .foregroundStyle(Theme.textDim)
+
+                Text(day.focus.label)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(Theme.limitBreakGradient)
+
+                Text(routine.exercises.map(\.name).prefix(4).joined(separator: " \u{00B7} "))
+                    .font(.caption)
+                    .foregroundStyle(Theme.textDim)
+                    .lineLimit(2)
+
+                Button {
+                    Haptics.shared.tick()
+                    workout.startSession(from: routine, withPartner: plan.withPartner)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "play.fill")
+                        Text("START TODAY'S SESSION")
+                            .font(.subheadline.weight(.bold))
+                            .kerning(0.6)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .foregroundStyle(.white)
+                    .glassCTA(tint: Theme.emerald.opacity(0.85))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .cardStyle()
+        }
+    }
+
+    // MARK: Quick start (saved routines)
+
+    /// Saved routines, one tap from starting — the same console the iPad rail
+    /// shows, brought to the phone so the launcher isn't mostly empty space.
+    private var quickStartSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("QUICK START")
+                .font(.caption2.weight(.bold))
+                .kerning(1.4)
+                .foregroundStyle(Theme.textDim)
+
+            VStack(spacing: 10) {
+                ForEach(routines.prefix(6), id: \.id) { routine in
+                    quickStartRow(routine)
+                }
+            }
+        }
+    }
+
+    private func quickStartRow(_ routine: Routine) -> some View {
+        Button {
+            Haptics.shared.tick()
+            workout.startSession(from: routine, withPartner: withPartner)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: routine.isAIGenerated ? "sparkles" : "square.stack.3d.up.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(routine.isAIGenerated ? Theme.violet : Theme.teal)
+                    .frame(width: 36, height: 36)
+                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(routine.name)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Text("\(routine.exerciseCount) movement\(routine.exerciseCount == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textDim)
+                }
+
+                Spacer(minLength: 4)
+
+                Image(systemName: "play.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(Theme.emerald)
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 14)
+            .glassControl(cornerRadius: 16)
+            .contentShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Primary start (pinned at the bottom, in thumb range)

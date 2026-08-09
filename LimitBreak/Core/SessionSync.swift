@@ -53,40 +53,28 @@ final class SessionSync {
         )
     }
 
-    /// What one-tap logging would record for this exercise, humanized. Prefers
-    /// the set the lifter actually planned next in the log sheet (so the watch
-    /// and Live Activity mirror the plan), falling back to this session's last
-    /// set and then history when no plan has been laid out yet.
+    /// What one-tap logging would record for this exercise, humanized. Formats
+    /// the exact set `logNextSetInOrder` will log — both resolve through
+    /// `WorkoutManager.resolvedNextSet(for:)` — so the watch and Live Activity
+    /// preview can never disagree with what a tap actually records.
     private func nextLabel(for exercise: Exercise, manager: WorkoutManager) -> String {
-        let planned = manager.plannedSets(for: exercise)?.first
-        let template = manager.lastSet(for: exercise)
-            ?? exercise.sets.max(by: { $0.timestamp < $1.timestamp })
-        // Planned weights are held in the exercise's display unit; convert back
-        // to canonical pounds so the shared formatting matches every other read.
-        let plannedPounds = planned.map { exercise.weightUnit.toPounds($0.primary) }
+        let next = manager.resolvedNextSet(for: exercise)
         switch exercise.trackingType {
         case .weightAndReps:
-            let pounds = plannedPounds ?? template?.weight ?? 45
-            let reps = planned?.reps ?? template?.reps ?? 8
-            return "\(exercise.displayWeightString(fromPounds: pounds)) \(exercise.weightUnit.abbreviation) × \(reps)"
+            return "\(exercise.displayWeightString(fromPounds: next.weightPounds)) \(exercise.weightUnit.abbreviation) × \(next.reps)"
         case .bodyweightAndReps:
-            let added = plannedPounds ?? template?.weight ?? 0
-            let reps = planned?.reps ?? template?.reps ?? 8
-            if added > 0 { return "BW+\(exercise.displayWeightString(fromPounds: added)) × \(reps)" }
-            if added < 0 { return "BW\(exercise.displayWeightString(fromPounds: added)) × \(reps)" }
-            return "BW × \(reps)"
+            let added = next.weightPounds
+            if added > 0 { return "BW+\(exercise.displayWeightString(fromPounds: added)) × \(next.reps)" }
+            if added < 0 { return "BW\(exercise.displayWeightString(fromPounds: added)) × \(next.reps)" }
+            return "BW × \(next.reps)"
         case .durationAndReps:
-            let seconds = planned?.primary ?? template?.durationSeconds ?? 30
-            let reps = planned?.reps ?? template?.reps ?? 8
-            return "\(seconds.clockString) × \(reps)"
+            return "\((next.durationSeconds ?? 30).clockString) × \(next.reps)"
         case .durationOnly:
-            return (planned?.primary ?? template?.durationSeconds ?? 30).clockString
+            return (next.durationSeconds ?? 30).clockString
         case .timeAndDistance:
-            return "\(Int(planned?.distance ?? template?.distanceMeters ?? 1600)) m"
+            return "\(Int(next.distanceMeters ?? 1600)) m"
         case .customMetric:
-            let value = planned?.primary ?? template?.weight ?? 0
-            let reps = planned?.reps ?? template?.reps ?? 8
-            return "\(value.cleanWeight) \(exercise.customMetricUnit ?? "") × \(reps)"
+            return "\(next.weightPounds.cleanWeight) \(exercise.customMetricUnit ?? "") × \(next.reps)"
         }
     }
 

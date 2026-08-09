@@ -297,17 +297,51 @@ enum WorkoutAI {
             ))
         }
 
-        let selected = allowSupersets
+        var selected = allowSupersets
             ? selectSlots(matched, slots: slots)
             : Array(matched.prefix(slots))
 
+        // Bail before backfilling when nothing matched, so an all-hallucinated
+        // reply still falls through to the on-device / catalog tier rather than
+        // being fabricated wholesale from the catalog here.
         guard !selected.isEmpty else { return nil }
+
+        // A weaker model (notably the on-device tier) routinely under-delivers —
+        // returning fewer catalog-valid movements than asked for, so a 5-slot
+        // request comes back with 4. Backfill the shortfall from the catalog so
+        // the plan always honors the requested slot count; the fillers are plain
+        // standalone movements, exactly as the deterministic catalog tier picks.
+        topUpToSlots(&selected, slots: slots, catalog: catalog)
+
         return WorkoutPlan(
             title: sanitizeName(coached.title),
             exercises: normalizeSupersets(selected),
             rationale: coached.rationale,
             source: source
         )
+    }
+
+    /// Backfills `exercises` with standalone catalog movements until it holds
+    /// `slots` session slots (a superset counts as one slot), skipping anything
+    /// already picked. A no-op once the slot budget is met or the catalog is
+    /// exhausted — so it only ever repairs an under-filled plan, never pads a
+    /// complete one.
+    static func topUpToSlots(
+        _ exercises: inout [PlannedExercise],
+        slots: Int,
+        catalog: [ExerciseBrief]
+    ) {
+        var used = Set(exercises.map { $0.name.lowercased() })
+        func slotCount() -> Int {
+            supersetRuns(Array(exercises.indices)) { exercises[$0].supersetGroup }.count
+        }
+        for brief in catalog {
+            guard slotCount() < slots else { break }
+            let key = brief.name.lowercased()
+            guard !used.contains(key) else { continue }
+            used.insert(key)
+            exercises.append(PlannedExercise(name: brief.name, sets: 3))
+        }
     }
 
     /// Trims matched movements to `slots` session slots, keeping supersets whole.
@@ -403,6 +437,54 @@ enum WorkoutAI {
         }
         #endif
         return fallbackPlan(focusLabel: focusLabel, targetMuscleGroups: targetMuscleGroups, exerciseCount: count, catalog: catalog)
+    }
+
+    // MARK: - Grounding a plan in history
+
+    /// Re-anchors a generated plan's per-movement numbers to the lifter's own
+    /// logged history. The model picks the movements and the session's shape; the
+    /// concrete weight and reps always come from `ProgressionEngine`, so a plan
+    /// never assumes strength the lifter hasn't shown — it builds on the last
+    /// real session, or (for a movement with no history) a conservative
+    /// bodyweight-based starting load. Movements the engine doesn't model
+    /// (duration/distance/custom) keep the coach's numbers untouched.
+    ///
+    /// This is the single source of every AI plan's loads, shared by the Train
+    /// tab generator, the weekly-plan builder, and the routine editor — so the
+    /// on-device tier can skip prescribing weight entirely and still surface a
+    /// real number everywhere.
+    @MainActor
+    static func groundInHistory(
+        _ exercises: [PlannedExercise],
+        catalog: [Exercise],
+        goal: TrainingGoal,
+        experience: ExperienceLevel = .intermediate,
+        withPartner: Bool,
+        bodyWeightLbs: Double?
+    ) -> [PlannedExercise] {
+        let byName = Dictionary(catalog.map { ($0.name.lowercased(), $0) }) { first, _ in first }
+        return exercises.map { planned in
+            guard let exercise = byName[planned.name.lowercased()],
+                  let target = ProgressionEngine.nextTarget(
+                      for: exercise, goal: goal, withPartner: withPartner,
+                      experience: experience, bodyWeightLbs: bodyWeightLbs
+                  ) else { return planned }
+            var updated = PlannedExercise(
+                id: planned.id,
+                name: planned.name,
+                sets: planned.sets,
+                prescription: Prescription(
+                    repRangeLow: target.repRangeLow,
+                    repRangeHigh: target.repRangeHigh,
+                    targetLoadPounds: target.targetWeightPounds ?? 0,
+                    restSeconds: planned.prescription?.restSeconds ?? 90,
+                    note: target.rationale
+                ),
+                supersetGroup: planned.supersetGroup
+            )
+            updated.targetReps = target.targetReps
+            return updated
+        }
     }
 
     // MARK: - Single-exercise replacement
@@ -527,13 +609,17 @@ enum WorkoutAI {
     static func prescribeExercise(
         for exercise: Exercise,
         goal: TrainingGoal,
-        withPartner: Bool = false
+        withPartner: Bool = false,
+        experience: ExperienceLevel = .intermediate,
+        bodyWeightLbs: Double? = nil
     ) async -> ExercisePrescription? {
         // The deterministic engine already derives the next target from history
         // (double progression + heavy/volume undulation) — it's the guaranteed
-        // fallback and the anchor the model is asked to refine.
+        // fallback and the anchor the model is asked to refine. Bodyweight lets
+        // it seed a real starting load for a movement with no history yet.
         guard let baseline = ProgressionEngine.nextTarget(
-            for: exercise, goal: goal, withPartner: withPartner
+            for: exercise, goal: goal, withPartner: withPartner,
+            experience: experience, bodyWeightLbs: bodyWeightLbs
         ) else { return nil }
 
         let deterministic = ExercisePrescription(
@@ -704,8 +790,6 @@ enum WorkoutAI {
         var repRangeLow: Int
         @Guide(description: "High end of the target rep range.")
         var repRangeHigh: Int
-        @Guide(description: "Suggested working weight in pounds; 0 for unloaded bodyweight movements.")
-        var targetLoadPounds: Double
         @Guide(description: "Rest between sets in seconds.")
         var restSeconds: Int
         @Guide(description: "One short sentence on why this movement is in the session.")
@@ -713,13 +797,17 @@ enum WorkoutAI {
         @Guide(description: "Superset grouping index. Use 0 for a standalone movement, or 1, 2, … to pair exactly two adjacent complementary movements into a back-to-back superset (same number = same pair; never three or more).")
         var supersetGroup: Int
 
+        // No weight field: the on-device model doesn't prescribe load (a smaller
+        // schema for a small model), and every load is filled deterministically
+        // by `ProgressionEngine` after generation. The placeholder 0 here is
+        // always overwritten by `groundInHistory`.
         var coachedExercise: CoachedExercise {
             CoachedExercise(
                 name: name,
                 sets: sets,
                 repRangeLow: repRangeLow,
                 repRangeHigh: repRangeHigh,
-                targetLoadPounds: targetLoadPounds,
+                targetLoadPounds: 0,
                 restSeconds: restSeconds,
                 note: note,
                 supersetGroup: supersetGroup
@@ -738,17 +826,20 @@ enum WorkoutAI {
         context: TrainingContext?,
         catalog: [ExerciseBrief]
     ) async throws -> WorkoutPlan {
-        // The same coaching instructions the cloud and self-hosted tiers use, so
-        // all three models are held to one contract — full prescriptions, a
-        // rationale, and catalog-only picks.
-        let session = LanguageModelSession(instructions: PromptBuilder.coachInstructions)
+        // A trimmed version of the coaching contract: the on-device model picks
+        // movements, sets and reps only — never load. Its weight output was
+        // discarded anyway (every load is filled by `ProgressionEngine` after
+        // generation), so leaving it out keeps the schema and prompt small enough
+        // for the on-device context window.
+        let session = LanguageModelSession(instructions: PromptBuilder.onDeviceCoachInstructions)
 
-        // With a training context the on-device model reads the identical request
-        // block Claude and the self-hosted coach get — fatigue report, recorded
-        // ceilings, and per-lift progression targets — so its loads are informed
-        // rather than guessed. The compact budget keeps the prompt inside the
-        // on-device window. Without a context (watch quick-generate, routine
-        // editor) it gets an equivalent context-free request.
+        // With a training context the on-device model reads the fatigue report
+        // and recent sessions — enough to select and order movements sensibly.
+        // The recorded-ceiling and progression sections are omitted (via
+        // `includeLoadTargets: false`) since it no longer prescribes weight. The
+        // compact budget keeps the prompt inside the on-device window. Without a
+        // context (watch quick-generate, routine editor) it gets an equivalent
+        // context-free request.
         let request: String
         if let context {
             request = PromptBuilder.requestBlock(
@@ -758,7 +849,8 @@ enum WorkoutAI {
                 durationMinutes: durationMinutes,
                 context: context,
                 allowSupersets: allowSupersets,
-                budget: .compact
+                budget: .compact,
+                includeLoadTargets: false
             )
         } else {
             request = onDeviceRequestBlock(
@@ -795,14 +887,19 @@ enum WorkoutAI {
     ) -> String {
         var lines = ["THIS SESSION:", "- Focus: \(focusLabel)"]
         if allowSupersets {
+            let maxSupersets = max(1, exerciseCount / 2)
             lines.append("- Select \(exerciseCount) movements as the core of the session. You may add "
                          + "one or two extra movements beyond that only when it completes a strong superset.")
-            lines.append("- SUPERSETS ARE WANTED this session. Pair complementary movements — antagonists "
-                         + "(a press with a row), or a compound with a non-competing accessory. A superset is "
-                         + "exactly two movements; never put three or more in one. Use at most half as many "
-                         + "supersets as movements requested so most of the session stays standalone. Give "
-                         + "each pair the same supersetGroup index (1, 2, …), keep the two adjacent, and "
-                         + "leave standalone movements at 0.")
+            lines.append("- SUPERSETS ARE REQUIRED this session: you MUST form at least one, and at most "
+                         + "\(maxSupersets), so most of the session still stays standalone straight sets. "
+                         + "Not forming a single superset is a failure to follow the plan.")
+            lines.append("- HOW TO BUILD ONE: pick two complementary movements — antagonists (a press with "
+                         + "a row, a curl with a pushdown) or a compound with a non-competing accessory — "
+                         + "place them next to each other, and give BOTH the SAME supersetGroup number "
+                         + "(1 for the first pair, 2 for a second, and so on). Every standalone movement "
+                         + "gets supersetGroup 0. A superset is EXACTLY two movements — never three or more.")
+            lines.append("- Example: give your first two picks supersetGroup 1 (the same 1 on both) so they "
+                         + "pair up, and set every other movement's supersetGroup to 0.")
         } else {
             lines.append("- Select exactly \(exerciseCount) movements.")
             lines.append("- Do not use supersets this session. Set supersetGroup to 0 for every movement.")

@@ -81,44 +81,30 @@ private struct PlanBoardView: View {
     var onRebuild: () -> Void
 
     @State private var showClearConfirm = false
+    /// The weekday whose workout fills the detail pane. Seeded to today (or the
+    /// first training day) on appear; -1 until then.
+    @State private var selectedWeekday = -1
 
     var body: some View {
-        GeometryReader { proxy in
-            // Seven readable columns need roughly 160pt each plus gutters;
-            // below that the week wraps into a grid instead of squeezing.
-            let asRow = proxy.size.width >= 1150
+        VStack(spacing: PadLayout.gutter) {
+            header
 
-            VStack(spacing: PadLayout.gutter) {
-                header
+            // Master-detail: a compact week rail on the left, the selected day's
+            // full editable workout on the right. Fills the whole board instead
+            // of tiling seven columns with an awkward empty slot.
+            HStack(alignment: .top, spacing: PadLayout.gutter) {
+                weekRail
+                    .frame(width: 320)
 
-                todayHero
-
-                if asRow {
-                    HStack(alignment: .top, spacing: 12) {
-                        ForEach(PlanWeekday.mondayFirst, id: \.self) { weekday in
-                            dayColumn(weekday)
-                        }
-                    }
-                    .frame(maxHeight: .infinity, alignment: .top)
-                } else {
-                    ScrollView(showsIndicators: false) {
-                        LazyVGrid(
-                            columns: [GridItem(.adaptive(minimum: 230, maximum: 400), spacing: 12)],
-                            alignment: .leading,
-                            spacing: 12
-                        ) {
-                            ForEach(PlanWeekday.mondayFirst, id: \.self) { weekday in
-                                dayColumn(weekday)
-                            }
-                        }
-                        .padding(.bottom, PadLayout.scrollBottomInset)
-                    }
-                }
+                detailPane
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .padding(.horizontal, PadLayout.screenPadding)
-            .padding(.top, 4)
-            .padding(.bottom, 12)
+            .frame(maxHeight: .infinity, alignment: .top)
         }
+        .padding(.horizontal, PadLayout.screenPadding)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
+        .onAppear { if selectedWeekday < 0 { selectedWeekday = defaultWeekday } }
         .confirmationDialog("Clear this week's plan?", isPresented: $showClearConfirm, titleVisibility: .visible) {
             Button("Clear Plan", role: .destructive) {
                 workout.clearWeeklyPlan()
@@ -187,115 +173,65 @@ private struct PlanBoardView: View {
         .accessibilityLabel("\(done) of \(total) sessions done")
     }
 
-    // MARK: Today
+    // MARK: Week rail
 
-    @ViewBuilder
-    private var todayHero: some View {
-        let today = PlanWeekday.today
-        if let day = daysByWeekday[today], let routine = day.routine {
-            let done = isDone(day)
-            HStack(alignment: .center, spacing: 24) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("TODAY \u{2014} \(PlanWeekday.name(today).uppercased())")
-                        .font(.caption.weight(.bold))
-                        .kerning(1.6)
-                        .foregroundStyle(Theme.textDim)
-
-                    Text(day.focus.label)
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.limitBreakGradient)
-
-                    if done {
-                        Label("Completed", systemImage: "checkmark.seal.fill")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Theme.emerald)
-                    } else {
-                        Text(routine.exercises.map(\.name).prefix(5).joined(separator: " \u{00B7} "))
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.textDim)
-                            .lineLimit(2)
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                HStack(spacing: 12) {
-                    NavigationLink(value: day) {
-                        Label("Review", systemImage: "list.bullet")
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 22)
-                            .padding(.vertical, 15)
-                            .glassControl()
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        Haptics.shared.tick()
-                        workout.startSession(from: routine, withPartner: plan.withPartner)
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: done ? "arrow.clockwise" : "play.fill")
-                            Text(done ? "TRAIN AGAIN" : "START SESSION")
-                                .font(.headline)
-                                .kerning(0.8)
-                        }
-                        .frame(width: 230)
-                        .padding(.vertical, 15)
-                        .foregroundStyle(done ? Theme.emerald : .white)
-                        .modifier(PlanCTAStyle(done: done))
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+    private var weekRail: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 8) {
+                ForEach(PlanWeekday.mondayFirst, id: \.self) { weekday in
+                    railRow(weekday)
                 }
             }
-            .padding(22)
-            .frame(maxWidth: .infinity)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26))
-            .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Theme.limitBreakGradient, lineWidth: 1))
-            .shadow(color: Theme.violet.opacity(0.22), radius: 20, y: 8)
-        } else {
-            HStack(spacing: 14) {
-                Image(systemName: "moon.zzz.fill")
-                    .font(.title)
-                    .foregroundStyle(Theme.textDim)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Rest day")
-                        .font(.title3.weight(.bold))
-                    Text("Nothing scheduled for \(PlanWeekday.name(PlanWeekday.today)). Recover — or start something anyway from the Train tab.")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.textDim)
-                }
-                Spacer()
-            }
-            .padding(22)
-            .frame(maxWidth: .infinity)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26))
-            .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Theme.glassBorder, lineWidth: 1))
+            .padding(.bottom, PadLayout.scrollBottomInset)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    // MARK: Day column
-
-    @ViewBuilder
-    private func dayColumn(_ weekday: Int) -> some View {
+    /// One tappable weekday in the rail: its focus, movement count, and whether
+    /// it's today or already trained. Selecting it fills the detail pane.
+    private func railRow(_ weekday: Int) -> some View {
         let isToday = weekday == PlanWeekday.today
         let day = daysByWeekday[weekday]
         let routine = day?.routine
+        let selected = weekday == selectedWeekday
+        let done = day.map(isDone) ?? false
 
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
+        return Button {
+            Haptics.shared.tick()
+            selectedWeekday = weekday
+        } label: {
+            HStack(spacing: 12) {
                 Text(PlanWeekday.name(weekday, short: true).uppercased())
                     .font(.caption.weight(.black))
-                    .kerning(1.2)
+                    .kerning(0.8)
                     .foregroundStyle(routine != nil ? .primary : Theme.textDim)
-                Spacer(minLength: 0)
-                if let day, isDone(day) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.caption)
-                        .foregroundStyle(Theme.emerald)
+                    .frame(width: 40, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Image(systemName: routine != nil ? (day?.focus.icon ?? "figure.strengthtraining.traditional") : "moon.zzz.fill")
+                            .font(.caption)
+                            .foregroundStyle(routine != nil ? Theme.emerald : Theme.textDim)
+                        Text(routine != nil ? (day?.focus.label ?? "") : "Rest")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(routine != nil ? .primary : Theme.textDim)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    if let routine {
+                        Text("\(routine.exerciseCount) movement\(routine.exerciseCount == 1 ? "" : "s")")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.textDim)
+                    }
                 }
-                if isToday {
+
+                Spacer(minLength: 0)
+
+                if done {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.emerald)
+                } else if isToday {
                     Text("TODAY")
                         .font(.system(size: 9, weight: .black))
                         .kerning(0.8)
@@ -305,103 +241,69 @@ private struct PlanBoardView: View {
                         .foregroundStyle(Theme.background)
                 }
             }
-
-            if let day, let routine {
-                NavigationLink(value: day) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Image(systemName: day.focus.icon)
-                                .font(.caption)
-                                .foregroundStyle(Theme.emerald)
-                            Text(day.focus.label)
-                                .font(.subheadline.weight(.bold))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.85)
-                        }
-                        Text("\(routine.exerciseCount) movement\(routine.exerciseCount == 1 ? "" : "s")")
-                            .font(.caption2)
-                            .foregroundStyle(Theme.textDim)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
-                Divider().overlay(Theme.stroke)
-
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        ForEach(routine.orderedItems, id: \.id) { item in
-                            if let exercise = item.exercise {
-                                HStack(alignment: .top, spacing: 6) {
-                                    Circle()
-                                        .fill(Theme.emerald.opacity(0.5))
-                                        .frame(width: 5, height: 5)
-                                        .padding(.top, 5)
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(exercise.name)
-                                            .font(.caption)
-                                            .lineLimit(2)
-                                            .multilineTextAlignment(.leading)
-                                        Text(setSummary(item))
-                                            .font(.system(size: 10, weight: .semibold))
-                                            .monospacedDigit()
-                                            .foregroundStyle(Theme.textDim)
-                                    }
-                                    Spacer(minLength: 0)
-                                }
-                            }
-                        }
-                    }
-                }
-                .frame(maxHeight: .infinity, alignment: .top)
-
-                Button {
-                    Haptics.shared.tick()
-                    workout.startSession(from: routine, withPartner: plan.withPartner)
-                } label: {
-                    Label(isDone(day) ? "Again" : "Start", systemImage: isDone(day) ? "arrow.clockwise" : "play.fill")
-                        .font(.caption.weight(.bold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .foregroundStyle(isDone(day) ? Theme.emerald : .white)
-                        .modifier(PlanCTAStyle(done: isDone(day), cornerRadius: 12))
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "moon.zzz.fill")
-                        .font(.title3)
-                        .foregroundStyle(Theme.textDim)
-                    Text("Rest")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.textDim)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.vertical, 24)
-            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 13)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selected ? Theme.emerald.opacity(0.14) : Color.white.opacity(0.03),
+                        in: RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(selected ? Theme.emerald.opacity(0.6)
+                                  : (isToday ? Theme.emerald.opacity(0.25) : Theme.stroke),
+                                  lineWidth: selected ? 1.5 : 1)
+            )
+            .opacity(routine == nil && !selected ? 0.7 : 1)
+            .contentShape(RoundedRectangle(cornerRadius: 16))
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .strokeBorder(isToday ? Theme.emerald.opacity(0.5) : Theme.stroke, lineWidth: 1)
-        )
-        .opacity(routine == nil ? 0.65 : 1)
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(PlanWeekday.name(weekday)), \(routine != nil ? (day?.focus.label ?? "workout") : "rest day")")
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 
-    private func setSummary(_ item: RoutineItem) -> String {
-        let sets = max(1, item.targetSets)
-        if let reps = item.targetReps, reps > 0 {
-            if let weight = item.targetWeight, weight > 0 {
-                return "\(sets)\u{00D7}\(reps) @ \(weight.cleanWeight)"
-            }
-            return "\(sets)\u{00D7}\(reps)"
+    // MARK: Detail pane
+
+    /// The selected day's full workout — reuses the phone day editor so add,
+    /// replace (AI or manual), reorder, regenerate, and set/rep/weight edits all
+    /// work inline. `.id` rebuilds it when the selection changes so its reorder
+    /// mirror reseeds for the new day.
+    @ViewBuilder
+    private var detailPane: some View {
+        if let day = daysByWeekday[selectedWeekday], day.routine != nil {
+            PlannedDayDetailView(day: day)
+                .id(day.id)
+                .clipShape(RoundedRectangle(cornerRadius: 24))
+                .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Theme.glassBorder, lineWidth: 1))
+        } else {
+            restPane
         }
-        return "\(sets) set\(sets == 1 ? "" : "s")"
+    }
+
+    private var restPane: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "moon.zzz.fill")
+                .font(.system(size: 72))
+                .foregroundStyle(Theme.textDim)
+            Text("Rest Day")
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+            Text("Nothing scheduled for \(PlanWeekday.name(selectedWeekday >= 0 ? selectedWeekday : PlanWeekday.today)). Recover \u{2014} or start something anyway from the Train tab.")
+                .font(.body)
+                .foregroundStyle(Theme.textDim)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Theme.glassBorder, lineWidth: 1))
+    }
+
+    /// Today when it's a training day, else the first training day, else today.
+    private var defaultWeekday: Int {
+        let today = PlanWeekday.today
+        if daysByWeekday[today]?.routine != nil { return today }
+        if let firstTraining = PlanWeekday.mondayFirst.first(where: { daysByWeekday[$0]?.routine != nil }) {
+            return firstTraining
+        }
+        return today
     }
 
     // MARK: Data
@@ -416,20 +318,5 @@ private struct PlanBoardView: View {
 
     private func isDone(_ day: PlannedDay) -> Bool {
         sessionsByWeekday[day.weekday] != nil
-    }
-}
-
-/// A start button reads as a solid call-to-action until the day is trained,
-/// then softens to a glass "train again" affordance.
-private struct PlanCTAStyle: ViewModifier {
-    let done: Bool
-    var cornerRadius: CGFloat = 16
-
-    func body(content: Content) -> some View {
-        if done {
-            content.glassControl(cornerRadius: cornerRadius)
-        } else {
-            content.glassCTA(tint: Theme.emerald.opacity(0.85), cornerRadius: cornerRadius)
-        }
     }
 }

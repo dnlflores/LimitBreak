@@ -29,40 +29,49 @@ enum HumanoidRig {
         case hipR, thighR, shinR, footR
     }
 
-    /// One rigid segment: where it hangs from, which way it points at rest, and
-    /// how long it is. Lengths are in body units — the figure stands about 1.5
-    /// tall with its feet near y = 0.
+    /// One rigid segment: where it hangs from, which way it points at rest, how
+    /// long it is, and how thick. Lengths are in body units — the figure stands
+    /// about 1.5 tall with its feet near y = 0.
     struct Segment: Sendable {
         let bone: Bone
         let parent: Bone
         /// Unit direction in the parent's frame, before this bone's rotation.
         let rest: SIMD3<Float>
         let length: Float
+        /// Half-width at the proximal and distal ends, so limbs taper the way
+        /// real ones do — a thigh into a knee, a forearm into a wrist. Girth is
+        /// what separates a body from a stick figure; without it the rig reads
+        /// as a skeleton no matter how correct the pose.
+        var girth: SIMD2<Float> = [0.05, 0.04]
     }
 
     /// Ordered parent-before-child, so one forward pass solves the whole rig.
     static let segments: [Segment] = [
-        Segment(bone: .spine,     parent: .pelvis,    rest: [0, 1, 0],  length: 0.14),
-        Segment(bone: .chest,     parent: .spine,     rest: [0, 1, 0],  length: 0.18),
-        Segment(bone: .neck,      parent: .chest,     rest: [0, 1, 0],  length: 0.10),
-        Segment(bone: .head,      parent: .neck,      rest: [0, 1, 0],  length: 0.13),
+        Segment(bone: .spine,     parent: .pelvis,    rest: [0, 1, 0],  length: 0.14, girth: [0.105, 0.115]),
+        Segment(bone: .chest,     parent: .spine,     rest: [0, 1, 0],  length: 0.18, girth: [0.115, 0.125]),
+        Segment(bone: .neck,      parent: .chest,     rest: [0, 1, 0],  length: 0.10, girth: [0.055, 0.048]),
+        Segment(bone: .head,      parent: .neck,      rest: [0, 1, 0],  length: 0.13, girth: [0.085, 0.075]),
 
-        Segment(bone: .shoulderL, parent: .chest,     rest: [1, 0, 0],  length: 0.17),
-        Segment(bone: .upperArmL, parent: .shoulderL, rest: [0, -1, 0], length: 0.27),
-        Segment(bone: .forearmL,  parent: .upperArmL, rest: [0, -1, 0], length: 0.24),
-        Segment(bone: .shoulderR, parent: .chest,     rest: [-1, 0, 0], length: 0.17),
-        Segment(bone: .upperArmR, parent: .shoulderR, rest: [0, -1, 0], length: 0.27),
-        Segment(bone: .forearmR,  parent: .upperArmR, rest: [0, -1, 0], length: 0.24),
+        Segment(bone: .shoulderL, parent: .chest,     rest: [1, 0, 0],  length: 0.17, girth: [0.080, 0.062]),
+        Segment(bone: .upperArmL, parent: .shoulderL, rest: [0, -1, 0], length: 0.27, girth: [0.058, 0.044]),
+        Segment(bone: .forearmL,  parent: .upperArmL, rest: [0, -1, 0], length: 0.24, girth: [0.044, 0.030]),
+        Segment(bone: .shoulderR, parent: .chest,     rest: [-1, 0, 0], length: 0.17, girth: [0.080, 0.062]),
+        Segment(bone: .upperArmR, parent: .shoulderR, rest: [0, -1, 0], length: 0.27, girth: [0.058, 0.044]),
+        Segment(bone: .forearmR,  parent: .upperArmR, rest: [0, -1, 0], length: 0.24, girth: [0.044, 0.030]),
 
-        Segment(bone: .hipL,      parent: .pelvis,    rest: [1, 0, 0],  length: 0.10),
-        Segment(bone: .thighL,    parent: .hipL,      rest: [0, -1, 0], length: 0.44),
-        Segment(bone: .shinL,     parent: .thighL,    rest: [0, -1, 0], length: 0.42),
-        Segment(bone: .footL,     parent: .shinL,     rest: [0, 0, 1],  length: 0.16),
-        Segment(bone: .hipR,      parent: .pelvis,    rest: [-1, 0, 0], length: 0.10),
-        Segment(bone: .thighR,    parent: .hipR,      rest: [0, -1, 0], length: 0.44),
-        Segment(bone: .shinR,     parent: .thighR,    rest: [0, -1, 0], length: 0.42),
-        Segment(bone: .footR,     parent: .shinR,     rest: [0, 0, 1],  length: 0.16),
+        Segment(bone: .hipL,      parent: .pelvis,    rest: [1, 0, 0],  length: 0.10, girth: [0.100, 0.085]),
+        Segment(bone: .thighL,    parent: .hipL,      rest: [0, -1, 0], length: 0.44, girth: [0.088, 0.058]),
+        Segment(bone: .shinL,     parent: .thighL,    rest: [0, -1, 0], length: 0.42, girth: [0.058, 0.036]),
+        Segment(bone: .footL,     parent: .shinL,     rest: [0, 0, 1],  length: 0.16, girth: [0.036, 0.026]),
+        Segment(bone: .hipR,      parent: .pelvis,    rest: [-1, 0, 0], length: 0.10, girth: [0.100, 0.085]),
+        Segment(bone: .thighR,    parent: .hipR,      rest: [0, -1, 0], length: 0.44, girth: [0.088, 0.058]),
+        Segment(bone: .shinR,     parent: .thighR,    rest: [0, -1, 0], length: 0.42, girth: [0.058, 0.036]),
+        Segment(bone: .footR,     parent: .shinR,     rest: [0, 0, 1],  length: 0.16, girth: [0.036, 0.026]),
     ]
+
+    /// The head's drawn radius. Larger than the neck bone it hangs off, so it
+    /// reads as a head rather than a knob on a stick.
+    static let headRadius: Float = 0.105
 
     /// Solves world-space joint positions for a pose.
     ///

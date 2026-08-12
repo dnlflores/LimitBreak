@@ -17,7 +17,7 @@ struct ExerciseFigureView: View {
     var orbits: Bool = true
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.periodic(from: .now, by: 1.0 / 30)) { timeline in
             Canvas { context, size in
                 let time = timeline.date.timeIntervalSinceReferenceDate
                 draw(in: &context, size: size, time: time)
@@ -46,8 +46,8 @@ struct ExerciseFigureView: View {
         if let ground = clip.ground {
             drawGround(&context, camera: camera, frame: frame, height: ground)
         }
+        drawBody(&context, camera: camera, frame: frame, joints: joints, size: size)
         drawEquipment(&context, camera: camera, frame: frame, joints: joints)
-        drawSkeleton(&context, camera: camera, frame: frame, joints: joints)
     }
 
     // MARK: - Projection
@@ -161,42 +161,130 @@ struct ExerciseFigureView: View {
 
     // MARK: - Drawing
 
-    private func drawSkeleton(
+    /// Builds the body as one merged outline.
+    ///
+    /// Each part is its own closed path, then all of them are unioned into a
+    /// single silhouette. The union is what makes the figure read as a body
+    /// rather than assembled parts: stroking the merged outline traces only the
+    /// true edge, where stroking the parts individually would draw a seam
+    /// across every shoulder, hip and knee where two of them meet.
+    /// The merged outer edge, plus the individual parts that formed it. The
+    /// parts are kept because tracing them *inside* the silhouette is what
+    /// gives the figure anatomy — without it an arm held near the torso is
+    /// swallowed by it and the body reads as a blob.
+    private struct Silhouette {
+        let outline: Path
+        /// Limb shafts only. Tracing every part — including the disc at each
+        /// joint — turns the figure into a technical mannequin covered in
+        /// construction lines; the shafts alone are what separate an arm from
+        /// the torso it is held against.
+        let contours: [Path]
+    }
+
+    private func bodySilhouette(
+        joints: [HumanoidRig.Bone: SIMD3<Float>],
+        camera: Camera,
+        frame: Framing
+    ) -> Silhouette {
+        // World girth is in body units. Perspective varies across the figure,
+        // but one nominal factor is visually indistinguishable here and saves
+        // projecting a second point per joint per frame.
+        let girthScale = CGFloat(frame.scale * camera.focal / camera.distance)
+        var parts: [CGPath] = []
+        var contours: [CGPath] = []
+
+        func disc(_ centre: CGPoint, _ radius: CGFloat) {
+            guard radius > 0.3 else { return }
+            parts.append(CGPath(ellipseIn: CGRect(x: centre.x - radius, y: centre.y - radius,
+                                                  width: radius * 2, height: radius * 2),
+                                transform: nil))
+        }
+
+        // Torso first: a real mass between the shoulders and the hips. A stick
+        // figure reads as a skeleton mostly because its trunk is a line.
+        if let sl = joints[.shoulderL], let sr = joints[.shoulderR],
+           let hl = joints[.hipL], let hr = joints[.hipR] {
+            let corners = [sl, sr, hr, hl].map { place($0, camera, frame) }
+            let trunk = CGMutablePath()
+            trunk.move(to: corners[0])
+            for corner in corners.dropFirst() { trunk.addLine(to: corner) }
+            trunk.closeSubpath()
+            parts.append(trunk)
+            for corner in corners { disc(corner, 0.075 * girthScale) }
+        }
+
+        for segment in HumanoidRig.segments {
+            guard let a = joints[segment.parent], let b = joints[segment.bone] else { continue }
+            let p1 = place(a, camera, frame)
+            let p2 = place(b, camera, frame)
+            let r1 = CGFloat(segment.girth.x) * girthScale
+            let r2 = CGFloat(segment.girth.y) * girthScale
+
+            // A tapered quad plus a disc at each end, so consecutive limbs flow
+            // through a rounded joint instead of meeting at a corner.
+            let dx = p2.x - p1.x, dy = p2.y - p1.y
+            let length = max(0.0001, (dx * dx + dy * dy).squareRoot())
+            let nx = -dy / length, ny = dx / length
+            let limb = CGMutablePath()
+            limb.move(to: CGPoint(x: p1.x + nx * r1, y: p1.y + ny * r1))
+            limb.addLine(to: CGPoint(x: p2.x + nx * r2, y: p2.y + ny * r2))
+            limb.addLine(to: CGPoint(x: p2.x - nx * r2, y: p2.y - ny * r2))
+            limb.addLine(to: CGPoint(x: p1.x - nx * r1, y: p1.y - ny * r1))
+            limb.closeSubpath()
+            parts.append(limb)
+            switch segment.bone {
+            case .upperArmL, .upperArmR, .forearmL, .forearmR,
+                 .thighL, .thighR, .shinL, .shinR:
+                contours.append(limb)
+            default:
+                break
+            }
+            disc(p1, r1)
+            disc(p2, r2)
+        }
+
+        if let head = joints[.head] {
+            disc(place(head, camera, frame), CGFloat(HumanoidRig.headRadius) * girthScale)
+        }
+
+        guard var merged = parts.first else { return Silhouette(outline: Path(), contours: []) }
+        for part in parts.dropFirst() { merged = merged.union(part) }
+        return Silhouette(outline: Path(merged), contours: contours.map(Path.init))
+    }
+
+    private func drawBody(
         _ context: inout GraphicsContext,
         camera: Camera,
         frame: Framing,
-        joints: [HumanoidRig.Bone: SIMD3<Float>]
+        joints: [HumanoidRig.Bone: SIMD3<Float>],
+        size: CGSize
     ) {
-        var bones = Path()
-        for segment in HumanoidRig.segments {
-            guard let a = joints[segment.parent], let b = joints[segment.bone] else { continue }
-            bones.move(to: place(a, camera, frame))
-            bones.addLine(to: place(b, camera, frame))
-        }
+        let body = bodySilhouette(joints: joints, camera: camera, frame: frame)
+        let rim = max(1.6, CGFloat(frame.scale) * 0.011)
 
-        // Wide, faint pass under the crisp one: a cheap bloom that reads as
-        // emitted light rather than a drawn outline.
-        context.stroke(bones, with: .color(Theme.teal.opacity(0.20)),
-                       style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
-        context.stroke(bones, with: .color(Theme.teal.opacity(0.9)),
-                       style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
-
-        for (bone, position) in joints where bone != .head {
-            let point = place(position, camera, frame)
-            context.fill(
-                Path(ellipseIn: CGRect(x: point.x - 3, y: point.y - 3, width: 6, height: 6)),
-                with: .color(Theme.emerald)
-            )
+        // Outward bloom.
+        context.stroke(body.outline, with: .color(Theme.emerald.opacity(0.18)),
+                       style: StrokeStyle(lineWidth: rim * 5, lineJoin: .round))
+        // Solid body, lit from above.
+        context.fill(body.outline, with: .linearGradient(
+            Gradient(colors: [
+                Theme.cobalt.opacity(0.92),
+                Theme.backgroundDeep.opacity(0.96),
+            ]),
+            startPoint: .zero,
+            endPoint: CGPoint(x: 0, y: size.height)
+        ))
+        // Interior contours, clipped to the body so they define limbs without
+        // ever touching the outer edge.
+        var interior = context
+        interior.clip(to: body.outline)
+        for contour in body.contours {
+            interior.stroke(contour, with: .color(Theme.emerald.opacity(0.30)),
+                            style: StrokeStyle(lineWidth: rim * 0.6, lineJoin: .round))
         }
-        if let head = joints[.head] {
-            let point = place(head, camera, frame)
-            let radius = max(9, CGFloat(frame.scale) * 0.055)
-            let box = CGRect(x: point.x - radius, y: point.y - radius,
-                             width: radius * 2, height: radius * 2)
-            context.fill(Path(ellipseIn: box.insetBy(dx: -5, dy: -5)),
-                         with: .color(Theme.emerald.opacity(0.22)))
-            context.fill(Path(ellipseIn: box), with: .color(Theme.emerald))
-        }
+        // The rim last, on the true outer edge.
+        context.stroke(body.outline, with: .color(Theme.emerald.opacity(0.95)),
+                       style: StrokeStyle(lineWidth: rim, lineJoin: .round))
     }
 
     private func drawEquipment(

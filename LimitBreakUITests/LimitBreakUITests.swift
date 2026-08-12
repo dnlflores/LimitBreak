@@ -220,16 +220,21 @@ final class LimitBreakUITests: XCTestCase {
         let searchField = app.textFields["Search movements"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 5))
         searchField.tap()
-        searchField.typeText("Barbell Bench Press")
+        // Tapping does not synchronously grant focus, and typing into an
+        // unfocused field throws rather than retrying.
+        guard app.keyboards.element.waitForExistence(timeout: 5) else {
+            throw XCTSkip("Software keyboard unavailable in this simulator configuration")
+        }
+        searchField.typeText("Overhead Press")
 
-        let row = app.staticTexts["Barbell Bench Press"]
+        let row = app.staticTexts["Overhead Press"]
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
 
         // Let the rep play past the start pose so the capture is mid-movement.
         sleep(2)
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        shot.name = "figure-bench-press"
+        shot.name = "figure-overhead-press"
         shot.lifetime = .keepAlways
         add(shot)
     }

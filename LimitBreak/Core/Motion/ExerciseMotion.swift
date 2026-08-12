@@ -50,136 +50,99 @@ struct ExerciseClip: Sendable {
 
 // MARK: - Catalog
 
-/// The authored clips, looked up by movement name.
+/// The authored clips, loaded once from `ExerciseMotion.json`.
 ///
-/// This is the spike's five movements, deliberately spanning standing, supine
-/// and hanging, and both the sagittal and frontal planes — the cases that break
-/// a rig that only ever swings limbs forwards and backwards.
+/// Data rather than code so the catalog can grow without a recompile, and so
+/// the offline authoring harness and the app read the *same* file — two copies
+/// of a pose drift, and a drifted pose is one nobody notices is wrong.
 enum ExerciseMotion {
 
-    /// The clip for a movement, or nil when it hasn't been authored yet. Callers
-    /// fall back to the still photo, so the catalog can fill in gradually.
+    /// The clip for a movement, or nil when it hasn't been authored yet.
+    /// Callers fall back to the still photo, so the catalog fills in gradually.
     static func clip(for exerciseName: String) -> ExerciseClip? {
         catalog[normalize(exerciseName)]
     }
 
     static var authoredCount: Int { catalog.count }
+    static var authoredNames: [String] { catalog.values.map(\.name).sorted() }
 
+    /// Punctuation- and case-insensitive, so "Pull-Up" matches "pull up".
     private static func normalize(_ name: String) -> String {
         name.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 
     private static let catalog: [String: ExerciseClip] = {
-        Dictionary(uniqueKeysWithValues: all.map { (normalize($0.name), $0) })
+        guard let url = Bundle.main.url(forResource: "ExerciseMotion", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let document = try? JSONDecoder().decode(MotionDocument.self, from: data)
+        else {
+            // A missing or malformed file costs the animations, not the app:
+            // every call site already falls back to the still photo.
+            assertionFailure("ExerciseMotion.json is missing or unreadable")
+            return [:]
+        }
+        return Dictionary(
+            document.clips.map { (normalize($0.name), $0.clip) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }()
+}
 
-    private static let all: [ExerciseClip] = [barbellCurl, backSquat, benchPress, pullUp, lateralRaise]
+// MARK: - Decoding
 
-    // MARK: Standing, sagittal — elbow flexion only.
+private struct MotionDocument: Decodable {
+    let clips: [ClipData]
+}
 
-    private static let barbellCurl = ExerciseClip(
-        name: "Barbell Curl", azimuth: 22, equipment: .barbell, ground: 0,
-        keyframes: [
-            HumanoidPose(angles: [
-                .upperArmL: [-8, 0, -6], .upperArmR: [-8, 0, 6],
-                .forearmL: [-6, 0, 0], .forearmR: [-6, 0, 0],
-            ]),
-            HumanoidPose(angles: [
-                .upperArmL: [-14, 0, -6], .upperArmR: [-14, 0, 6],
-                .forearmL: [-142, 0, 0], .forearmR: [-142, 0, 0],
-            ]),
-        ]
-    )
+/// The on-disk shape. Kept separate from `ExerciseClip` so the file format can
+/// change — more keyframes, new equipment — without the renderer caring.
+private struct ClipData: Decodable {
+    let name: String
+    let azimuth: Float
+    let equipment: String
+    let ground: Float?
+    let barHeight: Float?
+    let keyframes: [FrameData]
 
-    // MARK: Standing, large root translation — the bar rides the traps.
+    var clip: ExerciseClip {
+        ExerciseClip(
+            name: name,
+            azimuth: azimuth,
+            equipment: resolvedEquipment,
+            ground: ground,
+            keyframes: keyframes.map(\.pose)
+        )
+    }
 
-    private static let backSquat = ExerciseClip(
-        name: "Barbell Back Squat", azimuth: 26, equipment: .barbellOnBack, ground: 0,
-        keyframes: [
-            HumanoidPose(angles: [
-                .upperArmL: [12, 0, -46], .upperArmR: [12, 0, 46],
-                .forearmL: [-118, 0, 0], .forearmR: [-118, 0, 0],
-            ]),
-            HumanoidPose(
-                rootPosition: [0, 0.52, -0.05], rootRotation: [20, 0, 0],
-                angles: [
-                    .upperArmL: [12, 0, -46], .upperArmR: [12, 0, 46],
-                    .forearmL: [-118, 0, 0], .forearmR: [-118, 0, 0],
-                    .thighL: [-92, 0, 0], .thighR: [-92, 0, 0],
-                    .shinL: [84, 0, 0], .shinR: [84, 0, 0],
-                    .footL: [22, 0, 0], .footR: [22, 0, 0],
-                ]
-            ),
-        ]
-    )
+    private var resolvedEquipment: ExerciseClip.Equipment {
+        switch equipment {
+        case "barbell":       return .barbell
+        case "barbellOnBack": return .barbellOnBack
+        case "dumbbells":     return .dumbbells
+        case "fixedBar":      return .fixedBar(height: barHeight ?? 1.425)
+        default:              return .none
+        }
+    }
+}
 
-    // MARK: Supine — laid down entirely by the root, arms authored as "forward".
+private struct FrameData: Decodable {
+    let root: [Float]?
+    let rootRotation: [Float]?
+    let angles: [String: [Float]]?
 
-    private static let benchPress = ExerciseClip(
-        name: "Barbell Bench Press", azimuth: 62, equipment: .barbell, ground: 0.42,
-        keyframes: [
-            HumanoidPose(
-                rootPosition: [0, 0.62, 0], rootRotation: [-90, 0, 0],
-                angles: [
-                    .upperArmL: [-88, 0, -14], .upperArmR: [-88, 0, 14],
-                    .forearmL: [-4, 0, 0], .forearmR: [-4, 0, 0],
-                    .thighL: [48, 0, -6], .thighR: [48, 0, 6],
-                    .shinL: [46, 0, 0], .shinR: [46, 0, 0],
-                    .footL: [-40, 0, 0], .footR: [-40, 0, 0],
-                ]
-            ),
-            HumanoidPose(
-                rootPosition: [0, 0.62, 0], rootRotation: [-90, 0, 0],
-                angles: [
-                    .upperArmL: [-46, 0, -52], .upperArmR: [-46, 0, 52],
-                    .forearmL: [-72, 0, 0], .forearmR: [-72, 0, 0],
-                    .thighL: [48, 0, -6], .thighR: [48, 0, 6],
-                    .shinL: [46, 0, 0], .shinR: [46, 0, 0],
-                    .footL: [-40, 0, 0], .footR: [-40, 0, 0],
-                ]
-            ),
-        ]
-    )
-
-    // MARK: Hanging — the grip stays on a fixed bar while the body travels.
-
-    private static let pullUp = ExerciseClip(
-        name: "Pull-Up", azimuth: 16, equipment: .fixedBar(height: 1.425), ground: nil,
-        keyframes: [
-            HumanoidPose(
-                rootPosition: [0, 0.60, 0],
-                angles: [
-                    .upperArmL: [0, 0, -170], .upperArmR: [0, 0, 170],
-                    .forearmL: [0, 0, -4], .forearmR: [0, 0, 4],
-                    .thighL: [-26, 0, 0], .thighR: [-26, 0, 0],
-                    .shinL: [34, 0, 0], .shinR: [34, 0, 0],
-                ]
-            ),
-            HumanoidPose(
-                rootPosition: [0, 0.996, 0],
-                angles: [
-                    .upperArmL: [0, 0, -140], .upperArmR: [0, 0, 140],
-                    .forearmL: [0, 0, 74], .forearmR: [0, 0, -74],
-                    .thighL: [-52, 0, 0], .thighR: [-52, 0, 0],
-                    .shinL: [64, 0, 0], .shinR: [64, 0, 0],
-                ]
-            ),
-        ]
-    )
-
-    // MARK: Frontal plane — the case a sagittal-only rig gets wrong.
-
-    private static let lateralRaise = ExerciseClip(
-        name: "Lateral Raise", azimuth: 8, equipment: .dumbbells, ground: 0,
-        keyframes: [
-            HumanoidPose(angles: [
-                .upperArmL: [0, 0, -8], .upperArmR: [0, 0, 8],
-                .forearmL: [-4, 0, 0], .forearmR: [-4, 0, 0],
-            ]),
-            HumanoidPose(angles: [
-                .upperArmL: [0, 0, -88], .upperArmR: [0, 0, 88],
-                .forearmL: [-6, 0, -4], .forearmR: [-6, 0, 4],
-            ]),
-        ]
-    )
+    var pose: HumanoidPose {
+        var result = HumanoidPose()
+        if let root, root.count == 3 { result.rootPosition = SIMD3(root[0], root[1], root[2]) }
+        if let rootRotation, rootRotation.count == 3 {
+            result.rootRotation = SIMD3(rootRotation[0], rootRotation[1], rootRotation[2])
+        }
+        for (name, value) in angles ?? [:] {
+            // An unknown bone name is skipped rather than fatal — a newer file
+            // naming a bone this build doesn't have still renders everything
+            // else it describes.
+            guard let bone = HumanoidRig.Bone(rawValue: name), value.count == 3 else { continue }
+            result.angles[bone] = SIMD3(value[0], value[1], value[2])
+        }
+        return result
+    }
 }

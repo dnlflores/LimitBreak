@@ -102,11 +102,47 @@ struct ExerciseClipTests {
         let names = Set(
             ((try? context.fetch(FetchDescriptor<Exercise>())) ?? []).map(\.name)
         )
-        for name in ["Barbell Curl", "Barbell Back Squat", "Barbell Bench Press",
-                     "Pull-Up", "Lateral Raise"] {
+        #expect(ExerciseMotion.authoredCount > 0, "no clips loaded from the bundle")
+        for name in ExerciseMotion.authoredNames {
+            // A clip keyed to a name no movement has can never render, and
+            // nothing else would ever surface it.
             #expect(names.contains(name), "\(name) is authored but not in the library")
-            #expect(ExerciseMotion.clip(for: name) != nil)
         }
+    }
+
+    /// No limb crosses the midline of the body.
+    ///
+    /// This is the one class of error the rendered contact sheet cannot catch:
+    /// a symmetric wireframe looks identical whether the arms are extended or
+    /// crossed through the torso, so an inverted abduction sign passes visual
+    /// review and ships with the weights on the wrong sides. Caught exactly
+    /// that way once already.
+    @Test func limbsNeverCrossTheMidline() throws {
+        for name in ExerciseMotion.authoredNames {
+            let clip = try #require(ExerciseMotion.clip(for: name))
+            for step in 0...4 {
+                let joints = HumanoidRig.solve(clip.pose(at: Float(step) / 4))
+                guard let handL = joints[.forearmL], let handR = joints[.forearmR],
+                      let footL = joints[.footL], let footR = joints[.footR]
+                else { continue }
+                // The left side stays left of the right side. A generous margin,
+                // because a few movements legitimately bring the hands close
+                // together in front of the chest.
+                #expect(handL.x > handR.x - 0.02, "\(name): hands crossed at step \(step)")
+                #expect(footL.x > footR.x - 0.02, "\(name): feet crossed at step \(step)")
+            }
+        }
+    }
+
+    /// A movement that raises the arms puts the hands *outside* the shoulders.
+    /// Sign-inverted abduction still produces a plausible-looking horizontal
+    /// line; it just produces one half the width, on the wrong sides.
+    @Test func raisedArmsReachOutsideTheShoulders() throws {
+        let clip = try #require(ExerciseMotion.clip(for: "Lateral Raise"))
+        let joints = HumanoidRig.solve(clip.pose(at: 1))
+        let shoulder = try #require(joints[.shoulderL]).x
+        let hand = try #require(joints[.forearmL]).x
+        #expect(hand > shoulder, "lateral raise hand (\(hand)) is inboard of the shoulder (\(shoulder))")
     }
 
     /// The ends of the rep are the authored keyframes exactly — easing shapes

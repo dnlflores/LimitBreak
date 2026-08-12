@@ -34,6 +34,7 @@
    "Deltoids"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "desc": "An upper-chest emphasis press with a longer range of motion than the barbell.",
   "steps": [
    "Set the bench to 30-45 degrees and start with dumbbells at shoulder level.",
@@ -49,6 +50,7 @@
    "Deltoids"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "desc": "A bench press with independent arms for balanced chest development.",
   "steps": [
    "Lie flat with a dumbbell at each shoulder.",
@@ -76,6 +78,7 @@
    "Triceps"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "desc": "The dumbbell version of the decline press with a freer pressing arc.",
   "steps": [
    "Lie on a decline bench with dumbbells at the lower chest.",
@@ -111,6 +114,7 @@
   "name": "Dumbbell Fly",
   "muscle": "Chest",
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "A stretch-focused isolation for the pecs with light weight and strict form.",
   "steps": [
@@ -384,6 +388,7 @@
    "Biceps"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "desc": "Rowing prone on an incline bench takes the lower back out of it entirely.",
   "steps": [
    "Lie chest-down on an incline bench with dumbbells hanging.",
@@ -789,6 +794,7 @@
    "Glutes"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 90,
   "desc": "A rear-foot-elevated split squat — the great equalizer for legs.",
   "steps": [
@@ -804,6 +810,7 @@
    "Glutes"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 90,
   "desc": "A stationary lunge pattern for single-leg strength and balance.",
   "steps": [
@@ -819,6 +826,7 @@
    "Glutes"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "Alternating lunges that cover ground and torch the legs.",
   "steps": [
@@ -834,6 +842,7 @@
    "Glutes"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "Stepping backward is easier on the knees and heavy on the glutes.",
   "steps": [
@@ -849,6 +858,7 @@
    "Quads"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "A cross-behind lunge that finds the glute medius.",
   "steps": [
@@ -864,6 +874,7 @@
    "Glutes"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "Stepping onto a box with load — honest single-leg work.",
   "steps": [
@@ -1308,6 +1319,7 @@
    "Triceps"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "incr": 2.5,
   "desc": "A supported dumbbell press for strict shoulder work.",
   "steps": [
@@ -1323,6 +1335,7 @@
    "Triceps"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "incr": 2.5,
   "desc": "A rotating press that sweeps the front and side delts.",
   "steps": [
@@ -1377,6 +1390,7 @@
   "name": "Lateral Raise",
   "muscle": "Deltoids",
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "incr": 2.5,
   "rest": 45,
   "desc": "The side-delt builder that gives shoulders their width.",
@@ -1414,6 +1428,7 @@
   "name": "Front Raise",
   "muscle": "Deltoids",
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "incr": 2.5,
   "rest": 45,
   "desc": "Raises to the front for the anterior delts.",
@@ -1441,6 +1456,7 @@
    "Lats"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "incr": 2.5,
   "rest": 45,
   "desc": "Bent-over reverse flys for the neglected rear delts.",
@@ -1483,6 +1499,7 @@
   "name": "Cuban Rotation",
   "muscle": "Deltoids",
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "incr": 2.5,
   "rest": 45,
   "desc": "An external-rotation press that armors the rotator cuff.",
@@ -1693,6 +1710,7 @@
   "name": "Tate Press",
   "muscle": "Triceps",
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "incr": 2.5,
   "rest": 60,
   "desc": "Elbows-out dumbbell extensions to the chest for the lockout.",
@@ -1740,6 +1758,7 @@
    "Forearms"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "incr": 2.5,
   "rest": 60,
   "desc": "Neutral-grip curls that thicken the arm through the brachialis.",
@@ -1756,6 +1775,7 @@
    "Forearms"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "incr": 2.5,
   "rest": 60,
   "desc": "Hammer curls across the torso for brachialis and forearm.",
@@ -1782,6 +1802,7 @@
   "name": "Incline Dumbbell Curl",
   "muscle": "Biceps",
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "incr": 2.5,
   "rest": 60,
   "desc": "Curling from a long stretch behind the body on an incline bench.",
@@ -1848,6 +1869,7 @@
    "Forearms"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "incr": 2.5,
   "rest": 60,
   "desc": "Curl up palms-up, lower palms-down — biceps and forearms in one.",
@@ -2542,6 +2564,7 @@
    "Deltoids"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "An incline fly that stretches the upper chest through a long arc.",
   "steps": [
@@ -2600,6 +2623,7 @@
    "Deltoids"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "A fly on a decline bench, biasing the lower chest fibres.",
   "steps": [
@@ -2763,6 +2787,7 @@
    "Biceps"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "An upright row with dumbbells, letting the wrists find a comfier path.",
   "steps": [
@@ -2921,6 +2946,7 @@
    "Biceps"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "desc": "A chest-supported row on an incline bench — no lower-back involvement.",
   "steps": [
    "Lie chest-down on a 30-degree incline bench with dumbbells hanging.",
@@ -2978,6 +3004,7 @@
    "Forearms"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "A shrug with the load at your sides, so the traps work through a longer range.",
   "steps": [
@@ -3020,6 +3047,7 @@
   "name": "Dumbbell Skull Crusher",
   "muscle": "Triceps",
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "A skull crusher with dumbbells, kinder to the elbows than a fixed bar.",
   "steps": [
@@ -3121,6 +3149,7 @@
    "Forearms"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "The standing dumbbell curl — the plainest biceps builder there is.",
   "steps": [
@@ -3136,6 +3165,7 @@
    "Forearms"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "A seated curl that takes the hips out and stops any swing.",
   "steps": [
@@ -3202,6 +3232,7 @@
    "Glutes"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "desc": "A squat loaded with dumbbells at your sides — no rack required.",
   "steps": [
    "Stand with a dumbbell in each hand at your sides.",
@@ -3329,6 +3360,7 @@
    "Lats"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "desc": "An RDL with dumbbells, letting the weights track close to the legs.",
   "steps": [
    "Hold dumbbells in front of your thighs, knees softly bent.",
@@ -3490,6 +3522,7 @@
   "name": "Dumbbell Standing Calf Raise",
   "muscle": "Calves",
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "A standing calf raise holding dumbbells — no machine required.",
   "steps": [
@@ -3526,6 +3559,7 @@
   "name": "Seated Dumbbell Calf Raise",
   "muscle": "Calves",
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "A seated raise biasing the soleus, using a dumbbell on the knee.",
   "steps": [
@@ -3649,6 +3683,7 @@
   "name": "Incline Dumbbell Shrug",
   "muscle": "Traps",
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "A chest-supported shrug that biases the mid and lower traps.",
   "steps": [
@@ -3725,6 +3760,7 @@
    "Deltoids"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "A raise into a Y overhead that targets the often-neglected lower traps.",
   "steps": [
@@ -3755,6 +3791,7 @@
    "Deltoids"
   ],
   "equipment": "Dumbbell",
+  "loadStyle": "Per Hand",
   "rest": 60,
   "desc": "A chest-supported raise straight out to the sides for the mid traps.",
   "steps": [

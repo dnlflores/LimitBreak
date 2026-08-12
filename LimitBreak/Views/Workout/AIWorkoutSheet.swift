@@ -642,7 +642,7 @@ struct AIWorkoutSheet: View {
         exerciseCount = min(max(exerciseCount, exerciseCountRange.lowerBound), exerciseCountRange.upperBound)
         Haptics.shared.tick()
         let catalog = exercises.map {
-            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType)
+            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType, isPerHand: $0.isPerHand)
         }
         // Only assemble the training context when the lifter has opted in —
         // without it `generatePlan` never reaches for the network.
@@ -698,7 +698,7 @@ struct AIWorkoutSheet: View {
         swappingIndex = index
         Haptics.shared.tick()
         let catalog = exercises.map {
-            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType)
+            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType, isPerHand: $0.isPerHand)
         }
         let existing = Set(current.exercises.map { $0.name.lowercased() })
         let replacement = await WorkoutAI.replaceExercise(

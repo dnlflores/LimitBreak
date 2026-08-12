@@ -27,6 +27,18 @@ struct RootTabView: View {
         }
     }
 
+    /// What the lifter is looking at, in the words they'd use for it — handed
+    /// to the coach so a request like "add a set to this" has a referent.
+    private static func screenName(for tab: Int) -> String {
+        switch tab {
+        case 0:  return "Level"
+        case 1:  return "Train"
+        case 2:  return "History"
+        case 3:  return "Library"
+        default: return "Plan"
+        }
+    }
+
     var body: some View {
         @Bindable var workout = workout
 
@@ -51,6 +63,9 @@ struct RootTabView: View {
         // the phone keeps its bottom bar.
         .modifier(AdaptiveTabViewStyle(isRegular: isRegular))
         .tint(Theme.emerald)
+        // The coach floats above every tab. It clears the phone's bottom tab
+        // bar; on iPad that bar is at the top, so the button sits lower.
+        .coachButton(screen: Self.screenName(for: selectedTab), bottomInset: isRegular ? 24 : 74)
         // Starting a session from anywhere (e.g. tapping a plan day on the Plan
         // tab) should drop the lifter into the Train tab's live logger.
         .onChange(of: workout.activeSession == nil) { _, isIdle in

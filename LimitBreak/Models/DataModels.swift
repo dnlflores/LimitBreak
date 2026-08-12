@@ -113,6 +113,32 @@ enum WeightUnit: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// How the weight a lifter *enters* for a movement relates to the *total* load
+/// they actually move. Barbells, machines and single-arm work are entered as the
+/// whole load (`total`); two-implement movements (a dumbbell in each hand) are
+/// entered per hand, so the real load is doubled (`perHand`). The entered value
+/// is always what's stored; total is derived, so switching this never rewrites
+/// history and applies to past sets immediately.
+enum LoadStyle: String, Codable, CaseIterable, Identifiable {
+    case total = "Total"
+    case perHand = "Per Hand"
+
+    var id: String { rawValue }
+
+    /// What the stored per-hand weight is multiplied by to get the total moved.
+    var multiplier: Double {
+        self == .perHand ? 2 : 1
+    }
+
+    /// One-line explainer for the exercise editor.
+    var blurb: String {
+        switch self {
+        case .total: return "The weight you enter is the whole load — barbell, machine, single-arm."
+        case .perHand: return "You enter one dumbbell's weight; total load counts both hands (×2)."
+        }
+    }
+}
+
 // MARK: - Exercise Model
 
 @Model
@@ -130,6 +156,10 @@ final class Exercise {
     /// The unit this movement's weights are entered and shown in. Defaults to
     /// pounds so existing data (all stored in pounds) is unaffected.
     var weightUnitRaw: String = WeightUnit.pounds.rawValue
+    /// How the entered weight relates to the total load moved (see `LoadStyle`).
+    /// Defaults to `total` so existing movements read exactly as before until
+    /// reclassified as two-implement.
+    var loadStyleRaw: String = LoadStyle.total.rawValue
     var isCustom: Bool = false
     /// Assisted movements (e.g. assisted pull-ups) accept negative weight:
     /// the value is assistance provided, so more negative = easier.
@@ -177,6 +207,7 @@ final class Exercise {
         formula: OneRMFormula = .epley,
         customMetricUnit: String? = nil,
         weightUnit: WeightUnit = .pounds,
+        loadStyle: LoadStyle = .total,
         isCustom: Bool = false,
         isAssisted: Bool = false
     ) {
@@ -191,6 +222,7 @@ final class Exercise {
         self.formulaRaw = formula.rawValue
         self.customMetricUnit = customMetricUnit
         self.weightUnitRaw = weightUnit.rawValue
+        self.loadStyleRaw = loadStyle.rawValue
         self.isCustom = isCustom
         self.isAssisted = isAssisted
         self.createdAt = Date()
@@ -203,6 +235,18 @@ final class Exercise {
         get { WeightUnit(rawValue: weightUnitRaw) ?? .pounds }
         set { weightUnitRaw = newValue.rawValue }
     }
+    var loadStyle: LoadStyle {
+        get { LoadStyle(rawValue: loadStyleRaw) ?? .total }
+        set { loadStyleRaw = newValue.rawValue }
+    }
+
+    /// Factor from the entered per-implement weight to the total load moved: 2
+    /// for two-implement movements, 1 for everything else.
+    var weightMultiplier: Double { loadStyle.multiplier }
+
+    /// Whether the entered weight is a single-implement (per-hand) figure whose
+    /// total counts both hands. Drives the "×2 · total" annotations in the UI.
+    var isPerHand: Bool { loadStyle == .perHand }
 
     /// Whether loads for this movement are a real weight (so a lb/kg unit
     /// applies). Duration, distance and custom-metric movements have their own
@@ -238,6 +282,22 @@ final class Exercise {
     /// Format a canonical pounds value in this movement's unit, e.g. "84".
     func displayWeightString(fromPounds pounds: Double) -> String {
         weightUnit.fromPounds(pounds).cleanWeight
+    }
+
+    /// Format the *total* load for an entered per-implement weight, in this
+    /// movement's unit — the per-hand value scaled by `weightMultiplier`. For
+    /// total-style movements this equals `displayWeightString(fromPounds:)`.
+    func totalWeightString(fromEntered pounds: Double) -> String {
+        displayWeightString(fromPounds: pounds * weightMultiplier)
+    }
+
+    /// Compact "· 100 total" suffix (in this movement's unit) to append after a
+    /// per-hand "weight × reps" string, spelling out the total load moved.
+    /// Empty for total-style movements or a zero load, so callers can append it
+    /// unconditionally.
+    func totalLoadSuffix(fromEntered pounds: Double) -> String {
+        guard isPerHand, pounds != 0 else { return "" }
+        return " · \(totalWeightString(fromEntered: pounds)) total"
     }
 
     /// The primary muscle's UI name — use this anywhere a muscle is shown,
@@ -458,10 +518,18 @@ final class ExerciseSet {
         self.isPR = false
     }
 
-    /// The real load moved: body weight plus added weight for stamped sets
-    /// (assistance is negative added weight), otherwise just the bar weight.
+    /// The total weight moved on this set. For two-implement movements the
+    /// stored `weight` is per hand, so the real load counts both (`× 2`);
+    /// everything else is entered as its whole load and passes through unchanged.
+    var totalWeight: Double {
+        weight * (exercise?.weightMultiplier ?? 1)
+    }
+
+    /// The real load moved: body weight plus the total added weight for stamped
+    /// sets (assistance is negative added weight), otherwise just the total bar/
+    /// implement weight. Volume, estimated 1RM and PR detection all build on this.
     var effectiveLoad: Double {
-        (bodyweightAtTime ?? 0) + weight
+        (bodyweightAtTime ?? 0) + totalWeight
     }
 
     /// Estimated 1RM using the parent exercise's configured formula (Epley by default).

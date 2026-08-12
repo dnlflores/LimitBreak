@@ -87,8 +87,6 @@ enum ClaudeClient {
         as _: Output.Type,
         maxTokens: Int = 16_000
     ) async throws -> Output {
-        guard let apiKey = KeychainStore.apiKey else { throw ClientError.missingKey }
-
         let systemPayload: [[String: Any]] = system.map { block in
             var entry: [String: Any] = ["type": "text", "text": block.text]
             if block.cacheable {
@@ -108,6 +106,31 @@ enum ClaudeClient {
             ],
             "fallbacks": "default",
         ]
+
+        let json = try await send(body: body)
+
+        guard let content = json["content"] as? [[String: Any]],
+              let text = content.first(where: { $0["type"] as? String == "text" })?["text"] as? String,
+              let payload = text.data(using: .utf8)
+        else { throw ClientError.malformedResponse }
+
+        do {
+            return try JSONDecoder().decode(Output.self, from: payload)
+        } catch {
+            throw ClientError.malformedResponse
+        }
+    }
+
+    // MARK: - Transport
+
+    /// Posts one `/v1/messages` body and returns the decoded envelope.
+    ///
+    /// Shared by every caller so the credential, beta header, timeout, and —
+    /// most importantly — the refusal and HTTP error mapping are defined once.
+    /// A second copy of this mapping is how a caller ends up reporting a policy
+    /// decline as a parse failure.
+    static func send(body: [String: Any]) async throws -> [String: Any] {
+        guard let apiKey = KeychainStore.apiKey else { throw ClientError.missingKey }
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -156,17 +179,7 @@ enum ClaudeClient {
             let details = json["stop_details"] as? [String: Any]
             throw ClientError.refused(details?["explanation"] as? String)
         }
-
-        guard let content = json["content"] as? [[String: Any]],
-              let text = content.first(where: { $0["type"] as? String == "text" })?["text"] as? String,
-              let payload = text.data(using: .utf8)
-        else { throw ClientError.malformedResponse }
-
-        do {
-            return try JSONDecoder().decode(Output.self, from: payload)
-        } catch {
-            throw ClientError.malformedResponse
-        }
+        return json
     }
 
     // MARK: - Key verification

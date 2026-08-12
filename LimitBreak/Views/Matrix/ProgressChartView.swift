@@ -54,7 +54,7 @@ struct ProgressChartView: View {
             let week = calendar.dateInterval(of: .weekOfYear, for: session.startDate)!.start
             for set in session.sets where !set.isWarmup {
                 guard let exercise = set.exercise else { continue }
-                let volume = set.weight * Double(set.reps)
+                let volume = set.totalWeight * Double(set.reps)
                 guard volume > 0 else { continue }
                 let focus = Focus(group: exercise.muscleGroup)
                 totals[week, default: [:]][focus, default: 0] += volume

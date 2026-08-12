@@ -249,7 +249,7 @@ private struct ExerciseLogEditor: View {
     private func targetHeadline(_ target: ProgressionTarget) -> String {
         var text = "Aim for \(target.sets)\u{00D7}\(target.targetReps)"
         if let pounds = target.targetWeightPounds, pounds > 0 {
-            text += " \u{00B7} \(exercise.displayWeightString(fromPounds: pounds)) \(exercise.weightUnit.abbreviation)"
+            text += " \u{00B7} \(exercise.displayWeightString(fromPounds: pounds)) \(exercise.weightUnit.abbreviation)\(exercise.totalLoadSuffix(fromEntered: pounds))"
         }
         return text
     }
@@ -352,6 +352,13 @@ private struct ExerciseLogEditor: View {
 
             rowInputs(index)
 
+            if let total = totalLoadCaption(index) {
+                Text(total)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Theme.textDim)
+                    .lineLimit(1)
+            }
+
             Spacer(minLength: 4)
 
             if canDeleteRows {
@@ -412,6 +419,19 @@ private struct ExerciseLogEditor: View {
         Text(symbol)
             .font(.headline)
             .foregroundStyle(Theme.textDim)
+    }
+
+    /// "= 100 lbs" spelling out the total load for a two-implement movement,
+    /// where the entered value is per hand. `drafts.primary` is already in the
+    /// display unit, so the total is just that value scaled by the multiplier.
+    /// Nil for total-style movements, non-weight types, or an empty weight.
+    private func totalLoadCaption(_ index: Int) -> String? {
+        guard exercise.isPerHand,
+              exercise.trackingType == .weightAndReps || exercise.trackingType == .bodyweightAndReps
+        else { return nil }
+        let entered = drafts[index].primary
+        guard entered != 0 else { return nil }
+        return "= \((entered * exercise.weightMultiplier).cleanWeight) \(exercise.weightUnit.abbreviation)"
     }
 
     /// The primary value (weight/duration) editor for a row. Editing a pending

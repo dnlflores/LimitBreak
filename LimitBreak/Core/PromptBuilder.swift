@@ -133,7 +133,10 @@ enum PromptBuilder {
     /// The movement catalog, rendered as the closed set the coach may pick from.
     static func catalogBlock(_ catalog: [ExerciseBrief]) -> String {
         let lines = catalog
-            .map { "- \($0.name) (\($0.muscleGroups.joined(separator: ", ")); \($0.equipment))" }
+            .map { brief in
+                let perHand = brief.isPerHand ? "; per-hand load" : ""
+                return "- \(brief.name) (\(brief.muscleGroups.joined(separator: ", ")); \(brief.equipment)\(perHand))"
+            }
             .joined(separator: "\n")
         return "Movement catalog — the only movements you may use:\n\(lines)"
     }

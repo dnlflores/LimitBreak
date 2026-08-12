@@ -35,8 +35,36 @@ enum JSONExtractor {
     /// object before the real answer, and the plan is whichever candidate
     /// actually looks like a plan. Choosing between them is the caller's job.
     static func scan(_ text: String) -> Outcome {
-        let source = strippingReasoning(text)
+        // The normal path: drop reasoning spans — including a bare orphan
+        // `</think>` — then read the balanced objects that remain.
+        let stripped = balancedObjects(in: strippingReasoning(text))
+        if !stripped.objects.isEmpty { return .found(stripped.objects) }
 
+        // Recovery. `strippingReasoning` treats everything before a bare
+        // `</think>` as reasoning and discards it — right when the real answer
+        // follows the tag, wrong when a model puts its payload *before* the tag
+        // and nothing after it (a tool call or answer object it generated
+        // outside a properly paired block). That would silently drop the whole
+        // reply. When the normal path finds nothing, retry with only *paired*
+        // reasoning removed, which keeps a payload the orphan-close heuristic
+        // would have thrown away. This only ever runs when the strict pass came
+        // up empty, so it can't reintroduce a draft object that a real answer
+        // was meant to supersede.
+        let recovered = balancedObjects(in: removingPairedReasoning(text))
+        if !recovered.objects.isEmpty { return .found(recovered.objects) }
+
+        // Opened but never balanced, or ended inside a string literal.
+        if stripped.depth > 0 || stripped.inString { return .truncated }
+        return .none
+    }
+
+    /// Every balanced top-level `{…}` object in `source`, plus whether a scan
+    /// ended mid-object or mid-string — the signals `scan` turns into a
+    /// truncation diagnosis. String contents are skipped so a brace inside a
+    /// value can't throw off the depth count.
+    private static func balancedObjects(
+        in source: String
+    ) -> (objects: [String], depth: Int, inString: Bool) {
         var objects: [String] = []
         var depth = 0
         var start: String.Index?
@@ -74,10 +102,7 @@ enum JSONExtractor {
             }
         }
 
-        if !objects.isEmpty { return .found(objects) }
-        // Opened but never balanced, or ended inside a string literal.
-        if depth > 0 || inString { return .truncated }
-        return .none
+        return (objects, depth, inString)
     }
 
     /// The first complete JSON object in `text`, or nil if there isn't one.
@@ -109,6 +134,19 @@ enum JSONExtractor {
         for tag in ["think", "thinking", "reasoning", "thought"] {
             result = removingSpans(open: "<\(tag)>", close: "</\(tag)>", in: result)
             result = droppingThroughOrphanClose("</\(tag)>", in: result)
+        }
+        return result
+    }
+
+    /// Removes only *paired* reasoning spans (and an unclosed opener, which is
+    /// genuine reasoning cut short), leaving a bare orphan `</think>` and
+    /// whatever precedes it intact. This is the lenient half of
+    /// `strippingReasoning`, used by `scan`'s recovery pass to keep a payload
+    /// the orphan-close heuristic would otherwise discard.
+    static func removingPairedReasoning(_ text: String) -> String {
+        var result = text
+        for tag in ["think", "thinking", "reasoning", "thought"] {
+            result = removingSpans(open: "<\(tag)>", close: "</\(tag)>", in: result)
         }
         return result
     }

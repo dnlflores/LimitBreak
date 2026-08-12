@@ -19,6 +19,9 @@ enum ExerciseCatalog {
         let formula: String?
         let assisted: Bool?
         let unit: String?
+        /// "Per Hand" for two-implement movements (a dumbbell in each hand);
+        /// omitted / "Total" for everything entered as its whole load.
+        let loadStyle: String?
         let desc: String
         let steps: [String]
     }
@@ -64,6 +67,15 @@ enum ExerciseCatalog {
                     current.trackingTypeRaw = catalogTracking.rawValue
                     changed = true
                 }
+
+                // Backfill the load style so existing installs pick up the
+                // two-implement (per-hand) tagging shipped with this update —
+                // their dumbbell history then reads as total load retroactively.
+                let catalogLoadStyle = entry.loadStyle.flatMap(LoadStyle.init) ?? .total
+                if current.loadStyleRaw != catalogLoadStyle.rawValue {
+                    current.loadStyleRaw = catalogLoadStyle.rawValue
+                    changed = true
+                }
             } else {
                 context.insert(makeExercise(from: entry))
                 changed = true
@@ -83,6 +95,7 @@ enum ExerciseCatalog {
             defaultRestSeconds: entry.rest ?? 90,
             formula: entry.formula.flatMap(OneRMFormula.init) ?? .epley,
             customMetricUnit: entry.unit,
+            loadStyle: entry.loadStyle.flatMap(LoadStyle.init) ?? .total,
             isCustom: false,
             isAssisted: entry.assisted ?? false
         )

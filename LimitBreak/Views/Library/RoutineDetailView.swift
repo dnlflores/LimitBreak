@@ -560,7 +560,7 @@ private struct RoutineItemEditorSheet: View {
         isSwapping = true
         Haptics.shared.tick()
         let briefs = catalog.map {
-            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType)
+            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType, isPerHand: $0.isPerHand)
         }
         let replacementName = await WorkoutAI.replaceExercise(
             focusLabel: item.routine?.focusLabel ?? "",

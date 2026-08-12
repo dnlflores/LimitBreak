@@ -192,7 +192,7 @@ private struct MuscleDetailSheet: View {
                     date: session.startDate,
                     isPrimary: exercise.muscleGroup == group,
                     setCount: working.count,
-                    volume: working.reduce(0) { $0 + $1.weight * Double($1.reps) },
+                    volume: working.reduce(0) { $0 + $1.totalWeight * Double($1.reps) },
                     prCount: working.filter(\.isPR).count
                 ))
             }

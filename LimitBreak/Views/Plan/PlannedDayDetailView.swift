@@ -359,6 +359,7 @@ private struct PlanExerciseEditorSheet: View {
     @State private var reps: Int
     @State private var weight: Double
     @State private var isSwapping = false
+    @State private var showManualPicker = false
     @State private var showHowTo = false
 
     init(item: RoutineItem, catalog: [Exercise]) {
@@ -398,6 +399,7 @@ private struct PlanExerciseEditorSheet: View {
                         }
 
                         swapButton
+                        manualReplaceButton
                         removeButton
                     }
                     .padding()
@@ -413,6 +415,14 @@ private struct PlanExerciseEditorSheet: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") { save() }
                         .fontWeight(.semibold)
+                }
+            }
+            .sheet(isPresented: $showManualPicker) {
+                ExercisePickerSheet { replacement in
+                    Task {
+                        await workout.setRoutineItemExercise(item, to: replacement)
+                        dismiss()
+                    }
                 }
             }
         }
@@ -552,6 +562,29 @@ private struct PlanExerciseEditorSheet: View {
         .disabled(isSwapping)
     }
 
+    /// Manual counterpart to the AI swap: pick any movement from the catalog to
+    /// slot in, keeping the AI out of the loop.
+    private var manualReplaceButton: some View {
+        Button {
+            Haptics.shared.tick()
+            showManualPicker = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                Text("REPLACE MANUALLY")
+                    .font(.subheadline.weight(.semibold))
+                    .kerning(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .foregroundStyle(Theme.emerald)
+            .glassControl()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isSwapping)
+    }
+
     private var removeButton: some View {
         Button(role: .destructive) {
             workout.removeRoutineItem(item)
@@ -584,7 +617,7 @@ private struct PlanExerciseEditorSheet: View {
         isSwapping = true
         Haptics.shared.tick()
         let briefs = catalog.map {
-            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType)
+            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType, isPerHand: $0.isPerHand)
         }
         let replacementName = await WorkoutAI.replaceExercise(
             focusLabel: item.routine?.focusLabel ?? "",

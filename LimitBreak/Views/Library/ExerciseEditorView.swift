@@ -20,6 +20,7 @@ struct ExerciseEditorView: View {
     @State private var restSeconds = 90
     @State private var formula: OneRMFormula = .epley
     @State private var weightUnit: WeightUnit = .pounds
+    @State private var loadStyle: LoadStyle = .total
     @State private var customUnit = ""
     @State private var isAssisted = false
     @State private var guideDescription = ""
@@ -41,6 +42,7 @@ struct ExerciseEditorView: View {
         _restSeconds = State(initialValue: exercise.defaultRestSeconds)
         _formula = State(initialValue: exercise.formula)
         _weightUnit = State(initialValue: exercise.weightUnit)
+        _loadStyle = State(initialValue: exercise.loadStyle)
         _customUnit = State(initialValue: exercise.customMetricUnit ?? "")
         _isAssisted = State(initialValue: exercise.isAssisted)
         _guideDescription = State(initialValue: exercise.exerciseDescription ?? "")
@@ -322,6 +324,26 @@ struct ExerciseEditorView: View {
                         }
                     }
                 }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    fieldLabel("Loading")
+                    HStack(spacing: 8) {
+                        ForEach(LoadStyle.allCases) { style in
+                            chip(
+                                style == .perHand ? "Per hand (×2)" : "Total",
+                                isSelected: loadStyle == style,
+                                tint: Theme.emerald,
+                                fillWidth: true
+                            ) {
+                                loadStyle = style
+                            }
+                        }
+                    }
+                    Text(loadStyle.blurb)
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textDim)
+                        .animation(nil, value: loadStyle)
+                }
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -549,6 +571,7 @@ struct ExerciseEditorView: View {
             exercise.formulaRaw = formula.rawValue
             exercise.customMetricUnit = unit
             exercise.weightUnit = weightUnit
+            exercise.loadStyle = loadStyle
             exercise.isAssisted = isAssisted
             target = exercise
         } else {
@@ -563,6 +586,7 @@ struct ExerciseEditorView: View {
                 formula: formula,
                 customMetricUnit: unit,
                 weightUnit: weightUnit,
+                loadStyle: loadStyle,
                 isCustom: true,
                 isAssisted: isAssisted
             )

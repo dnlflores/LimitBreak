@@ -88,12 +88,24 @@ final class WorkoutManager {
         set.bodyweightAtTime = currentBodyWeight
     }
 
-    // Rest timer
-    var restRemaining: TimeInterval = 0
+    // Rest timer — deadline-based so the countdown stays correct across an app
+    // background, a screen lock, or the watch sleeping. `restEndsAt` is the
+    // single source of truth; `restRemaining` is a mirror recomputed from it
+    // each tick purely so the @Observable UI refreshes every second. A
+    // decrementing counter (the old approach) freezes whenever the run loop
+    // suspends and resumes showing more time than really remains.
+    /// Wall-clock end of the current rest period, or nil when not resting. Read
+    /// by the watch and Live Activity to render an absolute, sleep-proof
+    /// countdown.
+    var restEndsAt: Date?
     var restTotal: TimeInterval = 0
+    private(set) var restRemaining: TimeInterval = 0
     private var restTimer: Timer?
 
-    var isResting: Bool { restRemaining > 0 }
+    var isResting: Bool {
+        guard let restEndsAt else { return false }
+        return restEndsAt.timeIntervalSinceNow > 0
+    }
 
     init(context: ModelContext) {
         self.context = context
@@ -829,41 +841,65 @@ final class WorkoutManager {
 
     // MARK: - Rest timer
 
-    /// Wall-clock end of the current rest period, for countdown rendering on
-    /// the watch and in the Live Activity.
-    var restEndsAt: Date? {
-        isResting ? Date().addingTimeInterval(restRemaining) : nil
-    }
-
     func startRest(seconds: TimeInterval) {
-        restTimer?.invalidate()
         restTotal = seconds
+        restEndsAt = Date().addingTimeInterval(seconds)
         restRemaining = seconds
-        restTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.restRemaining -= 1
-                if self.restRemaining <= 0 {
-                    self.stopRest()
-                    Haptics.shared.success()
-                }
-            }
-        }
+        scheduleRestTicks()
     }
 
     func addRest(seconds: TimeInterval) {
-        guard isResting else { return }
-        restRemaining += seconds
+        guard let restEndsAt else { return }
+        let extended = restEndsAt.addingTimeInterval(seconds)
+        self.restEndsAt = extended
+        restRemaining = max(0, extended.timeIntervalSinceNow)
         restTotal = max(restTotal, restRemaining)
+        // Push the new deadline so the watch and Live Activity extend too — the
+        // old counter-based version left them showing the original end.
+        SessionSync.shared.broadcast(from: self)
     }
 
     func stopRest() {
         let wasResting = isResting
         restTimer?.invalidate()
         restTimer = nil
+        restEndsAt = nil
         restRemaining = 0
         restTotal = 0
         if wasResting { SessionSync.shared.broadcast(from: self) }
+    }
+
+    /// Recomputes the countdown against the wall clock, ending it if the
+    /// deadline has passed. Call when the app returns to the foreground: the
+    /// tick timer is suspended while backgrounded, so `restRemaining` is stale
+    /// until this runs — without it, a rest that elapsed off-screen would still
+    /// show time left for a beat after returning.
+    func refreshRest() {
+        guard restEndsAt != nil else { return }
+        tickRest()
+    }
+
+    /// Drives the on-screen countdown once a second. It doesn't *hold* the time
+    /// — it reads it — so a missed tick (backgrounded, scrolling) only delays
+    /// the refresh, never the truth. Added in `.common` mode so it keeps firing
+    /// while the lifter scrolls the logging screen.
+    private func scheduleRestTicks() {
+        restTimer?.invalidate()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.tickRest() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        restTimer = timer
+    }
+
+    private func tickRest() {
+        guard let restEndsAt else { return }
+        let remaining = max(0, restEndsAt.timeIntervalSinceNow)
+        restRemaining = remaining
+        if remaining <= 0 {
+            stopRest()
+            Haptics.shared.success()
+        }
     }
 
     // MARK: - Routines (saved curations)
@@ -1104,12 +1140,19 @@ final class WorkoutManager {
         Haptics.shared.success()
     }
 
-    /// Appends an exercise to a routine as a new slot at the end of the order.
+    /// Appends an exercise to a routine as a new slot at the end of the order,
+    /// grounding its reps/load in the movement's own history via the progression
+    /// algorithm — so a manually added slot opens with the same informed numbers
+    /// an AI-swapped one carries instead of a blank prescription.
     func addExercise(_ exercise: Exercise, to routine: Routine, targetSets: Int = 3) {
         guard !routine.items.contains(where: { $0.exercise?.id == exercise.id }) else { return }
         let order = (routine.items.map(\.order).max() ?? -1) + 1
         let item = RoutineItem(order: order, targetSets: targetSets, exercise: exercise)
         item.routine = routine
+        if let target = progressionTarget(for: exercise) {
+            item.targetReps = target.targetReps
+            item.targetWeight = (target.targetWeightPounds ?? 0) > 0 ? target.targetWeightPounds : nil
+        }
         context.insert(item)
         routine.plannedDay?.plan?.updatedAt = Date()
         try? context.save()

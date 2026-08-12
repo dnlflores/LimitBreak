@@ -51,7 +51,7 @@ enum MuscleRecovery {
                 for group in exercise.allMuscleGroups {
                     var status = result[group] ?? MuscleStatus(group: group)
                     status.weeklySets += 1
-                    status.weeklyVolume += set.weight * Double(set.reps)
+                    status.weeklyVolume += set.totalWeight * Double(set.reps)
                     if status.lastTrained.map({ set.timestamp > $0 }) ?? true {
                         status.lastTrained = set.timestamp
                     }

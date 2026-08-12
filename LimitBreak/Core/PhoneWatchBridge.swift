@@ -86,7 +86,7 @@ final class PhoneWatchBridge: NSObject, WCSessionDelegate {
         guard !all.isEmpty else { return }
 
         let catalog = all.map {
-            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType)
+            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType, isPerHand: $0.isPerHand)
         }
         let plan = await WorkoutAI.generatePlan(
             focusLabel: "Full Body",

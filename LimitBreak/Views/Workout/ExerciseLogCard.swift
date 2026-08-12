@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 /// Compact, image-forward session card for one movement.
 ///
@@ -9,6 +10,8 @@ import SwiftUI
 /// superset-building the whole surface becomes a selection checkbox instead.
 struct ExerciseLogCard: View {
     @Environment(WorkoutManager.self) private var workout
+    /// Full catalog, so an AI swap has a pool to pick a replacement from.
+    @Query(sort: \Exercise.name) private var allExercises: [Exercise]
     let exercise: Exercise
     /// Drag handle for reordering the session's exercises, supplied by the
     /// enclosing `ReorderableVStack`.
@@ -27,6 +30,9 @@ struct ExerciseLogCard: View {
 
     @State private var showReplacePicker = false
     @State private var showRemoveConfirmation = false
+    /// True while an AI replacement is in flight — dims the card with a spinner
+    /// since the context menu closes before the swap lands.
+    @State private var isSwappingAI = false
     /// The progressive-overload target for this movement, resolved once when the
     /// card appears — drives the summary's rep range and working weight.
     @State private var target: ProgressionTarget?
@@ -54,6 +60,15 @@ struct ExerciseLogCard: View {
             // while the card beneath is disabled during superset building.
             .overlay {
                 if isSelecting { selectionOverlay }
+            }
+            // A dim + spinner while the AI picks a replacement, since the context
+            // menu dismisses the moment the swap is triggered.
+            .overlay {
+                if isSwappingAI {
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(.black.opacity(0.35))
+                        .overlay(ProgressView().tint(Theme.violet))
+                }
             }
             .onAppear { if target == nil { target = workout.progressionTarget(for: exercise) } }
         .sheet(isPresented: $showReplacePicker) {
@@ -98,10 +113,15 @@ struct ExerciseLogCard: View {
         .buttonStyle(.plain)
         .contextMenu {
             Button {
+                Task { await swapWithAI() }
+            } label: {
+                Label("Replace with AI", systemImage: "sparkles")
+            }
+            Button {
                 Haptics.shared.tick()
                 showReplacePicker = true
             } label: {
-                Label("Replace", systemImage: "arrow.triangle.2.circlepath")
+                Label("Replace Manually", systemImage: "arrow.triangle.2.circlepath")
             }
             if workout.supersetTag(for: exercise) != nil {
                 Button {
@@ -273,10 +293,35 @@ struct ExerciseLogCard: View {
             let sign = pounds > 0 ? "+" : ""
             return "BW\(sign)\(exercise.displayWeightString(fromPounds: pounds))"
         }
-        return "\(exercise.displayWeightString(fromPounds: pounds)) \(exercise.weightUnit.abbreviation)"
+        return "\(exercise.displayWeightString(fromPounds: pounds)) \(exercise.weightUnit.abbreviation)\(exercise.totalLoadSuffix(fromEntered: pounds))"
     }
 
     private var lastWorkingSet: ExerciseSet? {
         exercise.sets.filter { !$0.isWarmup }.max(by: { $0.timestamp < $1.timestamp })
+    }
+
+    // MARK: - AI replacement
+
+    /// Asks the AI for one on-muscle replacement from the catalog — excluding the
+    /// movements already in this session — and swaps it into the live session.
+    private func swapWithAI() async {
+        isSwappingAI = true
+        Haptics.shared.tick()
+        let briefs = allExercises.map {
+            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType, isPerHand: $0.isPerHand)
+        }
+        let existing = Set(workout.sessionExercises.map { $0.name.lowercased() })
+        let replacementName = await WorkoutAI.replaceExercise(
+            focusLabel: workout.activeSession?.name ?? "",
+            targetMuscleGroups: exercise.allMuscleGroups.map(\.rawValue),
+            replacing: exercise.name,
+            excluding: existing,
+            catalog: briefs
+        )
+        isSwappingAI = false
+        guard let replacementName,
+              let replacement = allExercises.first(where: { $0.name.lowercased() == replacementName.lowercased() })
+        else { return }
+        workout.replaceExercise(exercise, with: replacement)
     }
 }

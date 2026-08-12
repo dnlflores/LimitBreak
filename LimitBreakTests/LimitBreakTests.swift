@@ -2227,3 +2227,86 @@ struct SupersetSessionTests {
         }
     }
 }
+
+// MARK: - Load style (single-implement vs. total weight)
+
+struct LoadStyleTests {
+
+    @MainActor
+    private func makeContext() throws -> (ModelContainer, ModelContext) {
+        let schema = Schema([Exercise.self, WorkoutSession.self, ExerciseSet.self,
+                             PRRecord.self, Walk.self, Activity.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+        )
+        return (container, container.mainContext)
+    }
+
+    @Test @MainActor func totalWeightDoublesForPerHand() throws {
+        let (container, context) = try makeContext()
+        let db = Exercise(name: "Flat Dumbbell Press", muscleGroup: "Chest", loadStyle: .perHand)
+        let bar = Exercise(name: "Bench Press", muscleGroup: "Chest", loadStyle: .total)
+        [db, bar].forEach(context.insert)
+
+        let dbSet = ExerciseSet(weight: 50, reps: 8); dbSet.exercise = db
+        let barSet = ExerciseSet(weight: 185, reps: 5); barSet.exercise = bar
+        [dbSet, barSet].forEach(context.insert)
+
+        #expect(dbSet.totalWeight == 100)     // 50 per hand -> 100 total
+        #expect(barSet.totalWeight == 185)    // total-style passes through
+        #expect(db.weightMultiplier == 2)
+        #expect(bar.weightMultiplier == 1)
+        withExtendedLifetime(container) {}
+    }
+
+    @Test @MainActor func effectiveLoadAndOneRepMaxUseTotal() throws {
+        let (container, context) = try makeContext()
+        let db = Exercise(name: "Curl", muscleGroup: "Biceps", formula: .epley, loadStyle: .perHand)
+        context.insert(db)
+        let set = ExerciseSet(weight: 30, reps: 10); set.exercise = db
+        context.insert(set)
+
+        #expect(set.effectiveLoad == 60)
+        // Epley on the *total* load, not the per-hand entry.
+        #expect(set.estimatedOneRepMax == 60 * (1 + 10.0 / 30.0))
+        withExtendedLifetime(container) {}
+    }
+
+    @Test @MainActor func sessionVolumeCountsTotalLoad() throws {
+        let (container, context) = try makeContext()
+        let db = Exercise(name: "Shoulder Press", muscleGroup: "Deltoids", loadStyle: .perHand)
+        context.insert(db)
+        let session = WorkoutSession(name: "Push")
+        context.insert(session)
+        let set = ExerciseSet(weight: 40, reps: 10)
+        set.exercise = db
+        set.session = session
+        context.insert(set)
+
+        // 40 per hand -> 80 total, x10 reps = 800.
+        #expect(session.totalVolume == 800)
+        withExtendedLifetime(container) {}
+    }
+
+    @Test @MainActor func totalWeightStringConvertsUnits() throws {
+        let (container, context) = try makeContext()
+        let lbs = Exercise(name: "DB Row", muscleGroup: "Lats", weightUnit: .pounds, loadStyle: .perHand)
+        let kg = Exercise(name: "DB Fly", muscleGroup: "Chest", weightUnit: .kilograms, loadStyle: .perHand)
+        [lbs, kg].forEach(context.insert)
+
+        // 50 lb per hand -> 100 lb total.
+        #expect(lbs.totalWeightString(fromEntered: 50) == "100")
+        #expect(lbs.totalLoadSuffix(fromEntered: 50) == " · 100 total")
+
+        // A per-hand kg movement: 50 canonical lb per hand -> 100 lb total, then
+        // shown in kg. The total string equals the doubled load converted to kg.
+        #expect(kg.totalWeightString(fromEntered: 50) == kg.displayWeightString(fromPounds: 100))
+        #expect(kg.displayWeightString(fromPounds: 100) == (100.0 / 2.2046226218).cleanWeight)
+
+        // Total-style movement emits no suffix.
+        let bar = Exercise(name: "Squat", muscleGroup: "Quads", loadStyle: .total)
+        #expect(bar.totalLoadSuffix(fromEntered: 225) == "")
+        withExtendedLifetime(container) {}
+    }
+}

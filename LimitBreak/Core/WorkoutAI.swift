@@ -9,6 +9,10 @@ struct ExerciseBrief {
     let name: String
     let muscleGroups: [String]
     let equipment: String
+    /// Whether the movement is loaded one implement per hand, so the numbers the
+    /// lifter enters and the coach reasons about are per hand (total is ×2).
+    /// Defaults to false so existing call sites are unaffected.
+    var isPerHand: Bool = false
 }
 
 /// The full prescription for one movement — only the cloud coach produces

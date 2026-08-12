@@ -19,7 +19,7 @@ enum PlanBuilding {
         profile: TrainingProfile?
     ) async -> (title: String, items: [WorkoutManager.RoutineDraftItem])? {
         let catalog = exercises.map {
-            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType)
+            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType, isPerHand: $0.isPerHand)
         }
         // Only assemble the training context when the lifter has opted into
         // cloud AI — without it `generatePlan` stays fully on-device.

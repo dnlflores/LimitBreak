@@ -10,6 +10,7 @@ import SwiftData
 struct LimitBreakApp: App {
     let container: ModelContainer
     @State private var workout: WorkoutManager
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let schema = LimitBreakSchema.all
@@ -72,5 +73,10 @@ struct LimitBreakApp: App {
             .onAppear { KeyboardDismisser.install() }
         }
         .modelContainer(container)
+        // Returning to the foreground reconciles the rest countdown with the
+        // wall clock, since its tick timer is suspended while backgrounded.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { workout.refreshRest() }
+        }
     }
 }

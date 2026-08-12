@@ -265,7 +265,7 @@ struct RoutineEditorView: View {
         swappingID = id
         Haptics.shared.tick()
         let catalog = allExercises.map {
-            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType)
+            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType, isPerHand: $0.isPerHand)
         }
         let excluding = Set(items.map { $0.exercise.name.lowercased() })
         let replacementName = await WorkoutAI.replaceExercise(
@@ -376,7 +376,21 @@ struct RoutineEditorView: View {
 
     private func addExercise(_ exercise: Exercise) {
         guard !items.contains(where: { $0.exercise.id == exercise.id }) else { return }
-        items.append(DraftItem(exercise: exercise, targetSets: 3))
+        let draft = DraftItem(exercise: exercise, targetSets: 3)
+        items.append(draft)
+        // Ground the new slot's sets/reps/load in the movement's own history (AI
+        // when available, deterministic progression otherwise), matching the
+        // numbers an AI-swapped slot carries. The slot appears immediately; its
+        // targets fill in a moment later once resolved.
+        Task {
+            guard let rx = await workout.aiTargets(for: exercise),
+                  let slot = items.firstIndex(where: { $0.id == draft.id }) else { return }
+            withAnimation(.spring(duration: 0.3)) {
+                items[slot].targetSets = max(1, rx.sets)
+                items[slot].targetReps = rx.targetReps
+                items[slot].targetWeight = (rx.targetWeightPounds ?? 0) > 0 ? rx.targetWeightPounds : nil
+            }
+        }
     }
 
     /// Replaces the current draft with an AI-generated plan, mapping planned
@@ -567,7 +581,7 @@ struct RoutineAIGeneratorSheet: View {
         isGenerating = true
         Haptics.shared.tick()
         let briefs = catalog.map {
-            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType)
+            ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType, isPerHand: $0.isPerHand)
         }
         let plan = await WorkoutAI.generatePlan(
             focusLabel: focus.label,

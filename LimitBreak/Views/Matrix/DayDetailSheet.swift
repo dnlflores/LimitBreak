@@ -228,7 +228,7 @@ struct DayDetailSheet: View {
             break
         }
         return set.weight > 0
-            ? "\(exercise.displayWeightString(fromPounds: set.weight)) \(exercise.weightUnit.abbreviation) × \(set.reps)"
+            ? "\(exercise.displayWeightString(fromPounds: set.weight)) \(exercise.weightUnit.abbreviation) × \(set.reps)\(exercise.totalLoadSuffix(fromEntered: set.weight))"
             : "\(set.reps) reps"
     }
 

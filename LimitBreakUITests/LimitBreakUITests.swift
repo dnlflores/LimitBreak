@@ -145,4 +145,65 @@ final class LimitBreakUITests: XCTestCase {
         searchField.typeText("Landmine Belt")
         XCTAssertTrue(app.staticTexts["Landmine Belt Squat"].waitForExistence(timeout: 5))
     }
+
+    /// The coach is reachable from every tab, and its chat opens over whatever
+    /// the lifter was looking at. Captures the empty state for review.
+    @MainActor
+    func testCoachOpensFromEveryTab() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-skip-splash", "-in-memory-store"]
+        app.launch()
+
+        let coachButton = app.buttons["Ask your coach"]
+        XCTAssertTrue(coachButton.waitForExistence(timeout: 5))
+        coachButton.tap()
+
+        XCTAssertTrue(app.navigationBars["Coach"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts["Ask for a workout, or tell me what to change."]
+                .waitForExistence(timeout: 3)
+        )
+
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "coach-empty-state"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        app.buttons["Done"].tap()
+
+        // The button floats above the tab content rather than belonging to one
+        // screen, so it survives a tab change.
+        let libraryTab = app.buttons["Library"]
+        XCTAssertTrue(libraryTab.waitForExistence(timeout: 5))
+        libraryTab.tap()
+        XCTAssertTrue(coachButton.waitForExistence(timeout: 5))
+        coachButton.tap()
+        XCTAssertTrue(app.navigationBars["Coach"].waitForExistence(timeout: 5))
+    }
+
+    /// With no coach configured, the chat says so instead of offering prompts
+    /// that would fail — the empty state is the only place that difference is
+    /// visible before a message is sent.
+    @MainActor
+    func testCoachExplainsItselfWithNoBackend() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-skip-splash", "-in-memory-store"]
+        app.launch()
+
+        let coachButton = app.buttons["Ask your coach"]
+        XCTAssertTrue(coachButton.waitForExistence(timeout: 5))
+        coachButton.tap()
+        XCTAssertTrue(app.navigationBars["Coach"].waitForExistence(timeout: 5))
+
+        // Exactly one of these is true: a tier is available and the starter
+        // prompts show, or none is and the setup hint does.
+        let prompt = app.buttons["Build me a push workout for today"]
+        let hint = app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS[c] %@", "AI coaching in Settings")
+        ).firstMatch
+        XCTAssertTrue(
+            prompt.waitForExistence(timeout: 3) || hint.waitForExistence(timeout: 3),
+            "Coach empty state showed neither starter prompts nor a setup hint"
+        )
+    }
 }

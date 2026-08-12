@@ -307,7 +307,7 @@ private struct PlanExerciseCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ExerciseImageBanner(exercise: exercise, height: 140)
+            ExerciseVisual(exercise: exercise, height: 140)
             infoSection
         }
         .background(.ultraThinMaterial)
@@ -377,7 +377,7 @@ private struct PlanExerciseEditorSheet: View {
             ScrollView {
                 VStack(spacing: 0) {
                     if let exercise {
-                        ExerciseImageBanner(exercise: exercise, height: 200, blendsIntoBackground: true)
+                        ExerciseVisual(exercise: exercise, height: 200, blendsIntoBackground: true)
                             .overlay(alignment: .bottomLeading) {
                                 MuscleBadge(exercise: exercise)
                                     .padding(.horizontal, 16)

@@ -101,7 +101,7 @@ struct ExerciseLogCard: View {
             onOpen?()
         } label: {
             VStack(spacing: 0) {
-                ExerciseImageBanner(exercise: exercise, height: 150)
+                ExerciseVisual(exercise: exercise, height: 150)
                 infoSection
             }
             .background(.ultraThinMaterial)

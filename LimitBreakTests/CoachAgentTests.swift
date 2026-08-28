@@ -238,6 +238,37 @@ struct CoachToolCatalogTests {
         let compact = CoachPrompt.textToolContract(tools: tools, compact: true).count
         #expect(compact * 2 < full, "compact contract is \(compact) vs full \(full)")
     }
+
+    /// Every tier offers every tool. The on-device tier used to withhold four
+    /// of them for context reasons, which measured wrong: against the compact
+    /// contract those four cost less than the two largest tools it kept. A tool
+    /// that reaches one tier and not another is a capability the lifter has to
+    /// remember the shape of, so parity is the invariant rather than a
+    /// coincidence — narrowing it again should have to break this test.
+    @Test func onDeviceOffersTheWholeCatalog() {
+        let offered = OnDeviceCoachBackend.availableTools(from: CoachTool.catalog)
+        #expect(offered.count == CoachTool.catalog.count)
+        for tool in CoachTool.catalog {
+            #expect(offered.contains { $0.name == tool.name }, "on-device is missing \(tool.name)")
+        }
+    }
+
+    /// The measurement behind the parity above, pinned so it stays true as the
+    /// catalog grows. The previously-omitted four are not the expensive ones:
+    /// each is smaller than the largest tool the tier always offered.
+    @Test func previouslyOmittedToolsAreNotTheCostliest() {
+        let formerlyOmitted = ["create_exercise", "update_profile", "set_plan_day", "clear_plan_day"]
+        let largestKept = CoachTool.catalog
+            .filter { !formerlyOmitted.contains($0.name) }
+            .map(\.compactTextContract.count)
+            .max() ?? 0
+
+        for name in formerlyOmitted {
+            let cost = CoachTool.named(name)?.compactTextContract.count ?? 0
+            #expect(cost > 0, "\(name) is missing from the catalog")
+            #expect(cost <= largestKept, "\(name) costs \(cost), above the largest always-kept tool at \(largestKept)")
+        }
+    }
 }
 
 struct ClaudeCoachWireFormatTests {

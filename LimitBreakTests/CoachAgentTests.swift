@@ -521,7 +521,7 @@ struct OnDeviceCoachParsingTests {
     /// reaches the lifter instead of the turn dying on a bad name.
     @Test func unofferedToolFallsBackToProse() {
         let reply = OnDeviceCoachBackend.Reply(
-            tool: "update_profile", // deliberately withheld on-device
+            tool: "reticulate_splines", // not a tool that exists
             arguments: "{}",
             reply: "You'd change that in Settings.",
             suggestions: []
@@ -531,15 +531,18 @@ struct OnDeviceCoachParsingTests {
         #expect(turn.reply?.message == "You'd change that in Settings.")
     }
 
-    /// The on-device set is narrowed for context, but everything needed to read
-    /// training and build, edit, and start a workout has to survive the cut.
-    @Test func narrowedSetKeepsTheEssentials() {
+    /// The on-device tier offers the whole catalog, so a spot-check of the
+    /// movement-critical tools should find every one of them. This guards the
+    /// same property `onDeviceOffersTheWholeCatalog` states in general: if the
+    /// tier is ever narrowed again, the essentials must still survive the cut.
+    @Test func onDeviceKeepsTheEssentials() {
         let names = Set(tools.map(\.name))
         for essential in ["search_exercises", "get_muscle_fatigue", "create_routine",
-                          "generate_workout", "start_workout", "add_exercise_to_routine"] {
+                          "generate_workout", "start_workout", "add_exercise_to_routine",
+                          "update_profile", "create_exercise", "set_plan_day", "clear_plan_day"] {
             #expect(names.contains(essential), "on-device lost \(essential)")
         }
-        #expect(names.count < CoachTool.catalog.count)
+        #expect(names.count == CoachTool.catalog.count)
     }
 }
 

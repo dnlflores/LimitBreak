@@ -1105,6 +1105,28 @@ final class WorkoutManager {
         try? context.save()
     }
 
+    /// Swaps the movement behind a routine slot for another, keeping the slot's
+    /// position, set count and superset pairing, and re-grounding its rep/load
+    /// targets in the new movement's own history via the deterministic
+    /// progression algorithm.
+    ///
+    /// The synchronous counterpart to `setRoutineItemExercise`, which routes
+    /// through the AI. Used by the plan shuffle, where dozens of slots are
+    /// swapped at once and a model call per slot would turn an instant action
+    /// into a minute of spinner.
+    func swapRoutineItemExercise(_ item: RoutineItem, to exercise: Exercise) {
+        item.exercise = exercise
+        if let target = progressionTarget(for: exercise) {
+            item.targetReps = target.targetReps
+            item.targetWeight = (target.targetWeightPounds ?? 0) > 0 ? target.targetWeightPounds : nil
+        } else {
+            item.targetReps = nil
+            item.targetWeight = nil
+        }
+        item.routine?.plannedDay?.plan?.updatedAt = Date()
+        try? context.save()
+    }
+
     /// Stamps a plan as shuffled for the current calendar week, so the automatic
     /// weekly roll fires once and not on every visit to the Plan tab.
     func markPlanShuffled(_ plan: WeeklyPlan, now: Date = Date(), calendar: Calendar = .current) {

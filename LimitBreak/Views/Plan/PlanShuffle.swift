@@ -1,145 +1,162 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Catalog thinning
+// MARK: - Composition-preserving shuffle
 
-/// Weekly re-rolling of the plan's workouts.
+/// Re-rolls the plan's workouts without changing what each day trains.
 ///
 /// The plan builder generates each day once and then persists that routine
-/// forever, so the same week repeats until the lifter rebuilds by hand. This
-/// re-runs the *existing* generation pipeline per training day, keeping the
-/// lifter's chosen weekdays, focuses, exercise count, duration, partner and
-/// superset settings — only the movement selection changes.
+/// forever, so the same week repeats until the lifter rebuilds by hand.
 ///
-/// Variety is not left to chance. Both generator tiers already pick from a
-/// catalog (`WorkoutAI.focusedCatalog` for the on-device model, `fallbackPlan`
-/// for the deterministic tier), so the cheapest honest way to force a different
-/// week is to hide last week's movements from that catalog before generating.
-/// No prompt engineering, no seeded RNG, no second code path.
+/// A shuffle swaps **each slot individually for a different movement with the
+/// same primary muscle group**, keeping the day's muscle composition exactly
+/// intact. A day built as one biceps, one triceps, one chest, one back and one
+/// shoulder movement comes back as one of each — different exercises, same
+/// shape. Set count, slot order and superset pairing are preserved too; only
+/// the movement changes, and its rep/load targets are re-grounded in that
+/// movement's own history.
+///
+/// This is deliberately *not* a re-run of the AI day generator. The generator
+/// only targets a focus's muscle-group set, so regenerating a Push day could
+/// legitimately return three chest movements and two triceps — a valid Push
+/// day, but not the day the lifter programmed. Slot-wise swapping is the only
+/// approach that guarantees composition survives.
 enum PlanShuffle {
 
-    /// Removes recently-used movements from the catalog handed to the generator,
-    /// so the next roll cannot simply re-pick the same week.
-    ///
-    /// The exclusion is advisory: if hiding those names would leave too few
-    /// movements that still hit the focus, the full catalog is returned instead.
-    /// A thin, technically-fresh workout is worse than a repeated good one —
-    /// this is a variety feature, not a correctness one.
-    ///
-    /// - Parameters:
-    ///   - catalog: Every movement available to the generator.
-    ///   - avoiding: Movement names used by the plan being replaced (case-insensitive).
-    ///   - targetMuscleGroups: The day's focus muscles. Empty (Full Body) means
-    ///     every remaining movement counts as a match.
-    ///   - minimumMatches: How many focus-matching movements must survive for the
-    ///     thinned catalog to be considered usable.
-    static func thinnedCatalog(
-        _ catalog: [ExerciseBrief],
-        avoiding: Set<String>,
-        targetMuscleGroups: [String],
-        minimumMatches: Int
-    ) -> [ExerciseBrief] {
-        guard !avoiding.isEmpty else { return catalog }
-        let excluded = Set(avoiding.map { $0.lowercased() })
-        let remaining = catalog.filter { !excluded.contains($0.name.lowercased()) }
+    /// The minimum a shuffle needs to know about a movement: its name and its
+    /// primary muscle group. Keeps the selection logic free of SwiftData so it
+    /// can be tested directly.
+    struct Candidate: Equatable {
+        let name: String
+        /// Primary muscle group only. Secondaries are ignored on purpose — a
+        /// movement's *primary* is what makes it "the biceps slot", and matching
+        /// on secondaries too would let a chest press fill a triceps slot.
+        let primaryMuscle: String
 
-        let targets = Set(targetMuscleGroups.map { $0.lowercased() })
-        let matches: Int
-        if targets.isEmpty {
-            matches = remaining.count
-        } else {
-            matches = remaining.filter { brief in
-                brief.muscleGroups.contains { targets.contains($0.lowercased()) }
-            }.count
+        init(name: String, primaryMuscle: String) {
+            self.name = name
+            self.primaryMuscle = primaryMuscle
         }
-        return matches >= minimumMatches ? remaining : catalog
     }
 
-    /// The movement names currently programmed across the whole plan — what a
-    /// re-roll tries to avoid. Taken week-wide rather than per day so a Push day
-    /// doesn't simply inherit the bench press that Monday's Upper day just lost.
+    /// Picks a replacement for one slot: a different movement whose primary
+    /// muscle group matches the slot's.
+    ///
+    /// Selection runs in tiers, so variety never costs correctness:
+    /// 1. A matching movement used nowhere else in the week — the ideal roll.
+    /// 2. Failing that, any matching movement not already in *this day*, so a
+    ///    day can never end up with the same exercise twice.
+    /// 3. Failing that, `nil` — the caller keeps the current movement. A muscle
+    ///    group with only one exercise in the library simply doesn't shuffle;
+    ///    that is far better than dropping the slot or substituting the wrong
+    ///    muscle to manufacture the appearance of change.
+    ///
+    /// - Parameters:
+    ///   - primaryMuscle: The muscle group the slot must keep.
+    ///   - current: The movement currently in the slot, never returned.
+    ///   - candidates: Every movement in the library.
+    ///   - usedInDay: Movements already placed in this day by this shuffle.
+    ///   - usedInWeek: Movements used anywhere in the plan before this shuffle.
+    ///   - randomizer: Injection point so tests can be deterministic.
+    static func replacement(
+        primaryMuscle: String,
+        current: String,
+        candidates: [Candidate],
+        usedInDay: Set<String>,
+        usedInWeek: Set<String>,
+        randomizer: ([Candidate]) -> Candidate? = { $0.randomElement() }
+    ) -> Candidate? {
+        let currentKey = current.lowercased()
+        let dayKeys = Set(usedInDay.map { $0.lowercased() })
+        let weekKeys = Set(usedInWeek.map { $0.lowercased() })
+
+        let sameMuscle = candidates.filter {
+            $0.primaryMuscle.caseInsensitiveCompare(primaryMuscle) == .orderedSame
+                && $0.name.lowercased() != currentKey
+                && !dayKeys.contains($0.name.lowercased())
+        }
+        guard !sameMuscle.isEmpty else { return nil }
+
+        let unusedThisWeek = sameMuscle.filter { !weekKeys.contains($0.name.lowercased()) }
+        return randomizer(unusedThisWeek.isEmpty ? sameMuscle : unusedThisWeek)
+    }
+
+    /// Every movement name currently programmed across the plan. Taken week-wide
+    /// so Wednesday's chest slot doesn't grab the bench press Monday just gave
+    /// up, which would leave the week looking barely shuffled.
     @MainActor
     static func currentMovementNames(in plan: WeeklyPlan) -> Set<String> {
         Set(plan.days.flatMap { $0.routine?.exercises.map(\.name) ?? [] })
     }
 
-    /// How many focus-matching movements must remain after thinning: enough to
-    /// fill the day twice over, so the generator still has room to choose.
-    static func minimumMatches(exercisesPerDay: Int) -> Int {
-        max(exercisesPerDay * 2, 6)
-    }
-
     /// Re-rolls every training day in the plan, in place.
     ///
-    /// Days are replaced one at a time via `replacePlanDayRoutine`, so a failure
-    /// partway through leaves the earlier days re-rolled and the rest untouched
-    /// rather than destroying the week — unlike `buildWeeklyPlan`, which clears
-    /// the plan before it has anything to put back.
+    /// Each day is mutated slot by slot rather than rebuilt, so a day whose
+    /// muscle groups have no alternatives left is simply left alone instead of
+    /// being emptied. Nothing is deleted at any point — unlike a rebuild, which
+    /// clears the plan before it has anything to put back.
     ///
-    /// - Returns: The number of days that were actually replaced.
+    /// - Returns: The number of slots that actually changed movement.
     @MainActor
     @discardableResult
     static func reroll(
         plan: WeeklyPlan,
         workout: WorkoutManager,
-        exercises: [Exercise],
-        sessions: [WorkoutSession],
-        profile: TrainingProfile?,
-        onProgress: ((Int, Int) -> Void)? = nil
-    ) async -> Int {
-        let days = plan.orderedDays
-        guard !days.isEmpty else { return 0 }
+        exercises: [Exercise]
+    ) -> Int {
+        let candidates = exercises.map {
+            Candidate(name: $0.name, primaryMuscle: $0.muscleGroup.rawValue)
+        }
+        let byName = Dictionary(exercises.map { ($0.name.lowercased(), $0) }) { first, _ in first }
+        let usedInWeek = currentMovementNames(in: plan)
 
-        let avoid = currentMovementNames(in: plan)
-        let minimum = minimumMatches(exercisesPerDay: plan.exercisesPerDay)
-        var replaced = 0
+        var swapped = 0
+        for day in plan.orderedDays {
+            guard let routine = day.routine else { continue }
+            var usedInDay: Set<String> = []
 
-        for (index, day) in days.enumerated() {
-            onProgress?(index, days.count)
-            guard let generated = await PlanBuilding.generateDay(
-                focus: day.focus,
-                exercisesPerDay: plan.exercisesPerDay,
-                duration: plan.duration,
-                withPartner: plan.withPartner,
-                allowSupersets: plan.allowSupersets,
-                exercises: exercises,
-                sessions: sessions,
-                profile: profile,
-                avoiding: avoid,
-                minimumMatches: minimum
-            ), !generated.items.isEmpty else { continue }
-            workout.replacePlanDayRoutine(day, title: generated.title, items: generated.items)
-            replaced += 1
+            for item in routine.orderedItems {
+                guard let exercise = item.exercise else { continue }
+                guard let pick = replacement(
+                    primaryMuscle: exercise.muscleGroup.rawValue,
+                    current: exercise.name,
+                    candidates: candidates,
+                    usedInDay: usedInDay,
+                    usedInWeek: usedInWeek
+                ), let replacement = byName[pick.name.lowercased()] else {
+                    // No alternative for this muscle group — keep what's there,
+                    // and still reserve it so a later slot can't duplicate it.
+                    usedInDay.insert(exercise.name)
+                    continue
+                }
+                workout.swapRoutineItemExercise(item, to: replacement)
+                usedInDay.insert(replacement.name)
+                swapped += 1
+            }
         }
 
-        if replaced > 0 { workout.markPlanShuffled(plan) }
-        return replaced
+        if swapped > 0 { workout.markPlanShuffled(plan) }
+        return swapped
     }
 }
 
 // MARK: - Shuffle controller
 
-/// Drives shuffling for whichever Plan screen is on-screen (phone or iPad) and
-/// owns the progress overlay, so both screens get identical behaviour from one
-/// implementation.
+/// Drives shuffling for whichever Plan screen is on-screen (phone or iPad), so
+/// both get identical behaviour from one implementation.
 ///
 /// Also performs the automatic weekly roll: when "Shuffle every week" is on and
 /// the calendar week has turned over since the last shuffle, opening the Plan
-/// tab re-rolls the week once. There is no background scheduler here on purpose
-/// — a plan the lifter never looks at doesn't need to have been rebuilt, and a
-/// BGTaskScheduler job would burn battery and add an entitlement for a feature
-/// that is only ever observed from this screen.
+/// tab re-rolls the week once. There is no background scheduler on purpose — a
+/// plan the lifter never opens doesn't need rebuilding, and a BGTaskScheduler
+/// job would need an entitlement and burn battery for a result only ever seen
+/// from this screen.
 struct PlanShuffleModifier: ViewModifier {
     @Environment(WorkoutManager.self) private var workout
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
-    @Query(sort: \WorkoutSession.startDate, order: .reverse) private var sessions: [WorkoutSession]
-    @Query private var profiles: [TrainingProfile]
 
     let plan: WeeklyPlan
     @Binding var trigger: Bool
-
-    @State private var isShuffling = false
-    @State private var progress = (done: 0, total: 0)
 
     /// Identifies the current calendar week; changing it re-arms the automatic
     /// roll without needing a timer.
@@ -149,50 +166,23 @@ struct PlanShuffleModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay { if isShuffling { overlay } }
             .onChange(of: trigger) { _, newValue in
                 guard newValue else { return }
                 trigger = false
-                Task { await run() }
+                run()
             }
             .task(id: weekKey) {
                 guard plan.randomizeWeekly, plan.needsWeeklyShuffle() else { return }
-                await run()
+                run()
             }
     }
 
-    private var overlay: some View {
-        ZStack {
-            Color.black.opacity(0.55).ignoresSafeArea()
-            VStack(spacing: 14) {
-                ProgressView().tint(Theme.emerald)
-                Text("Shuffling your week…")
-                    .font(.subheadline.weight(.semibold))
-                if progress.total > 0 {
-                    Text("\(min(progress.done + 1, progress.total)) of \(progress.total)")
-                        .font(.caption)
-                        .foregroundStyle(Theme.textDim)
-                }
-            }
-            .padding(28)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-        }
-    }
-
-    private func run() async {
-        guard !isShuffling else { return }
-        isShuffling = true
-        progress = (0, plan.orderedDays.count)
-        let replaced = await PlanShuffle.reroll(
-            plan: plan,
-            workout: workout,
-            exercises: exercises,
-            sessions: sessions,
-            profile: profiles.first,
-            onProgress: { done, total in progress = (done, total) }
-        )
-        isShuffling = false
-        if replaced > 0 { Haptics.shared.success() }
+    /// Swapping is local catalog selection plus the deterministic progression
+    /// algorithm — no model call — so it completes in one frame and needs no
+    /// progress overlay.
+    private func run() {
+        let swapped = PlanShuffle.reroll(plan: plan, workout: workout, exercises: exercises)
+        if swapped > 0 { Haptics.shared.success() }
     }
 }
 

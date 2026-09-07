@@ -16,23 +16,11 @@ enum PlanBuilding {
         allowSupersets: Bool,
         exercises: [Exercise],
         sessions: [WorkoutSession],
-        profile: TrainingProfile?,
-        avoiding: Set<String> = [],
-        minimumMatches: Int = 0
+        profile: TrainingProfile?
     ) async -> (title: String, items: [WorkoutManager.RoutineDraftItem])? {
-        let fullCatalog = exercises.map {
+        let catalog = exercises.map {
             ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType, isPerHand: $0.isPerHand)
         }
-        // A shuffle asks for movements the plan isn't already running. Hiding
-        // last week's picks from the catalog is what makes the re-roll differ —
-        // every tier below (coached, on-device, deterministic) selects from this
-        // one list, so one filter covers all of them.
-        let catalog = PlanShuffle.thinnedCatalog(
-            fullCatalog,
-            avoiding: avoiding,
-            targetMuscleGroups: focus.targetMuscleGroups,
-            minimumMatches: minimumMatches
-        )
         // Only assemble the training context when the lifter has opted into
         // cloud AI — without it `generatePlan` stays fully on-device.
         var context: TrainingContext?

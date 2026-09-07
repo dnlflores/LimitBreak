@@ -2,97 +2,167 @@
 //  PlanShuffleTests.swift
 //  LimitBreakTests
 //
-//  Covers the pure decision logic behind the weekly plan shuffle: which
-//  movements the generator is allowed to see on a re-roll, and when an
-//  automatic weekly roll is due. The generation itself is not tested here —
-//  it goes through the AI tiers, which are exercised elsewhere.
+//  Covers the decision logic behind the weekly plan shuffle: which movement may
+//  replace a given slot, and when an automatic weekly roll is due.
+//
+//  The guarantee under test is composition: a shuffled slot must come back with
+//  the SAME primary muscle group, so a day built as one biceps / one triceps /
+//  one chest movement stays exactly that after shuffling.
 //
 
 import Foundation
 import Testing
 @testable import LimitBreak
 
-struct PlanShuffleCatalogTests {
+struct PlanShuffleSelectionTests {
 
-    private func brief(_ name: String, _ groups: [String]) -> ExerciseBrief {
-        ExerciseBrief(name: name, muscleGroups: groups, equipment: "Barbell")
+    private func candidate(_ name: String, _ muscle: MuscleGroup) -> PlanShuffle.Candidate {
+        PlanShuffle.Candidate(name: name, primaryMuscle: muscle.rawValue)
     }
 
-    private var pushCatalog: [ExerciseBrief] {
+    private var library: [PlanShuffle.Candidate] {
         [
-            brief("Bench Press", ["Chest", "Triceps"]),
-            brief("Incline Press", ["Chest"]),
-            brief("Dip", ["Chest", "Triceps"]),
-            brief("Overhead Press", ["Deltoids"]),
-            brief("Lateral Raise", ["Deltoids"]),
-            brief("Cable Fly", ["Chest"]),
-            brief("Skullcrusher", ["Triceps"]),
-            brief("Back Squat", ["Quads"]),
+            candidate("Barbell Curl", .biceps),
+            candidate("Hammer Curl", .biceps),
+            candidate("Preacher Curl", .biceps),
+            candidate("Skullcrusher", .triceps),
+            candidate("Triceps Pushdown", .triceps),
+            candidate("Bench Press", .chest),
+            candidate("Incline Press", .chest),
+            candidate("Lateral Raise", .deltoids),
+            candidate("Back Squat", .quads),
         ]
     }
 
-    @Test func excludesRecentlyUsedMovements() {
-        let thinned = PlanShuffle.thinnedCatalog(
-            pushCatalog,
-            avoiding: ["Bench Press", "Dip"],
-            targetMuscleGroups: ["Chest", "Deltoids", "Triceps"],
-            minimumMatches: 4
+    /// The core contract Daniel asked for: a biceps slot comes back biceps.
+    @Test func replacementKeepsThePrimaryMuscleGroup() {
+        let pick = PlanShuffle.replacement(
+            primaryMuscle: MuscleGroup.biceps.rawValue,
+            current: "Barbell Curl",
+            candidates: library,
+            usedInDay: [],
+            usedInWeek: []
         )
-        let names = Set(thinned.map(\.name))
-        #expect(!names.contains("Bench Press"))
-        #expect(!names.contains("Dip"))
-        #expect(names.contains("Incline Press"))
+        #expect(pick != nil)
+        #expect(pick?.primaryMuscle == MuscleGroup.biceps.rawValue)
     }
 
-    @Test func exclusionIsCaseInsensitive() {
-        let thinned = PlanShuffle.thinnedCatalog(
-            pushCatalog,
-            avoiding: ["bench press"],
-            targetMuscleGroups: ["Chest"],
-            minimumMatches: 2
-        )
-        #expect(!thinned.contains { $0.name == "Bench Press" })
+    @Test func replacementIsNeverTheCurrentMovement() {
+        // Triceps has exactly two entries, so repeated rolls must all return the
+        // other one — never the movement already in the slot.
+        for _ in 0..<25 {
+            let pick = PlanShuffle.replacement(
+                primaryMuscle: MuscleGroup.triceps.rawValue,
+                current: "Skullcrusher",
+                candidates: library,
+                usedInDay: [],
+                usedInWeek: []
+            )
+            #expect(pick?.name == "Triceps Pushdown")
+        }
     }
 
-    @Test func keepsFullCatalogWhenNothingToAvoid() {
-        let thinned = PlanShuffle.thinnedCatalog(
-            pushCatalog,
-            avoiding: [],
-            targetMuscleGroups: ["Chest"],
-            minimumMatches: 99
+    /// A day must never end up with the same movement in two slots.
+    @Test func replacementAvoidsMovementsAlreadyPlacedInTheDay() {
+        let pick = PlanShuffle.replacement(
+            primaryMuscle: MuscleGroup.biceps.rawValue,
+            current: "Barbell Curl",
+            candidates: library,
+            usedInDay: ["Hammer Curl"],
+            usedInWeek: []
         )
-        #expect(thinned.count == pushCatalog.count)
+        #expect(pick?.name == "Preacher Curl")
     }
 
-    /// The whole point of the guard: variety must never starve the workout. If
-    /// avoiding last week would leave too few focus movements, the generator
-    /// gets the full library back and may legitimately repeat.
-    @Test func fallsBackToFullCatalogWhenTooFewMatchesRemain() {
-        let thinned = PlanShuffle.thinnedCatalog(
-            pushCatalog,
-            avoiding: ["Bench Press", "Incline Press", "Dip", "Cable Fly"],
-            targetMuscleGroups: ["Chest"],
-            minimumMatches: 4
-        )
-        #expect(thinned.count == pushCatalog.count)
+    /// Preferring movements unused elsewhere in the week keeps the whole plan
+    /// looking shuffled rather than rotating two exercises between days.
+    @Test func prefersMovementsNotUsedElsewhereInTheWeek() {
+        for _ in 0..<25 {
+            let pick = PlanShuffle.replacement(
+                primaryMuscle: MuscleGroup.biceps.rawValue,
+                current: "Barbell Curl",
+                candidates: library,
+                usedInDay: [],
+                usedInWeek: ["Hammer Curl"]
+            )
+            #expect(pick?.name == "Preacher Curl")
+        }
     }
 
-    /// Full Body has no target muscles, so every surviving movement counts
-    /// toward the minimum rather than zero of them.
-    @Test func fullBodyCountsEveryRemainingMovement() {
-        let thinned = PlanShuffle.thinnedCatalog(
-            pushCatalog,
-            avoiding: ["Bench Press"],
-            targetMuscleGroups: [],
-            minimumMatches: 6
+    /// When every same-muscle option is already used somewhere in the week, the
+    /// slot still shuffles rather than freezing — week-wide novelty is a
+    /// preference, not a hard constraint.
+    @Test func fallsBackToUsedMovementsWhenTheWeekIsExhausted() {
+        let pick = PlanShuffle.replacement(
+            primaryMuscle: MuscleGroup.biceps.rawValue,
+            current: "Barbell Curl",
+            candidates: library,
+            usedInDay: [],
+            usedInWeek: ["Hammer Curl", "Preacher Curl"]
         )
-        #expect(thinned.count == pushCatalog.count - 1)
+        #expect(pick != nil)
+        #expect(pick?.primaryMuscle == MuscleGroup.biceps.rawValue)
     }
 
-    @Test func minimumScalesWithDayLength() {
-        #expect(PlanShuffle.minimumMatches(exercisesPerDay: 5) == 10)
-        // Short days still demand a floor, so a 3-exercise day keeps real choice.
-        #expect(PlanShuffle.minimumMatches(exercisesPerDay: 2) == 6)
+    /// A muscle group with only one movement in the library keeps that movement.
+    /// Substituting a different muscle to manufacture visible change would break
+    /// the day's composition — the whole point of the feature.
+    @Test func returnsNilRatherThanSubstituteADifferentMuscle() {
+        let pick = PlanShuffle.replacement(
+            primaryMuscle: MuscleGroup.deltoids.rawValue,
+            current: "Lateral Raise",
+            candidates: library,
+            usedInDay: [],
+            usedInWeek: []
+        )
+        #expect(pick == nil)
+    }
+
+    @Test func muscleMatchingIsCaseInsensitive() {
+        let pick = PlanShuffle.replacement(
+            primaryMuscle: MuscleGroup.chest.rawValue.uppercased(),
+            current: "Bench Press",
+            candidates: library,
+            usedInDay: [],
+            usedInWeek: []
+        )
+        #expect(pick?.name == "Incline Press")
+    }
+
+    /// Simulates shuffling a full day and asserts the muscle-group multiset is
+    /// unchanged — the exact scenario from the review: 1 each of biceps,
+    /// triceps, chest, back-ish and shoulders comes back 1 each.
+    @Test func shufflingAWholeDayPreservesItsMuscleComposition() {
+        let day: [(name: String, muscle: MuscleGroup)] = [
+            ("Barbell Curl", .biceps),
+            ("Skullcrusher", .triceps),
+            ("Bench Press", .chest),
+            ("Lateral Raise", .deltoids),
+            ("Back Squat", .quads),
+        ]
+
+        var used: Set<String> = []
+        var resulting: [MuscleGroup] = []
+        for slot in day {
+            let pick = PlanShuffle.replacement(
+                primaryMuscle: slot.muscle.rawValue,
+                current: slot.name,
+                candidates: library,
+                usedInDay: used,
+                usedInWeek: []
+            )
+            // Nil means "keep what's there", which also preserves the muscle.
+            used.insert(pick?.name ?? slot.name)
+            resulting.append(slot.muscle)
+            if let pick {
+                #expect(pick.primaryMuscle == slot.muscle.rawValue)
+            }
+        }
+
+        #expect(resulting.count == day.count)
+        #expect(Set(resulting) == Set(day.map(\.muscle)))
+        // No duplicated movements within the day.
+        #expect(used.count == day.count)
     }
 }
 
@@ -124,8 +194,7 @@ struct WeeklyShuffleDueTests {
         #expect(plan(lastShuffled: lastWeek).needsWeeklyShuffle(now: now, calendar: calendar))
     }
 
-    /// An empty plan has nothing to re-roll; shuffling it would just spin the
-    /// generator and overwrite nothing.
+    /// An empty plan has no slots to swap; rolling it would do nothing.
     @Test func emptyPlanIsNeverDue() {
         let empty = WeeklyPlan(name: "Empty")
         #expect(!empty.needsWeeklyShuffle(now: Date(), calendar: calendar))

@@ -283,9 +283,17 @@ struct DashboardWidget: Widget {
 
     /// iPhone's full-screen extra-large (`.systemExtraLargePortrait`) only exists
     /// on iOS 27; `.systemExtraLarge` is the iPad/macOS size.
+    ///
+    /// `.systemExtraLargePortrait` is only present in the iOS 27 beta SDK
+    /// (Swift 6.4+ toolchain). Release Xcode (Swift 6.3.x, iOS 26 SDK) can't
+    /// even resolve the symbol at compile time, so this must be gated at the
+    /// SDK/toolchain level with `#if swift(>=6.4)`, not just `#available`
+    /// (which only guards runtime behavior, not symbol availability).
     private static var families: [WidgetFamily] {
         var families: [WidgetFamily] = [.systemExtraLarge]
+        #if swift(>=6.4)
         if #available(iOS 27.0, *) { families.append(.systemExtraLargePortrait) }
+        #endif
         return families
     }
 }

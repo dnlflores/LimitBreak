@@ -41,15 +41,29 @@ struct ReorderableVStack<Item: Identifiable, Row: View>: View {
     }
 
     var body: some View {
+        #if swift(>=6.4)
         if #available(iOS 27.0, *) {
             NativeReorderableVStack(items: $items, spacing: spacing, row: row)
         } else {
             LegacyReorderableVStack(items: $items, spacing: spacing, row: row)
         }
+        #else
+        LegacyReorderableVStack(items: $items, spacing: spacing, row: row)
+        #endif
     }
 }
 
 // MARK: - Native (iOS 27+)
+//
+// `reorderable()` / `reorderContainer(for:)` / `ReorderDifference` /
+// `ReorderableSingleCollectionIdentifier` are iOS 27 SDK symbols that don't
+// exist at all in the iOS 26 SDK shipped with release Xcode (Swift <6.4).
+// `@available` only gates *runtime* dispatch — it can't help here because the
+// symbols themselves fail to resolve at *compile* time on the older SDK. This
+// whole section is therefore wrapped in `#if swift(>=6.4)` so it's compiled
+// only under the beta toolchain; release-Xcode builds fall through to the
+// legacy path unconditionally (see `ReorderableVStack.body` above).
+#if swift(>=6.4)
 
 /// Wraps the system `reorderable()` API. `.reorderable()` marks each `ForEach`
 /// child as draggable through the container; `.reorderContainer(for:)` acts as both
@@ -103,6 +117,8 @@ extension ReorderDifference where CollectionID == ReorderableSingleCollectionIde
         }
     }
 }
+
+#endif // swift(>=6.4)
 
 // MARK: - Legacy fallback (iOS 26)
 

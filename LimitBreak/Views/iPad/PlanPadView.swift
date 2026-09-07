@@ -81,6 +81,7 @@ private struct PlanBoardView: View {
     var onRebuild: () -> Void
 
     @State private var showClearConfirm = false
+    @State private var shuffleNow = false
     /// The weekday whose workout fills the detail pane. Seeded to today (or the
     /// first training day) on appear; -1 until then.
     @State private var selectedWeekday = -1
@@ -114,6 +115,7 @@ private struct PlanBoardView: View {
         } message: {
             Text("This removes every day and its workout. You can build a new week anytime.")
         }
+        .planShuffle(plan: plan, trigger: $shuffleNow)
     }
 
     // MARK: Header
@@ -133,6 +135,20 @@ private struct PlanBoardView: View {
                     weekProgressRing(done: done, total: training.count)
                 }
                 Menu {
+                    Button {
+                        Haptics.shared.tick()
+                        shuffleNow = true
+                    } label: {
+                        Label("Shuffle Workouts", systemImage: "shuffle")
+                    }
+                    .disabled(plan.orderedDays.isEmpty)
+                    Toggle(isOn: Binding(
+                        get: { plan.randomizeWeekly },
+                        set: { workout.setPlanRandomizeWeekly(plan, $0) }
+                    )) {
+                        Label("Shuffle Every Week", systemImage: "calendar.badge.clock")
+                    }
+                    Divider()
                     Button {
                         Haptics.shared.tick()
                         onRebuild()

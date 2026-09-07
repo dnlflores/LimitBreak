@@ -16,11 +16,23 @@ enum PlanBuilding {
         allowSupersets: Bool,
         exercises: [Exercise],
         sessions: [WorkoutSession],
-        profile: TrainingProfile?
+        profile: TrainingProfile?,
+        avoiding: Set<String> = [],
+        minimumMatches: Int = 0
     ) async -> (title: String, items: [WorkoutManager.RoutineDraftItem])? {
-        let catalog = exercises.map {
+        let fullCatalog = exercises.map {
             ExerciseBrief(name: $0.name, muscleGroups: $0.allMuscleGroups.map(\.rawValue), equipment: $0.equipmentType, isPerHand: $0.isPerHand)
         }
+        // A shuffle asks for movements the plan isn't already running. Hiding
+        // last week's picks from the catalog is what makes the re-roll differ —
+        // every tier below (coached, on-device, deterministic) selects from this
+        // one list, so one filter covers all of them.
+        let catalog = PlanShuffle.thinnedCatalog(
+            fullCatalog,
+            avoiding: avoiding,
+            targetMuscleGroups: focus.targetMuscleGroups,
+            minimumMatches: minimumMatches
+        )
         // Only assemble the training context when the lifter has opted into
         // cloud AI — without it `generatePlan` stays fully on-device.
         var context: TrainingContext?
@@ -91,6 +103,7 @@ struct WeeklyPlanBuilderView: View {
     @State private var duration: WorkoutLength = .any
     @State private var withPartner = false
     @State private var allowSupersets = true
+    @State private var randomizeWeekly = false
 
     @State private var isGenerating = false
     @State private var progressText = ""
@@ -106,6 +119,7 @@ struct WeeklyPlanBuilderView: View {
             _duration = State(initialValue: existing.duration)
             _withPartner = State(initialValue: existing.withPartner)
             _allowSupersets = State(initialValue: existing.allowSupersets)
+            _randomizeWeekly = State(initialValue: existing.randomizeWeekly)
         }
     }
 
@@ -177,6 +191,11 @@ struct WeeklyPlanBuilderView: View {
                     .tint(Theme.emerald)
                 Toggle("Allow supersets", isOn: $allowSupersets)
                     .tint(Theme.teal)
+                Toggle("Shuffle exercises every week", isOn: $randomizeWeekly)
+                    .tint(Theme.violet)
+                Text("Keeps your days and focuses but picks fresh movements at the start of each week. You can also shuffle on demand from the Plan menu.")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textDim)
             }
         }
         .padding()
@@ -367,8 +386,15 @@ struct WeeklyPlanBuilderView: View {
             duration: duration,
             withPartner: withPartner,
             allowSupersets: allowSupersets,
+            randomizeWeekly: randomizeWeekly,
             days: days
         )
+        // A freshly built week counts as this week's roll. Without this stamp the
+        // Plan screen would see a shuffle as due and immediately regenerate the
+        // workouts the lifter just watched being built.
+        if randomizeWeekly, let plan = workout.activeWeeklyPlan() {
+            workout.markPlanShuffled(plan)
+        }
         isGenerating = false
         dismiss()
     }

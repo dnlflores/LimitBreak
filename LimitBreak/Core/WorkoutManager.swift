@@ -1049,6 +1049,7 @@ final class WorkoutManager {
         duration: WorkoutLength,
         withPartner: Bool,
         allowSupersets: Bool,
+        randomizeWeekly: Bool = false,
         days: [(weekday: Int, focus: WorkoutFocus, title: String, items: [RoutineDraftItem])]
     ) -> WeeklyPlan {
         clearWeeklyPlan()
@@ -1058,7 +1059,8 @@ final class WorkoutManager {
             exercisesPerDay: exercisesPerDay,
             durationRaw: duration.rawValue,
             withPartner: withPartner,
-            allowSupersets: allowSupersets
+            allowSupersets: allowSupersets,
+            randomizeWeekly: randomizeWeekly
         )
         context.insert(plan)
 
@@ -1100,6 +1102,24 @@ final class WorkoutManager {
             day.routine = routine
         }
         day.plan?.updatedAt = Date()
+        try? context.save()
+    }
+
+    /// Stamps a plan as shuffled for the current calendar week, so the automatic
+    /// weekly roll fires once and not on every visit to the Plan tab.
+    func markPlanShuffled(_ plan: WeeklyPlan, now: Date = Date(), calendar: Calendar = .current) {
+        plan.lastShuffledWeek = calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? now
+        plan.updatedAt = now
+        try? context.save()
+    }
+
+    /// Turns the weekly re-roll on or off for a plan. Enabling it does not
+    /// shuffle immediately — the Plan screen rolls the week when it next needs
+    /// one, so toggling the switch never silently rewrites the workout the
+    /// lifter is about to start today.
+    func setPlanRandomizeWeekly(_ plan: WeeklyPlan, _ enabled: Bool) {
+        plan.randomizeWeekly = enabled
+        plan.updatedAt = Date()
         try? context.save()
     }
 

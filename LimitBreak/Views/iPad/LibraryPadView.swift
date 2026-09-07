@@ -262,7 +262,7 @@ struct LibraryPadView: View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
                 if exercise.exampleImage != nil {
-                    ExerciseImageBanner(exercise: exercise, height: 150)
+                    ExerciseVisual(exercise: exercise, height: 150)
                 } else {
                     ZStack {
                         Theme.surfaceRaised

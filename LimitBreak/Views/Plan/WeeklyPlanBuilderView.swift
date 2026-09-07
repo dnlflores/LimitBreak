@@ -91,6 +91,7 @@ struct WeeklyPlanBuilderView: View {
     @State private var duration: WorkoutLength = .any
     @State private var withPartner = false
     @State private var allowSupersets = true
+    @State private var randomizeWeekly = false
 
     @State private var isGenerating = false
     @State private var progressText = ""
@@ -106,6 +107,7 @@ struct WeeklyPlanBuilderView: View {
             _duration = State(initialValue: existing.duration)
             _withPartner = State(initialValue: existing.withPartner)
             _allowSupersets = State(initialValue: existing.allowSupersets)
+            _randomizeWeekly = State(initialValue: existing.randomizeWeekly)
         }
     }
 
@@ -177,6 +179,11 @@ struct WeeklyPlanBuilderView: View {
                     .tint(Theme.emerald)
                 Toggle("Allow supersets", isOn: $allowSupersets)
                     .tint(Theme.teal)
+                Toggle("Shuffle exercises every week", isOn: $randomizeWeekly)
+                    .tint(Theme.violet)
+                Text("Keeps your days and focuses but picks fresh movements at the start of each week. You can also shuffle on demand from the Plan menu.")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textDim)
             }
         }
         .padding()
@@ -367,8 +374,15 @@ struct WeeklyPlanBuilderView: View {
             duration: duration,
             withPartner: withPartner,
             allowSupersets: allowSupersets,
+            randomizeWeekly: randomizeWeekly,
             days: days
         )
+        // A freshly built week counts as this week's roll. Without this stamp the
+        // Plan screen would see a shuffle as due and immediately regenerate the
+        // workouts the lifter just watched being built.
+        if randomizeWeekly, let plan = workout.activeWeeklyPlan() {
+            workout.markPlanShuffled(plan)
+        }
         isGenerating = false
         dismiss()
     }

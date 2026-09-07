@@ -803,6 +803,17 @@ final class WeeklyPlan {
     var withPartner: Bool = false
     var allowSupersets: Bool = true
 
+    /// When true the plan re-rolls its workouts at the start of each calendar
+    /// week, so the same week doesn't repeat forever. Defaults to false: an
+    /// existing plan keeps behaving exactly as it did before this shipped, and
+    /// lifters running a fixed program aren't opted into churn.
+    var randomizeWeekly: Bool = false
+
+    /// The start of the calendar week the plan was last shuffled in. Nil means
+    /// never shuffled. Stored rather than derived so the automatic roll fires
+    /// once per week instead of on every appearance of the Plan tab.
+    var lastShuffledWeek: Date?
+
     // Optional storage for CloudKit; non-optional `days` accessor keeps call
     // sites unchanged.
     @Relationship(deleteRule: .cascade, originalName: "days", inverse: \PlannedDay.plan)
@@ -818,6 +829,7 @@ final class WeeklyPlan {
         durationRaw: String = WorkoutLength.any.rawValue,
         withPartner: Bool = false,
         allowSupersets: Bool = true,
+        randomizeWeekly: Bool = false,
         createdAt: Date = Date()
     ) {
         self.id = UUID()
@@ -826,6 +838,7 @@ final class WeeklyPlan {
         self.durationRaw = durationRaw
         self.withPartner = withPartner
         self.allowSupersets = allowSupersets
+        self.randomizeWeekly = randomizeWeekly
         self.createdAt = createdAt
         self.updatedAt = createdAt
     }
@@ -844,6 +857,17 @@ final class WeeklyPlan {
     func day(on date: Date, calendar: Calendar = .current) -> PlannedDay? {
         let weekday = calendar.component(.weekday, from: date)
         return days.first { $0.weekday == weekday }
+    }
+
+    /// True when an automatic weekly shuffle is due — i.e. the plan has training
+    /// days and hasn't already been shuffled during the current calendar week.
+    /// The caller checks `randomizeWeekly` itself, so this stays usable for a
+    /// manual "is this week's roll still pending" read.
+    func needsWeeklyShuffle(now: Date = Date(), calendar: Calendar = .current) -> Bool {
+        guard !days.isEmpty else { return false }
+        guard let weekStart = calendar.dateInterval(of: .weekOfYear, for: now)?.start else { return false }
+        guard let last = lastShuffledWeek else { return true }
+        return last < weekStart
     }
 }
 

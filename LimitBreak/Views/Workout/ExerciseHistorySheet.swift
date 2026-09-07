@@ -17,7 +17,7 @@ struct ExerciseHistoryCard: View {
             onOpen()
         } label: {
             VStack(spacing: 0) {
-                ExerciseImageBanner(exercise: exercise, height: 150)
+                ExerciseVisual(exercise: exercise, height: 150)
                 infoSection
             }
             .background(.ultraThinMaterial)
@@ -104,7 +104,7 @@ struct ExerciseHistorySheet: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                ExerciseImageBanner(exercise: exercise, height: 220, blendsIntoBackground: true)
+                ExerciseVisual(exercise: exercise, height: 220, blendsIntoBackground: true)
                     .overlay(alignment: .bottomLeading) {
                         MuscleBadge(exercise: exercise)
                             .padding(.horizontal, 16)

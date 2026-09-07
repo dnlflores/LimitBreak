@@ -4,18 +4,22 @@ import FoundationModels
 /// The on-device coaching tier: Apple's system language model, running locally.
 ///
 /// Free, private, and works with no network at all — and correspondingly
-/// constrained. Two accommodations follow from the small context window, and
-/// both are deliberate rather than incidental:
+/// constrained. One accommodation follows from the small context window, and it
+/// is deliberate rather than incidental:
 ///
-/// - **A narrowed tool set.** The full catalog's argument lists are the largest
-///   block in the prompt, and the tools left out are the ones whose closed value
-///   lists cost the most (`create_exercise`, `update_profile`, the plan-day
-///   pair). What remains is everything needed to read the lifter's training and
-///   build, edit, and start a workout — which is what anyone reaches for
-///   without a network.
 /// - **A single structured reply rather than native tool calling.** Guided
 ///   generation gives one reliably-shaped answer per turn: either prose or one
 ///   call. Multi-call turns aren't worth the context they'd cost here.
+///
+/// The tool set, by contrast, is the *whole* catalog. This tier once withheld
+/// four tools on the theory that their closed value lists were the costliest
+/// block in the prompt; measured against the compact contract that turned out
+/// to be false — the four together run ~930 characters, less than the two
+/// largest tools the tier already offered. Withholding them bought roughly two
+/// hundred tokens and cost the lifter the ability to change their profile or
+/// program their week without a network, which is precisely when they are most
+/// likely to be standing in a gym with no signal. Parity is the default now:
+/// a tool added to `CoachTool.catalog` reaches every tier.
 ///
 /// The session keeps its own transcript, so each turn sends only what is new.
 @MainActor
@@ -57,10 +61,12 @@ final class OnDeviceCoachBackend: CoachBackend {
     /// How many transcript entries the live session has already been given.
     private var deliveredCount = 0
 
-    /// The tools offered on-device. See the note above for what's left out.
+    /// The tools offered on-device: all of them. Kept as a named function
+    /// rather than inlined so the parity is stated in one place, and so a
+    /// future window-driven narrowing has an obvious home — with a measurement
+    /// attached, this time.
     nonisolated static func availableTools(from catalog: [CoachTool]) -> [CoachTool] {
-        let omitted: Set<String> = ["create_exercise", "update_profile", "set_plan_day", "clear_plan_day"]
-        return catalog.filter { !omitted.contains($0.name) }
+        catalog
     }
 
     /// - Note: `system` is deliberately unused — this tier substitutes the

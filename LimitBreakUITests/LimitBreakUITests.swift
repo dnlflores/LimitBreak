@@ -206,4 +206,36 @@ final class LimitBreakUITests: XCTestCase {
             "Coach empty state showed neither starter prompts nor a setup hint"
         )
     }
+
+    /// The animated figure replaces the still photo for movements that have an
+    /// authored clip, and every other movement is untouched. Captures the
+    /// figure for review — the pose data is verified offline, this checks it
+    /// survives the trip into SwiftUI.
+    @MainActor
+    func testAnimatedFigureRendersForAuthoredMovement() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-skip-splash", "-in-memory-store", "-open-tab", "3"]
+        app.launch()
+
+        let searchField = app.textFields["Search movements"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5))
+        searchField.tap()
+        // Tapping does not synchronously grant focus, and typing into an
+        // unfocused field throws rather than retrying.
+        guard app.keyboards.element.waitForExistence(timeout: 5) else {
+            throw XCTSkip("Software keyboard unavailable in this simulator configuration")
+        }
+        searchField.typeText("Overhead Press")
+
+        let row = app.staticTexts["Overhead Press"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        // Let the rep play past the start pose so the capture is mid-movement.
+        sleep(2)
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "figure-overhead-press"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
 }

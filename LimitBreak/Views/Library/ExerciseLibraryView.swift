@@ -261,7 +261,7 @@ struct ExerciseDetailView: View {
                 detailHeader
 
                 if exercise.exampleImage != nil {
-                    ExerciseImageBanner(exercise: exercise, height: 200)
+                    ExerciseVisual(exercise: exercise, height: 200)
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.glassBorder, lineWidth: 1))
                 }

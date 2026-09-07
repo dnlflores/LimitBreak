@@ -1,0 +1,1507 @@
+{
+  "version": 1,
+  "clips": [
+    {
+      "name": "Barbell Curl",
+      "azimuth": 22,
+      "equipment": "barbell",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -8,
+              0,
+              6
+            ],
+            "upperArmR": [
+              -8,
+              0,
+              -6
+            ],
+            "forearmL": [
+              -6,
+              0,
+              0
+            ],
+            "forearmR": [
+              -6,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -14,
+              0,
+              6
+            ],
+            "upperArmR": [
+              -14,
+              0,
+              -6
+            ],
+            "forearmL": [
+              -142,
+              0,
+              0
+            ],
+            "forearmR": [
+              -142,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Barbell Back Squat",
+      "azimuth": 26,
+      "equipment": "barbellOnBack",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              12,
+              0,
+              46
+            ],
+            "upperArmR": [
+              12,
+              0,
+              -46
+            ],
+            "forearmL": [
+              -118,
+              0,
+              0
+            ],
+            "forearmR": [
+              -118,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.52,
+            -0.05
+          ],
+          "rootRotation": [
+            20,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              12,
+              0,
+              46
+            ],
+            "upperArmR": [
+              12,
+              0,
+              -46
+            ],
+            "forearmL": [
+              -118,
+              0,
+              0
+            ],
+            "forearmR": [
+              -118,
+              0,
+              0
+            ],
+            "thighL": [
+              -92,
+              0,
+              0
+            ],
+            "thighR": [
+              -92,
+              0,
+              0
+            ],
+            "shinL": [
+              84,
+              0,
+              0
+            ],
+            "shinR": [
+              84,
+              0,
+              0
+            ],
+            "footL": [
+              22,
+              0,
+              0
+            ],
+            "footR": [
+              22,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Barbell Bench Press",
+      "azimuth": 62,
+      "equipment": "barbell",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.62,
+            0
+          ],
+          "rootRotation": [
+            -90,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -88,
+              0,
+              14
+            ],
+            "upperArmR": [
+              -88,
+              0,
+              -14
+            ],
+            "forearmL": [
+              -4,
+              0,
+              0
+            ],
+            "forearmR": [
+              -4,
+              0,
+              0
+            ],
+            "thighL": [
+              48,
+              0,
+              6
+            ],
+            "thighR": [
+              48,
+              0,
+              -6
+            ],
+            "shinL": [
+              46,
+              0,
+              0
+            ],
+            "shinR": [
+              46,
+              0,
+              0
+            ],
+            "footL": [
+              -40,
+              0,
+              0
+            ],
+            "footR": [
+              -40,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.62,
+            0
+          ],
+          "rootRotation": [
+            -90,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -46,
+              0,
+              52
+            ],
+            "upperArmR": [
+              -46,
+              0,
+              -52
+            ],
+            "forearmL": [
+              -72,
+              0,
+              0
+            ],
+            "forearmR": [
+              -72,
+              0,
+              0
+            ],
+            "thighL": [
+              48,
+              0,
+              6
+            ],
+            "thighR": [
+              48,
+              0,
+              -6
+            ],
+            "shinL": [
+              46,
+              0,
+              0
+            ],
+            "shinR": [
+              46,
+              0,
+              0
+            ],
+            "footL": [
+              -40,
+              0,
+              0
+            ],
+            "footR": [
+              -40,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "ground": 0.42
+    },
+    {
+      "name": "Pull-Up",
+      "azimuth": 16,
+      "equipment": "fixedBar",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.6,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              0,
+              0,
+              170
+            ],
+            "upperArmR": [
+              0,
+              0,
+              -170
+            ],
+            "forearmL": [
+              0,
+              0,
+              4
+            ],
+            "forearmR": [
+              0,
+              0,
+              -4
+            ],
+            "thighL": [
+              -26,
+              0,
+              0
+            ],
+            "thighR": [
+              -26,
+              0,
+              0
+            ],
+            "shinL": [
+              34,
+              0,
+              0
+            ],
+            "shinR": [
+              34,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.996,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              0,
+              0,
+              140
+            ],
+            "upperArmR": [
+              0,
+              0,
+              -140
+            ],
+            "forearmL": [
+              0,
+              0,
+              -74
+            ],
+            "forearmR": [
+              0,
+              0,
+              74
+            ],
+            "thighL": [
+              -52,
+              0,
+              0
+            ],
+            "thighR": [
+              -52,
+              0,
+              0
+            ],
+            "shinL": [
+              64,
+              0,
+              0
+            ],
+            "shinR": [
+              64,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "barHeight": 1.425
+    },
+    {
+      "name": "Lateral Raise",
+      "azimuth": 8,
+      "equipment": "dumbbells",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              0,
+              0,
+              8
+            ],
+            "upperArmR": [
+              0,
+              0,
+              -8
+            ],
+            "forearmL": [
+              -4,
+              0,
+              0
+            ],
+            "forearmR": [
+              -4,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              0,
+              0,
+              88
+            ],
+            "upperArmR": [
+              0,
+              0,
+              -88
+            ],
+            "forearmL": [
+              -6,
+              0,
+              4
+            ],
+            "forearmR": [
+              -6,
+              0,
+              -4
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Deadlift",
+      "azimuth": 26,
+      "equipment": "barbell",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.6,
+            -0.04
+          ],
+          "rootRotation": [
+            56,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -56,
+              0,
+              5
+            ],
+            "upperArmR": [
+              -56,
+              0,
+              -5
+            ],
+            "thighL": [
+              -44,
+              0,
+              2
+            ],
+            "thighR": [
+              -44,
+              0,
+              -2
+            ],
+            "shinL": [
+              34,
+              0,
+              0
+            ],
+            "shinR": [
+              34,
+              0,
+              0
+            ],
+            "footL": [
+              10,
+              0,
+              0
+            ],
+            "footR": [
+              10,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -2,
+              0,
+              5
+            ],
+            "upperArmR": [
+              -2,
+              0,
+              -5
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Romanian Deadlift",
+      "azimuth": 26,
+      "equipment": "barbell",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -2,
+              0,
+              5
+            ],
+            "upperArmR": [
+              -2,
+              0,
+              -5
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.82,
+            -0.1
+          ],
+          "rootRotation": [
+            74,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -74,
+              0,
+              5
+            ],
+            "upperArmR": [
+              -74,
+              0,
+              -5
+            ],
+            "thighL": [
+              -66,
+              0,
+              2
+            ],
+            "thighR": [
+              -66,
+              0,
+              -2
+            ],
+            "shinL": [
+              14,
+              0,
+              0
+            ],
+            "shinR": [
+              14,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Overhead Press",
+      "azimuth": 20,
+      "equipment": "barbell",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -22,
+              0,
+              24
+            ],
+            "upperArmR": [
+              -22,
+              0,
+              -24
+            ],
+            "forearmL": [
+              -148,
+              0,
+              -10
+            ],
+            "forearmR": [
+              -148,
+              0,
+              10
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              0,
+              0,
+              172
+            ],
+            "upperArmR": [
+              0,
+              0,
+              -172
+            ],
+            "forearmL": [
+              0,
+              0,
+              4
+            ],
+            "forearmR": [
+              0,
+              0,
+              -4
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Barbell Row",
+      "azimuth": 26,
+      "equipment": "barbell",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.8,
+            -0.06
+          ],
+          "rootRotation": [
+            52,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -52,
+              0,
+              6
+            ],
+            "upperArmR": [
+              -52,
+              0,
+              -6
+            ],
+            "thighL": [
+              -40,
+              0,
+              2
+            ],
+            "thighR": [
+              -40,
+              0,
+              -2
+            ],
+            "shinL": [
+              26,
+              0,
+              0
+            ],
+            "shinR": [
+              26,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.8,
+            -0.06
+          ],
+          "rootRotation": [
+            52,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -8,
+              0,
+              12
+            ],
+            "upperArmR": [
+              -8,
+              0,
+              -12
+            ],
+            "forearmL": [
+              -88,
+              0,
+              0
+            ],
+            "forearmR": [
+              -88,
+              0,
+              0
+            ],
+            "thighL": [
+              -40,
+              0,
+              2
+            ],
+            "thighR": [
+              -40,
+              0,
+              -2
+            ],
+            "shinL": [
+              26,
+              0,
+              0
+            ],
+            "shinR": [
+              26,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Front Squat",
+      "azimuth": 26,
+      "equipment": "barbell",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -72,
+              0,
+              22
+            ],
+            "upperArmR": [
+              -72,
+              0,
+              -22
+            ],
+            "forearmL": [
+              -124,
+              0,
+              -12
+            ],
+            "forearmR": [
+              -124,
+              0,
+              12
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.52,
+            -0.02
+          ],
+          "rootRotation": [
+            10,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -72,
+              0,
+              22
+            ],
+            "upperArmR": [
+              -72,
+              0,
+              -22
+            ],
+            "forearmL": [
+              -124,
+              0,
+              -12
+            ],
+            "forearmR": [
+              -124,
+              0,
+              12
+            ],
+            "thighL": [
+              -84,
+              0,
+              2
+            ],
+            "thighR": [
+              -84,
+              0,
+              -2
+            ],
+            "shinL": [
+              80,
+              0,
+              0
+            ],
+            "shinR": [
+              80,
+              0,
+              0
+            ],
+            "footL": [
+              18,
+              0,
+              0
+            ],
+            "footR": [
+              18,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Push-Up",
+      "azimuth": 62,
+      "equipment": "none",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.46,
+            0
+          ],
+          "rootRotation": [
+            90,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -90,
+              0,
+              12
+            ],
+            "upperArmR": [
+              -90,
+              0,
+              -12
+            ],
+            "thighL": [
+              2,
+              0,
+              3
+            ],
+            "thighR": [
+              2,
+              0,
+              -3
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.24,
+            0
+          ],
+          "rootRotation": [
+            90,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -62,
+              0,
+              34
+            ],
+            "upperArmR": [
+              -62,
+              0,
+              -34
+            ],
+            "forearmL": [
+              -74,
+              0,
+              0
+            ],
+            "forearmR": [
+              -74,
+              0,
+              0
+            ],
+            "thighL": [
+              2,
+              0,
+              3
+            ],
+            "thighR": [
+              2,
+              0,
+              -3
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Plank",
+      "azimuth": 62,
+      "equipment": "none",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.3,
+            0
+          ],
+          "rootRotation": [
+            90,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -90,
+              0,
+              8
+            ],
+            "upperArmR": [
+              -90,
+              0,
+              -8
+            ],
+            "forearmL": [
+              -88,
+              0,
+              0
+            ],
+            "forearmR": [
+              -88,
+              0,
+              0
+            ],
+            "thighL": [
+              2,
+              0,
+              3
+            ],
+            "thighR": [
+              2,
+              0,
+              -3
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.3,
+            0
+          ],
+          "rootRotation": [
+            90,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -90,
+              0,
+              8
+            ],
+            "upperArmR": [
+              -90,
+              0,
+              -8
+            ],
+            "forearmL": [
+              -88,
+              0,
+              0
+            ],
+            "forearmR": [
+              -88,
+              0,
+              0
+            ],
+            "thighL": [
+              2,
+              0,
+              3
+            ],
+            "thighR": [
+              2,
+              0,
+              -3
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Hammer Curl",
+      "azimuth": 20,
+      "equipment": "dumbbells",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -8,
+              0,
+              7
+            ],
+            "upperArmR": [
+              -8,
+              0,
+              -7
+            ],
+            "forearmL": [
+              -6,
+              0,
+              0
+            ],
+            "forearmR": [
+              -6,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -14,
+              0,
+              7
+            ],
+            "upperArmR": [
+              -14,
+              0,
+              -7
+            ],
+            "forearmL": [
+              -138,
+              0,
+              0
+            ],
+            "forearmR": [
+              -138,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Standing Calf Raise",
+      "azimuth": 20,
+      "equipment": "none",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              0,
+              0,
+              5
+            ],
+            "upperArmR": [
+              0,
+              0,
+              -5
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.99,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              0,
+              0,
+              5
+            ],
+            "upperArmR": [
+              0,
+              0,
+              -5
+            ],
+            "footL": [
+              -42,
+              0,
+              0
+            ],
+            "footR": [
+              -42,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Goblet Squat",
+      "azimuth": 26,
+      "equipment": "dumbbells",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -40,
+              0,
+              14
+            ],
+            "upperArmR": [
+              -40,
+              0,
+              -14
+            ],
+            "forearmL": [
+              -122,
+              0,
+              -16
+            ],
+            "forearmR": [
+              -122,
+              0,
+              16
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.5,
+            -0.03
+          ],
+          "rootRotation": [
+            14,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -40,
+              0,
+              14
+            ],
+            "upperArmR": [
+              -40,
+              0,
+              -14
+            ],
+            "forearmL": [
+              -122,
+              0,
+              -16
+            ],
+            "forearmR": [
+              -122,
+              0,
+              16
+            ],
+            "thighL": [
+              -88,
+              0,
+              2
+            ],
+            "thighR": [
+              -88,
+              0,
+              -2
+            ],
+            "shinL": [
+              82,
+              0,
+              0
+            ],
+            "shinR": [
+              82,
+              0,
+              0
+            ],
+            "footL": [
+              20,
+              0,
+              0
+            ],
+            "footR": [
+              20,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Rear Delt Fly",
+      "azimuth": 18,
+      "equipment": "dumbbells",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.8,
+            -0.06
+          ],
+          "rootRotation": [
+            64,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -64,
+              0,
+              6
+            ],
+            "upperArmR": [
+              -64,
+              0,
+              -6
+            ],
+            "forearmL": [
+              -12,
+              0,
+              0
+            ],
+            "forearmR": [
+              -12,
+              0,
+              0
+            ],
+            "thighL": [
+              -52,
+              0,
+              2
+            ],
+            "thighR": [
+              -52,
+              0,
+              -2
+            ],
+            "shinL": [
+              32,
+              0,
+              0
+            ],
+            "shinR": [
+              32,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.8,
+            -0.06
+          ],
+          "rootRotation": [
+            64,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              -58,
+              0,
+              84
+            ],
+            "upperArmR": [
+              -58,
+              0,
+              -84
+            ],
+            "forearmL": [
+              -12,
+              0,
+              0
+            ],
+            "forearmR": [
+              -12,
+              0,
+              0
+            ],
+            "thighL": [
+              -52,
+              0,
+              2
+            ],
+            "thighR": [
+              -52,
+              0,
+              -2
+            ],
+            "shinL": [
+              32,
+              0,
+              0
+            ],
+            "shinR": [
+              32,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    },
+    {
+      "name": "Reverse Lunge",
+      "azimuth": 24,
+      "equipment": "dumbbells",
+      "keyframes": [
+        {
+          "root": [
+            0,
+            0.9,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              0,
+              0,
+              6
+            ],
+            "upperArmR": [
+              0,
+              0,
+              -6
+            ]
+          }
+        },
+        {
+          "root": [
+            0,
+            0.62,
+            0
+          ],
+          "rootRotation": [
+            8,
+            0,
+            0
+          ],
+          "angles": {
+            "upperArmL": [
+              0,
+              0,
+              6
+            ],
+            "upperArmR": [
+              0,
+              0,
+              -6
+            ],
+            "thighL": [
+              38,
+              0,
+              3
+            ],
+            "shinL": [
+              -86,
+              0,
+              0
+            ],
+            "footL": [
+              -34,
+              0,
+              0
+            ],
+            "thighR": [
+              -58,
+              0,
+              -3
+            ],
+            "shinR": [
+              74,
+              0,
+              0
+            ],
+            "footR": [
+              14,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "ground": 0.0
+    }
+  ]
+}
